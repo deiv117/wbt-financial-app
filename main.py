@@ -17,7 +17,7 @@ st.title("💰 Mi App de Gastos")
 if 'user' not in st.session_state:
     st.session_state.user = None
 
-# --- SIDEBAR (MENÚ LATERAL) CON IMPORTACIÓN ---
+# --- SIDEBAR (MENÚ LATERAL) ---
 with st.sidebar:
     st.header("👤 Usuario")
     if not st.session_state.user:
@@ -139,7 +139,7 @@ if st.session_state.user:
                             supabase.table("user_categories").delete().eq("id", c['id']).execute()
                             st.rerun()
 
-    # 4. PREVISIÓN (RESTABLECIDA TABLA Y GRÁFICO)
+    # 4. PREVISIÓN
     with tab_prevision:
         st.subheader("🔮 Previsión Mensual Teórica")
         cat_g = [c for c in current_cats if c.get('type') == 'Gasto']
@@ -167,9 +167,9 @@ if st.session_state.user:
     # 5. MENSUAL
     with tab_informes:
         st.subheader("Resumen Mensual")
-        m1, m2 = st.columns(2)
+        im1, im2 = st.columns(2)
         meses = ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"]
-        s_m, s_a = m1.selectbox("Mes", meses, index=datetime.now().month-1), m2.selectbox("Año", range(2024, 2030), index=datetime.now().year-2024)
+        s_m, s_a = im1.selectbox("Mes", meses, index=datetime.now().month-1), im2.selectbox("Año ", range(2024, 2030), index=datetime.now().year-2024)
         if not df_all.empty:
             df_m = df_all[(df_all['date'].dt.month == meses.index(s_m)+1) & (df_all['date'].dt.year == s_a)]
             if not df_m.empty:
@@ -188,7 +188,7 @@ if st.session_state.user:
                     st.write(f"{emoji} **{r['name']}**: {r['quantity']:.2f}€ / {r['budget']:.2f}€")
                     st.progress(min(p, 1.0))
 
-    # 6. ANUAL
+    # 6. ANUAL (CON GRÁFICA DE EVOLUCIÓN)
     with tab_anual:
         st.subheader("Resumen Anual")
         s_an = st.selectbox("Seleccionar Año", range(2024, 2030), index=datetime.now().year-2024)
@@ -196,16 +196,50 @@ if st.session_state.user:
             df_an = df_all[df_all['date'].dt.year == s_an]
             if not df_an.empty:
                 i_an, g_an = df_an[df_an['type'] == 'Ingreso']['quantity'].sum(), df_an[df_an['type'] == 'Gasto']['quantity'].sum()
+                
+                # Métricas principales
                 with st.container(border=True):
                     ca1, ca2, ca3 = st.columns(3)
-                    ca1.metric("Ingresos", f"{i_an:.2f}€")
-                    ca2.metric("Gastos", f"{g_an:.2f}€")
-                    ca3.metric("Balance", f"{(i_an - g_an):.2f}€")
+                    ca1.metric("Ingresos Anuales", f"{i_an:.2f}€")
+                    ca2.metric("Gastos Anuales", f"{g_an:.2f}€")
+                    ca3.metric("Balance Total", f"{(i_an - g_an):.2f}€")
+                
                 st.divider()
+                
+                # --- GRÁFICA DE EVOLUCIÓN MENSUAL ---
+                st.subheader("📈 Evolución Mensual")
+                # Agrupamos por mes y tipo
+                df_evo = df_an.copy()
+                df_evo['mes_num'] = df_evo['date'].dt.month
+                df_evo_res = df_evo.groupby(['mes_num', 'type'])['quantity'].sum().reset_index()
+                
+                # Aseguramos que los meses tengan nombre
+                meses_map = {i+1: m for i, m in enumerate(meses)}
+                df_evo_res['Mes'] = df_evo_res['mes_num'].map(meses_map)
+                
+                fig_evo = px.bar(
+                    df_evo_res, 
+                    x='Mes', 
+                    y='quantity', 
+                    color='type',
+                    barmode='group',
+                    color_discrete_map={'Ingreso': '#00CC96', 'Gasto': '#EF553B'},
+                    labels={'quantity': 'Cantidad (€)', 'type': 'Tipo'},
+                    height=400
+                )
+                fig_evo.update_layout(xaxis={'categoryorder':'array', 'categoryarray':meses})
+                st.plotly_chart(fig_evo, use_container_width=True)
+                
+                st.divider()
+                
+                # Semáforos Anuales
+                st.subheader("Control Anual (Meta x12)")
                 g_cat_an = df_an[df_an['type'] == 'Gasto'].groupby('category_id')['quantity'].sum().reset_index()
                 for _, r in pd.merge(pd.DataFrame(cat_g), g_cat_an, left_on='id', right_on='category_id', how='left').fillna(0).iterrows():
                     b_an, p_an = r['budget'] * 12, r['quantity'] / (r['budget']*12) if r['budget'] > 0 else 0
                     st.write(f"{'🟢' if p_an < 0.8 else '🟡' if p_an <= 1 else '🔴'} **{r['name']}**: {r['quantity']:.2f}€ / {b_an:.2f}€")
                     st.progress(min(p_an, 1.0))
+            else:
+                st.info("No hay datos para el año seleccionado.")
 else:
     st.info("Inicia sesión para empezar.")
