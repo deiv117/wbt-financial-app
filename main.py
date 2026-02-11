@@ -1,5 +1,6 @@
 import streamlit as st
 from supabase import create_client, Client
+import pandas as pd # Usaremos esto para manejar los datos más fácil
 
 # 1. Conexión segura con Supabase
 url = st.secrets["SUPABASE_URL"]
@@ -18,7 +19,6 @@ with st.sidebar:
     if not st.session_state.user:
         email = st.text_input("Correo electrónico")
         password = st.text_input("Contraseña", type="password")
-        
         col1, col2 = st.columns(2)
         with col1:
             if st.button("Entrar"):
@@ -26,15 +26,13 @@ with st.sidebar:
                     res = supabase.auth.sign_in_with_password({"email": email, "password": password})
                     st.session_state.user = res.user
                     st.rerun()
-                except Exception as e:
-                    st.error("Credenciales incorrectas")
+                except: st.error("Error")
         with col2:
             if st.button("Registrarse"):
                 try:
-                    res = supabase.auth.sign_up({"email": email, "password": password})
-                    st.info("Revisa tu email si es necesario.")
-                except Exception as e:
-                    st.error(f"Error: {e}")
+                    supabase.auth.sign_up({"email": email, "password": password})
+                    st.info("Revisa tu email")
+                except: st.error("Error")
     else:
         st.write(f"Usuario: {st.session_state.user.email}")
         if st.button("Cerrar Sesión"):
@@ -44,75 +42,69 @@ with st.sidebar:
 
 # --- CONTENIDO PARA USUARIOS LOGUEADOS ---
 if st.session_state.user:
-    # Creamos dos pestañas
-    tab_gastos, tab_categorias = st.tabs(["💸 Registrar Movimiento", "⚙️ Gestionar Categorías"])
+    tab_gastos, tab_categorias, tab_informes = st.tabs(["💸 Movimientos", "⚙️ Categorías", "📊 Resumen Mensual"])
 
-    # --- PESTAÑA: GESTIONAR CATEGORÍAS ---
+    # --- PESTAÑA: GESTIONAR CATEGORÍAS (Igual que antes) ---
     with tab_categorias:
         st.subheader("Tus Categorías")
-        
-        # Formulario para crear categoría
         with st.form("nueva_categoria"):
-            new_cat_name = st.text_input("Nombre de la categoría (ej. Comida)")
+            new_cat_name = st.text_input("Nombre (ej. Ocio)")
             new_cat_budget = st.number_input("Presupuesto Mensual (€)", min_value=0.0, step=10.0)
-            submit_cat = st.form_submit_button("Crear Categoría")
-            
-            if submit_cat and new_cat_name:
-                try:
-                    cat_data = {
-                        "user_id": st.session_state.user.id,
-                        "name": new_cat_name,
-                        "budget": new_cat_budget
-                    }
-                    supabase.table("user_categories").insert(cat_data).execute()
-                    st.success(f"Categoría '{new_cat_name}' creada!")
-                    st.rerun()
-                except Exception as e:
-                    st.error(f"Error al crear categoría: {e}")
+            if st.form_submit_button("Crear"):
+                supabase.table("user_categories").insert({"user_id": st.session_state.user.id, "name": new_cat_name, "budget": new_cat_budget}).execute()
+                st.rerun()
 
-        # Mostrar categorías existentes
-        st.divider()
-        try:
-            res_cats = supabase.table("user_categories").select("*").execute()
-            if res_cats.data:
-                for c in res_cats.data:
-                    st.write(f"📂 **{c['name']}** - Presupuesto: {c['budget']}€")
-            else:
-                st.info("No tienes categorías todavía.")
-        except:
-            pass
-
-    # --- PESTAÑA: REGISTRAR GASTOS ---
+    # --- PESTAÑA: REGISTRAR GASTOS (Igual que antes) ---
     with tab_gastos:
-        st.subheader("Añadir Gasto o Ingreso")
-        
-        quantity = st.number_input("Cantidad (€)", min_value=0.0, step=0.01)
-        type_choice = st.selectbox("Tipo", ["Gasto", "Ingreso"])
-        
-        # Cargar categorías para el selector
-        try:
-            cats_for_select = supabase.table("user_categories").select("id, name").execute()
-            options = {c['name']: c['id'] for c in cats_for_select.data}
-        except:
-            options = {}
-
+        st.subheader("Añadir Movimiento")
+        qty = st.number_input("Cantidad (€)", min_value=0.0, step=0.01)
+        t_type = st.selectbox("Tipo", ["Gasto", "Ingreso"])
+        res_c = supabase.table("user_categories").select("id, name").execute()
+        options = {c['name']: c['id'] for c in res_c.data}
         if options:
-            selected_name = st.selectbox("Selecciona Categoría", options.keys())
-            
-            if st.button("Guardar Registro"):
-                try:
-                    new_input = {
-                        "user_id": st.session_state.user.id,
-                        "quantity": quantity,
-                        "type": type_choice,
-                        "category_id": options[selected_name]
-                    }
-                    supabase.table("user_imputs").insert(new_input).execute()
-                    st.success("¡Registro guardado!")
-                except Exception as e:
-                    st.error(f"Error: {e}")
+            sel_cat = st.selectbox("Categoría", options.keys())
+            if st.button("Guardar"):
+                supabase.table("user_imputs").insert({"user_id": st.session_state.user.id, "quantity": qty, "type": t_type, "category_id": options[sel_cat]}).execute()
+                st.success("¡Guardado!")
         else:
-            st.warning("Primero crea una categoría en la otra pestaña.")
+            st.warning("Crea una categoría primero.")
+
+    # --- PESTAÑA: INFORMES (¡La Novedad!) ---
+    with tab_informes:
+        st.subheader("Estado de tus presupuestos")
+        
+        # 1. Obtener categorías y gastos
+        cats = supabase.table("user_categories").select("id, name, budget").execute().data
+        inputs = supabase.table("user_imputs").select("quantity, type, category_id").execute().data
+        
+        if cats and inputs:
+            df_cats = pd.DataFrame(cats)
+            df_inputs = pd.DataFrame(inputs)
+            
+            # 2. Calcular gasto total por categoría
+            gastos_solo = df_inputs[df_inputs['type'] == 'Gasto']
+            suma_gastos = gastos_solo.groupby('category_id')['quantity'].sum().reset_index()
+            
+            # 3. Unir datos para comparar
+            reporte = pd.merge(df_cats, suma_gastos, left_on='id', right_on='category_id', how='left').fillna(0)
+            
+            # 4. Mostrar alertas
+            for _, row in reporte.iterrows():
+                progreso = row['quantity'] / row['budget'] if row['budget'] > 0 else 0
+                col_a, col_b = st.columns([3, 1])
+                
+                with col_a:
+                    st.write(f"**{row['name']}**")
+                    # Barra de progreso visual
+                    color = "green" if row['quantity'] <= row['budget'] else "red"
+                    st.progress(min(progreso, 1.0))
+                
+                with col_b:
+                    st.write(f"{row['quantity']}€ / {row['budget']}€")
+                    if row['quantity'] > row['budget']:
+                        st.caption("⚠️ ¡Límite superado!")
+        else:
+            st.info("Aún no hay suficientes datos para generar un informe.")
 
 else:
-    st.info("Inicia sesión para empezar a gestionar tus ahorros.")
+    st.info("Inicia sesión para ver tus finanzas.")
