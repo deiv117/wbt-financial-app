@@ -2,7 +2,7 @@ import streamlit as st
 from supabase import create_client, Client
 import pandas as pd
 from datetime import datetime, timedelta
-import plotly.express as px
+import io
 
 # 1. CONEXIÓN SEGURA CON SUPABASE
 url = st.secrets["SUPABASE_URL"]
@@ -103,7 +103,7 @@ if st.session_state.user:
                     supabase.table("user_imputs").delete().eq("id", i['id']).execute()
                     st.rerun()
 
-    # --- PESTAÑA: HISTORIAL COMPLETO ---
+    # --- PESTAÑA: HISTORIAL E IMPORTACIÓN ---
     with tab_historial:
         st.subheader("🗄️ Historial Completo")
         col_h1, col_h2, col_h3 = st.columns(3)
@@ -127,6 +127,52 @@ if st.session_state.user:
                 df_pag['Fecha'] = df_pag['date'].dt.strftime('%Y-%m-%d')
                 st.dataframe(df_pag[['Fecha', 'Categoría', 'quantity', 'type']].rename(columns={'quantity': 'Importe (€)'}), use_container_width=True, hide_index=True)
             else: st.info("No hay datos para estos filtros.")
+        
+        st.divider()
+        # --- SECCIÓN IMPORTACIÓN CSV ---
+        with st.expander("📥 Importación Masiva desde CSV"):
+            st.markdown("""
+            **Instrucciones:** El archivo debe tener las columnas: `fecha`, `cantidad`, `tipo` (Gasto/Ingreso) y `categoria`.
+            """)
+            uploaded_file = st.file_uploader("Subir archivo CSV", type=["csv"])
+            
+            if uploaded_file:
+                try:
+                    df_import = pd.read_csv(uploaded_file)
+                    st.write("Vista previa de los datos a importar:")
+                    st.dataframe(df_import.head())
+                    
+                    if st.button("Confirmar Importación"):
+                        success_count = 0
+                        error_count = 0
+                        
+                        # Mapeo de nombres a IDs para evitar consultas constantes
+                        cat_map = {c['name'].upper(): (c['id'], c['type']) for c in current_cats}
+                        
+                        rows_to_insert = []
+                        for _, row in df_import.iterrows():
+                            cat_name_up = str(row['categoria']).upper()
+                            if cat_name_up in cat_map:
+                                c_id, c_type = cat_map[cat_name_up]
+                                rows_to_insert.append({
+                                    "user_id": st.session_state.user.id,
+                                    "quantity": float(row['cantidad']),
+                                    "type": c_type,
+                                    "category_id": c_id,
+                                    "date": str(row['fecha'])
+                                })
+                                success_count += 1
+                            else:
+                                error_count += 1
+                        
+                        if rows_to_insert:
+                            supabase.table("user_imputs").insert(rows_to_insert).execute()
+                            st.success(f"¡Éxito! Se han importado {success_count} registros.")
+                            if error_count > 0:
+                                st.warning(f"Se saltaron {error_count} filas porque la categoría no existe en la app.")
+                            st.rerun()
+                except Exception as e:
+                    st.error(f"Error al procesar el archivo: {e}")
 
     # --- PESTAÑA: CATEGORÍAS ---
     with tab_categorias:
@@ -195,7 +241,6 @@ if st.session_state.user:
                 i_m = df_m[df_m['type'] == 'Ingreso']['quantity'].sum()
                 g_m = df_m[df_m['type'] == 'Gasto']['quantity'].sum()
                 
-                # --- CORRECCIÓN COLUMNAS MENSUAL ---
                 with st.container(border=True):
                     c1, c2, c3 = st.columns(3)
                     c1.metric("Ingresos", f"{i_m:.2f}€")
@@ -225,7 +270,6 @@ if st.session_state.user:
                 i_an = df_an[df_an['type'] == 'Ingreso']['quantity'].sum()
                 g_an = df_an[df_an['type'] == 'Gasto']['quantity'].sum()
                 
-                # --- CORRECCIÓN COLUMNAS ANUAL ---
                 with st.container(border=True):
                     ca1, ca2, ca3 = st.columns(3)
                     ca1.metric("Ingresos", f"{i_an:.2f}€")
