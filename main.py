@@ -15,78 +15,104 @@ if 'user' not in st.session_state:
 
 with st.sidebar:
     st.header("Acceso")
-    email = st.text_input("Correo electrónico")
-    password = st.text_input("Contraseña", type="password")
-    
-    col1, col2 = st.columns(2)
-    with col1:
-        if st.button("Entrar"):
-            try:
-                res = supabase.auth.sign_in_with_password({"email": email, "password": password})
-                st.session_state.user = res.user
-                st.success("¡Bienvenido!")
-                st.rerun()
-            except Exception as e:
-                st.error(f"Error: {e}")
-                
-    with col2:
-        if st.button("Registrarse"):
-            try:
-                # Nota: El registro crea el usuario en la tabla auth.users de Supabase
-                res = supabase.auth.sign_up({"email": email, "password": password})
-                st.info("¡Revisa tu email o intenta loguearte si quitaste la confirmación!")
-            except Exception as e:
-                st.error(f"Error: {e}")
-
-# --- SI EL USUARIO ESTÁ LOGUEADO ---
-if st.session_state.user:
-    st.write(f"Sesión iniciada como: **{st.session_state.user.email}**")
-    
-    if st.button("Cerrar Sesión"):
-        supabase.auth.sign_out()
-        st.session_state.user = None
-        st.rerun()
-
-    st.divider()
-
-    # --- SECCIÓN: AÑADIR GASTO/INGRESO ---
-    st.subheader("Añadir nuevo registro")
-    
-    quantity = st.number_input("Cantidad (€)", min_value=0.0, step=0.01)
-    type_choice = st.selectbox("Tipo", ["Gasto", "Ingreso"])
-    
-    # 2. Intentar cargar las categorías del usuario de la tabla 'user_categories'
-    try:
-        categories_data = supabase.table("user_categories").select("id, name").execute()
-        categories = categories_data.data
-    except:
-        categories = []
-
-    if categories:
-        # Creamos un diccionario para mostrar el nombre pero guardar el ID
-        cat_options = {c['name']: c['id'] for c in categories}
-        selected_cat_name = st.selectbox("Categoría", options=list(cat_options.keys()))
-        selected_cat_id = cat_options[selected_cat_name]
+    if not st.session_state.user:
+        email = st.text_input("Correo electrónico")
+        password = st.text_input("Contraseña", type="password")
+        
+        col1, col2 = st.columns(2)
+        with col1:
+            if st.button("Entrar"):
+                try:
+                    res = supabase.auth.sign_in_with_password({"email": email, "password": password})
+                    st.session_state.user = res.user
+                    st.rerun()
+                except Exception as e:
+                    st.error("Credenciales incorrectas")
+        with col2:
+            if st.button("Registrarse"):
+                try:
+                    res = supabase.auth.sign_up({"email": email, "password": password})
+                    st.info("Revisa tu email si es necesario.")
+                except Exception as e:
+                    st.error(f"Error: {e}")
     else:
-        st.info("Aún no tienes categorías creadas.")
-        selected_cat_id = None
+        st.write(f"Usuario: {st.session_state.user.email}")
+        if st.button("Cerrar Sesión"):
+            supabase.auth.sign_out()
+            st.session_state.user = None
+            st.rerun()
 
-    if st.button("Guardar Registro"):
-        if selected_cat_id or not categories: # Permitir guardar aunque no haya categorías por ahora
-            new_input = {
-                "user_id": st.session_state.user.id,
-                "quantity": quantity,
-                "type": type_choice,
-                "category_id": selected_cat_id
-                # El campo 'date' se suele llenar solo si en Supabase pusiste 'now()'
-            }
-            try:
-                supabase.table("user_imputs").insert(new_input).execute()
-                st.success(f"¡{type_choice} de {quantity}€ guardado correctamente!")
-            except Exception as e:
-                st.error(f"Error al guardar: {e}")
+# --- CONTENIDO PARA USUARIOS LOGUEADOS ---
+if st.session_state.user:
+    # Creamos dos pestañas
+    tab_gastos, tab_categorias = st.tabs(["💸 Registrar Movimiento", "⚙️ Gestionar Categorías"])
+
+    # --- PESTAÑA: GESTIONAR CATEGORÍAS ---
+    with tab_categorias:
+        st.subheader("Tus Categorías")
+        
+        # Formulario para crear categoría
+        with st.form("nueva_categoria"):
+            new_cat_name = st.text_input("Nombre de la categoría (ej. Comida)")
+            new_cat_budget = st.number_input("Presupuesto Mensual (€)", min_value=0.0, step=10.0)
+            submit_cat = st.form_submit_button("Crear Categoría")
+            
+            if submit_cat and new_cat_name:
+                try:
+                    cat_data = {
+                        "user_id": st.session_state.user.id,
+                        "name": new_cat_name,
+                        "budget": new_cat_budget
+                    }
+                    supabase.table("user_categories").insert(cat_data).execute()
+                    st.success(f"Categoría '{new_cat_name}' creada!")
+                    st.rerun()
+                except Exception as e:
+                    st.error(f"Error al crear categoría: {e}")
+
+        # Mostrar categorías existentes
+        st.divider()
+        try:
+            res_cats = supabase.table("user_categories").select("*").execute()
+            if res_cats.data:
+                for c in res_cats.data:
+                    st.write(f"📂 **{c['name']}** - Presupuesto: {c['budget']}€")
+            else:
+                st.info("No tienes categorías todavía.")
+        except:
+            pass
+
+    # --- PESTAÑA: REGISTRAR GASTOS ---
+    with tab_gastos:
+        st.subheader("Añadir Gasto o Ingreso")
+        
+        quantity = st.number_input("Cantidad (€)", min_value=0.0, step=0.01)
+        type_choice = st.selectbox("Tipo", ["Gasto", "Ingreso"])
+        
+        # Cargar categorías para el selector
+        try:
+            cats_for_select = supabase.table("user_categories").select("id, name").execute()
+            options = {c['name']: c['id'] for c in cats_for_select.data}
+        except:
+            options = {}
+
+        if options:
+            selected_name = st.selectbox("Selecciona Categoría", options.keys())
+            
+            if st.button("Guardar Registro"):
+                try:
+                    new_input = {
+                        "user_id": st.session_state.user.id,
+                        "quantity": quantity,
+                        "type": type_choice,
+                        "category_id": options[selected_name]
+                    }
+                    supabase.table("user_imputs").insert(new_input).execute()
+                    st.success("¡Registro guardado!")
+                except Exception as e:
+                    st.error(f"Error: {e}")
         else:
-            st.warning("Por favor, selecciona una categoría.")
+            st.warning("Primero crea una categoría en la otra pestaña.")
 
 else:
-    st.warning("Por favor, inicia sesión para gestionar tus finanzas.")
+    st.info("Inicia sesión para empezar a gestionar tus ahorros.")
