@@ -46,9 +46,10 @@ with st.sidebar:
 if st.session_state.user:
     tab_gastos, tab_categorias, tab_informes = st.tabs(["💸 Movimientos", "⚙️ Categorías", "📊 Resumen Mensual"])
 
-    # --- CARGA DE DATOS BASE ---
+    # --- CARGA Y ORDENACIÓN DE CATEGORÍAS ---
     res_cats = supabase.table("user_categories").select("*").execute()
-    current_cats = res_cats.data if res_cats.data else []
+    # Ordenamos las categorías alfabéticamente por el campo 'name'
+    current_cats = sorted(res_cats.data, key=lambda x: x['name'].lower()) if res_cats.data else []
 
     # --- PESTAÑA: GESTIONAR CATEGORÍAS ---
     with tab_categorias:
@@ -87,19 +88,32 @@ if st.session_state.user:
         t_type = col_t.selectbox("Tipo", ["Gasto", "Ingreso"])
         fecha_mov = st.date_input("Fecha", datetime.now())
         
-        options = {c['name']: c['id'] for c in current_cats}
-        if options:
-            sel_cat = st.selectbox("Categoría", options.keys())
+        # LÓGICA DE SELECTOR VACÍO Y BUSCADOR
+        if current_cats:
+            # Creamos la lista de nombres para el selector
+            cat_list = [c['name'] for c in current_cats]
+            # Añadimos la opción vacía al principio
+            display_options = ["Selecciona una categoría..."] + cat_list
+            
+            # El componente selectbox permite escribir para buscar automáticamente
+            sel_cat_name = st.selectbox("Categoría", options=display_options, index=0)
+            
             if st.button("Guardar Registro"):
-                supabase.table("user_imputs").insert({
-                    "user_id": st.session_state.user.id, 
-                    "quantity": qty, 
-                    "type": t_type, 
-                    "category_id": options[sel_cat],
-                    "date": str(fecha_mov)
-                }).execute()
-                st.success("¡Anotado!")
-                st.rerun()
+                if sel_cat_name == "Selecciona una categoría...":
+                    st.warning("Por favor, selecciona una categoría válida.")
+                else:
+                    # Buscamos el ID de la categoría seleccionada
+                    cat_id = next(c['id'] for c in current_cats if c['name'] == sel_cat_name)
+                    
+                    supabase.table("user_imputs").insert({
+                        "user_id": st.session_state.user.id, 
+                        "quantity": qty, 
+                        "type": t_type, 
+                        "category_id": cat_id,
+                        "date": str(fecha_mov)
+                    }).execute()
+                    st.success("¡Anotado!")
+                    st.rerun()
         else:
             st.warning("Crea una categoría primero en la pestaña correspondiente.")
         
@@ -142,7 +156,6 @@ if st.session_state.user:
                 c2.metric("Gastos", f"{gastos}€")
                 c3.metric("Ahorro", f"{ingresos - gastos}€")
 
-                # Gráfico de tarta
                 df_gastos_pie = df_filtrado[df_filtrado['type'] == 'Gasto']
                 if not df_gastos_pie.empty:
                     df_gastos_pie['cat_name'] = df_gastos_pie['user_categories'].apply(lambda x: x['name'] if x else 'S/C')
@@ -151,6 +164,7 @@ if st.session_state.user:
 
                 st.divider()
                 st.subheader("Presupuestos")
+                # Aquí también usamos 'current_cats' que ya está ordenada alfabéticamente
                 gastos_por_cat = df_gastos_pie.groupby('category_id')['quantity'].sum().reset_index()
                 df_cats = pd.DataFrame(current_cats)
                 rep = pd.merge(df_cats, gastos_por_cat, left_on='id', right_on='category_id', how='left').fillna(0)
@@ -158,8 +172,6 @@ if st.session_state.user:
                 for _, r in rep.iterrows():
                     if r['budget'] > 0 or r['quantity'] > 0:
                         porcentaje = r['quantity'] / r['budget'] if r['budget'] > 0 else 0
-                        
-                        # Lógica de colores por emoji
                         if porcentaje < 0.8: status = "🟢"
                         elif porcentaje <= 1.0: status = "🟡"
                         else: status = "🔴"
