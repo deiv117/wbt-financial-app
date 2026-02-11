@@ -12,13 +12,48 @@ supabase: Client = create_client(url, key)
 
 st.set_page_config(page_title="Mis Gastos", page_icon="💰", layout="wide")
 
+# --- ESTILOS CSS PARA DISEÑO MODERNO ---
+st.markdown("""
+    <style>
+    /* Estilo para los botones del menú lateral */
+    div.stButton > button {
+        width: 100%;
+        border-radius: 10px;
+        border: 1px solid #f0f2f6;
+        background-color: transparent;
+        transition: all 0.3s ease;
+        text-align: left;
+        padding: 10px 15px;
+    }
+    div.stButton > button:hover {
+        background-color: #f0f2f6;
+        border-color: #636EFA;
+    }
+    /* Imagen de perfil circular */
+    .profile-pic {
+        border-radius: 50%;
+        width: 60px;
+        height: 60px;
+        object-fit: cover;
+        border: 2px solid #636EFA;
+    }
+    .user-name {
+        font-weight: bold;
+        font-size: 1.1em;
+        margin-bottom: 0px;
+    }
+    </style>
+    """, unsafe_allow_html=True)
+
 # --- CONTROL DE SESIÓN ---
 if 'user' not in st.session_state:
     st.session_state.user = None
+if 'menu_actual' not in st.session_state:
+    st.session_state.menu_actual = "📊 Panel"
 
-# --- SIDEBAR (MENÚ LATERAL) ---
+# --- SIDEBAR (NAVEGACIÓN MODERNA) ---
 with st.sidebar:
-    st.header("💰 Mi App de Gastos")
+    st.header("💰 Finanzas App")
     
     if not st.session_state.user:
         email = st.text_input("Correo electrónico")
@@ -29,22 +64,34 @@ with st.sidebar:
                 st.session_state.user = res.user
                 st.rerun()
             except: st.error("Error de acceso")
-        menu_opcion = "📊 Cuadro de Mando"
     else:
-        # CONSULTA SEGURA DEL PERFIL PARA EL SALUDO
-        res_p = supabase.table("profiles").select("name").eq("id", st.session_state.user.id).maybe_single().execute()
+        # Consulta de perfil para el encabezado
+        res_p = supabase.table("profiles").select("*").eq("id", st.session_state.user.id).maybe_single().execute()
         p_sidebar = res_p.data if (hasattr(res_p, 'data') and res_p.data) else {}
-        nombre_user = p_sidebar.get('name') if p_sidebar.get('name') else st.session_state.user.email
-        
-        st.write(f"Hola, **{nombre_user}** 👋")
+        nombre_user = p_sidebar.get('name', st.session_state.user.email)
+        avatar = p_sidebar.get('avatar_url', "https://www.w3schools.com/howto/img_avatar.png")
+
+        # Header de usuario
+        col_s1, col_s2 = st.columns([1, 3])
+        with col_s1:
+            st.markdown(f'<img src="{avatar}" class="profile-pic">', unsafe_allow_html=True)
+        with col_s2:
+            st.markdown(f'<p class="user-name">{nombre_user}</p>', unsafe_allow_html=True)
+            if st.button("Salir", key="logout"):
+                supabase.auth.sign_out()
+                st.session_state.user = None
+                st.rerun()
         
         st.divider()
-        menu_opcion = st.radio("Navegación", ["📊 Cuadro de Mando", "⚙️ Perfil", "📥 Importar Datos"])
-        st.divider()
-        
-        if st.button("Cerrar Sesión"):
-            supabase.auth.sign_out()
-            st.session_state.user = None
+        # Botones de navegación
+        if st.button("📊 Panel de Control"):
+            st.session_state.menu_actual = "📊 Panel"
+            st.rerun()
+        if st.button("⚙️ Configuración Perfil"):
+            st.session_state.menu_actual = "⚙️ Perfil"
+            st.rerun()
+        if st.button("📥 Importar Movimientos"):
+            st.session_state.menu_actual = "📥 Importar"
             st.rerun()
 
 # --- FUNCIONES DIALOG ---
@@ -61,15 +108,15 @@ def crear_categoria_dialog():
 # --- LÓGICA DE CONTENIDO ---
 if st.session_state.user:
     
-    # --- PÁGINA: PERFIL ---
-    if menu_opcion == "⚙️ Perfil":
+    # 1. PÁGINA: PERFIL
+    if st.session_state.menu_actual == "⚙️ Perfil":
         st.title("⚙️ Configuración de Perfil")
         p_res = supabase.table("profiles").select("*").eq("id", st.session_state.user.id).maybe_single().execute()
         p_data = p_res.data if (hasattr(p_res, 'data') and p_res.data) else {}
         
         col_p1, col_p2 = st.columns([1, 2])
         with col_p1:
-            if p_data.get('avatar_url'): st.image(p_data['avatar_url'], width=150)
+            if p_data.get('avatar_url'): st.image(p_data['avatar_url'], width=180)
             else: st.info("Sin foto configurada")
             new_avatar = st.text_input("URL Avatar", value=p_data.get('avatar_url', ""))
         with col_p2:
@@ -83,64 +130,43 @@ if st.session_state.user:
                     st.success("¡Perfil actualizado!")
                     st.rerun()
 
-    # --- PÁGINA: IMPORTAR DATOS ---
-    elif menu_opcion == "📥 Importar Datos":
-        st.title("📥 Centro de Importación CSV")
-        st.markdown("""
-        Esta sección te permite cargar múltiples movimientos de una sola vez usando un archivo CSV.
-        Asegúrate de que los nombres de las categorías coincidan exactamente con las que has creado.
-        """)
-        
+    # 2. PÁGINA: IMPORTAR
+    elif st.session_state.menu_actual == "📥 Importar":
+        st.title("📥 Centro de Importación")
         col_i1, col_i2 = st.columns(2)
-        
         with col_i1:
             with st.container(border=True):
-                st.subheader("1. Descarga la Plantilla")
-                st.write("Usa este archivo como base para rellenar tus datos.")
-                template_data = "fecha,cantidad,categoria\n2026-02-12,15.50,Alimentacion\n2026-02-13,1200.00,Nomina"
-                st.download_button(label="📄 Descargar Plantilla .CSV", data=template_data, file_name="plantilla_gastos.csv", mime="text/csv")
-        
+                st.subheader("1. Plantilla")
+                t_data = "fecha,cantidad,categoria\n2026-02-12,15.50,Alimentacion"
+                st.download_button(label="📄 Descargar Plantilla .CSV", data=t_data, file_name="plantilla.csv")
         with col_i2:
             with st.container(border=True):
-                st.subheader("2. Sube tu archivo")
-                uploaded_file = st.file_uploader("Selecciona tu archivo CSV", type=["csv"])
-                if uploaded_file:
-                    df_preview = pd.read_csv(uploaded_file)
-                    st.write("Vista previa de los datos:")
-                    st.dataframe(df_preview.head(), use_container_width=True)
-                    
-                    if st.button("🚀 Confirmar e Importar Todo"):
-                        try:
-                            res_c = supabase.table("user_categories").select("*").execute()
-                            cat_map = {c['name'].upper(): (c['id'], c['type']) for c in res_c.data}
-                            rows = []
-                            for _, row in df_preview.iterrows():
-                                c_up = str(row['categoria']).upper()
-                                if c_up in cat_map:
-                                    c_id, c_type = cat_map[c_up]
-                                    rows.append({
-                                        "user_id": st.session_state.user.id, 
-                                        "quantity": float(row['cantidad']), 
-                                        "type": c_type, 
-                                        "category_id": c_id, 
-                                        "date": str(row['fecha'])
-                                    })
-                            if rows:
-                                supabase.table("user_imputs").insert(rows).execute()
-                                st.success(f"¡Éxito! Se han importado {len(rows)} registros.")
-                            else:
-                                st.warning("No se encontraron categorías coincidentes. Revisa los nombres.")
-                        except Exception as e:
-                            st.error(f"Error técnico: {e}")
+                st.subheader("2. Subir Archivo")
+                uploaded_file = st.file_uploader("Selecciona CSV", type=["csv"])
+                if uploaded_file and st.button("🚀 Iniciar Importación"):
+                    try:
+                        df_imp = pd.read_csv(uploaded_file)
+                        res_c = supabase.table("user_categories").select("*").execute()
+                        cat_map = {c['name'].upper(): (c['id'], c['type']) for c in res_c.data}
+                        rows = []
+                        for _, row in df_imp.iterrows():
+                            c_up = str(row['categoria']).upper()
+                            if c_up in cat_map:
+                                cid, ctyp = cat_map[c_up]
+                                rows.append({"user_id": st.session_state.user.id, "quantity": float(row['cantidad']), "type": ctyp, "category_id": cid, "date": str(row['fecha'])})
+                        if rows:
+                            supabase.table("user_imputs").insert(rows).execute()
+                            st.success(f"¡{len(rows)} movimientos importados!")
+                    except: st.error("Error al procesar el archivo")
 
-    # --- PÁGINA: CUADRO DE MANDO ---
+    # 3. PÁGINA: PANEL (TABS RESTAURADOS)
     else:
-        st.title("📊 Panel de Control")
-        tab_gastos, tab_historial, tab_categorias, tab_prevision, tab_informes, tab_anual = st.tabs([
+        st.title("📊 Cuadro de Mando")
+        tab_gastos, tab_historial, tab_categorias, tab_prevision, tab_mensual, tab_anual = st.tabs([
             "💸 Movimientos", "🗄️ Historial", "⚙️ Categorías", "🔮 Previsión", "📊 Mensual", "📅 Anual"
         ])
 
-        # Carga de datos global
+        # CARGA DE DATOS GLOBAL
         res_cats = supabase.table("user_categories").select("*").execute()
         current_cats = sorted(res_cats.data, key=lambda x: x['name'].lower()) if res_cats.data else []
         res_all = supabase.table("user_imputs").select("*, user_categories(name)").execute()
@@ -148,7 +174,6 @@ if st.session_state.user:
         if not df_all.empty: df_all['date'] = pd.to_datetime(df_all['date'])
         cat_g = [c for c in current_cats if c.get('type') == 'Gasto']
 
-        # --- TAB: MOVIMIENTOS ---
         with tab_gastos:
             st.subheader("Nuevo Registro")
             c1, c2, c3 = st.columns(3)
@@ -163,7 +188,7 @@ if st.session_state.user:
                     supabase.table("user_imputs").insert({"user_id": st.session_state.user.id, "quantity": qty, "type": t_type, "category_id": c_id, "date": str(f_mov)}).execute()
                     st.rerun()
             st.divider()
-            res_recent = supabase.table("user_imputs").select("*, user_categories(name)").order("date", desc=True).limit(20).execute()
+            res_recent = supabase.table("user_imputs").select("*, user_categories(name)").order("date", desc=True).limit(10).execute()
             for i in (res_recent.data if res_recent.data else []):
                 cl1, cl2, cl3, cl4 = st.columns([2, 1, 1, 1])
                 cl1.write(f"**{i['date']}** | {i['user_categories']['name'] if i['user_categories'] else 'S/C'}")
@@ -173,27 +198,19 @@ if st.session_state.user:
                     supabase.table("user_imputs").delete().eq("id", i['id']).execute()
                     st.rerun()
 
-        # --- TAB: HISTORIAL ---
         with tab_historial:
-            st.subheader("🗄️ Historial Completo")
             h1, h2, h3 = st.columns(3)
             f_i, f_f = h1.date_input("Desde", datetime.now()-timedelta(days=30)), h2.date_input("Hasta", datetime.now())
-            f_t = h3.selectbox("Filtrar por", ["Todos", "Gasto", "Ingreso"])
+            f_t = h3.selectbox("Filtrar", ["Todos", "Gasto", "Ingreso"])
             if not df_all.empty:
                 df_h = df_all[(df_all['date'].dt.date >= f_i) & (df_all['date'].dt.date <= f_f)]
                 if f_t != "Todos": df_h = df_h[df_h['type'] == f_t]
-                if not df_h.empty:
-                    page = st.number_input("Página", min_value=1, value=1)
-                    start = (page-1)*50
-                    df_p = df_h.iloc[start:start+50].copy()
-                    df_p['Categoría'] = df_p['user_categories'].apply(lambda x: x['name'] if x else 'S/C')
-                    st.dataframe(df_p[['date', 'Categoría', 'quantity', 'type']].rename(columns={'quantity':'Importe (€)'}), use_container_width=True, hide_index=True)
+                st.dataframe(df_h[['date', 'quantity', 'type']].rename(columns={'quantity':'Importe'}), use_container_width=True, hide_index=True)
 
-        # --- TAB: CATEGORÍAS ---
         with tab_categorias:
             if st.button("➕ Añadir Categoría"): crear_categoria_dialog()
-            c_ing, c_gas = st.columns(2)
-            for col, t in zip([c_ing, c_gas], ["Ingreso", "Gasto"]):
+            col_ing, col_gas = st.columns(2)
+            for col, t in zip([col_ing, col_gas], ["Ingreso", "Gasto"]):
                 with col:
                     st.markdown(f"### {t}s")
                     for c in [cat for cat in current_cats if cat.get('type') == t]:
@@ -204,62 +221,30 @@ if st.session_state.user:
                                 supabase.table("user_categories").delete().eq("id", c['id']).execute()
                                 st.rerun()
 
-        # --- TAB: PREVISIÓN ---
         with tab_prevision:
-            st.subheader("🔮 Previsión Mensual Teórica")
             total_p = sum(c['budget'] for c in cat_g)
             media_i = df_all[df_all['type']=='Ingreso'].groupby(df_all['date'].dt.to_period('M'))['quantity'].sum().mean() if not df_all.empty else 0
-            with st.container(border=True):
-                m1, m2, m3 = st.columns(3)
-                m1.metric("Gasto Presupuestado", f"{total_p:.2f}€")
-                m2.metric("Media Ingresos", f"{media_i:.2f}€")
-                m3.metric("Ahorro Potencial", f"{(media_i - total_p):.2f}€")
-            st.divider()
+            st.metric("Gasto Teórico", f"{total_p:.2f}€", delta=f"{(media_i - total_p):.2f}€ Ahorro")
             if cat_g:
-                col_g1, col_g2 = st.columns(2)
-                with col_g1: st.plotly_chart(px.pie(pd.DataFrame(cat_g), values='budget', names='name', hole=0.4, title="Reparto de Gastos"), use_container_width=True)
-                with col_g2:
-                    df_prev_tab = pd.DataFrame(cat_g)[['name', 'budget']].rename(columns={'name':'Categoría','budget':'Presupuesto'})
-                    df_prev_tab['Presupuesto'] = df_prev_tab['Presupuesto'].map('{:.2f}€'.format)
-                    st.dataframe(df_prev_tab, hide_index=True, use_container_width=True)
+                st.plotly_chart(px.pie(pd.DataFrame(cat_g), values='budget', names='name', hole=0.4), use_container_width=True)
 
-        # --- TAB: MENSUAL ---
-        with tab_informes:
-            st.subheader("Resumen Mensual")
-            im1, im2 = st.columns(2)
-            meses_lista = ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"]
-            s_m, s_a = im1.selectbox("Mes", meses_lista, index=datetime.now().month-1), im2.selectbox("Año ", range(2024, 2030), index=datetime.now().year-2024)
+        with tab_mensual:
+            meses_list = ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"]
+            m_sel = st.selectbox("Mes", meses_list, index=datetime.now().month-1)
             if not df_all.empty:
-                df_m = df_all[(df_all['date'].dt.month == meses_lista.index(s_m)+1) & (df_all['date'].dt.year == s_a)]
+                df_m = df_all[df_all['date'].dt.month == meses_list.index(m_sel)+1]
                 if not df_m.empty:
-                    i_m, g_m = df_m[df_m['type'] == 'Ingreso']['quantity'].sum(), df_m[df_m['type'] == 'Gasto']['quantity'].sum()
-                    with st.container(border=True):
-                        c1, c2, c3 = st.columns(3)
-                        c1.metric("Ingresos", f"{i_m:.2f}€")
-                        c2.metric("Gastos", f"{g_m:.2f}€")
-                        c3.metric("Ahorro", f"{(i_m - g_m):.2f}€")
-                    st.divider()
-                    st.subheader("Semáforo de Gastos")
                     g_cat_m = df_m[df_m['type'] == 'Gasto'].groupby('category_id')['quantity'].sum().reset_index()
                     for _, r in pd.merge(pd.DataFrame(cat_g), g_cat_m, left_on='id', right_on='category_id', how='left').fillna(0).iterrows():
                         p = r['quantity'] / r['budget'] if r['budget'] > 0 else 0
-                        st.write(f"{'🟢' if p < 0.8 else '🟡' if p <= 1.0 else '🔴'} **{r['name']}**: {r['quantity']:.2f}€ / {r['budget']:.2f}€")
+                        st.write(f"{'🔴' if p > 1 else '🟡' if p > 0.8 else '🟢'} **{r['name']}**: {r['quantity']:.2f}€ / {r['budget']:.2f}€")
                         st.progress(min(p, 1.0))
 
-        # --- TAB: ANUAL ---
         with tab_anual:
-            st.subheader("Resumen Anual")
-            s_an = st.selectbox("Seleccionar Año", range(2024, 2030), index=datetime.now().year-2024)
+            s_an = st.selectbox("Año", range(2024, 2030), index=datetime.now().year-2024)
             if not df_all.empty:
                 df_an = df_all[df_all['date'].dt.year == s_an]
                 if not df_an.empty:
-                    i_an, g_an = df_an[df_an['type'] == 'Ingreso']['quantity'].sum(), df_an[df_an['type'] == 'Gasto']['quantity'].sum()
-                    with st.container(border=True):
-                        ca1, ca2, ca3 = st.columns(3)
-                        ca1.metric("Ingresos Anuales", f"{i_an:.2f}€")
-                        ca2.metric("Gastos Anuales", f"{g_an:.2f}€")
-                        ca3.metric("Balance Total", f"{(i_an - g_an):.2f}€")
-                    st.divider()
                     # Gráfica mixta
                     df_evo = df_an.copy()
                     df_evo['mes_num'] = df_evo['date'].dt.month
@@ -269,18 +254,9 @@ if st.session_state.user:
                     res_mes['Ahorro'] = res_mes['Ingreso'] - res_mes['Gasto']
                     res_mes = res_mes.reindex(range(1, 13), fill_value=0)
                     fig = go.Figure()
-                    fig.add_trace(go.Bar(x=meses_lista, y=res_mes['Ingreso'], name='Ingreso', marker_color='#00CC96'))
-                    fig.add_trace(go.Bar(x=meses_lista, y=res_mes['Gasto'], name='Gasto', marker_color='#EF553B'))
-                    fig.add_trace(go.Scatter(x=meses_lista, y=res_mes['Ahorro'], name='Ahorro Neto', line=dict(color='#636EFA', width=4)))
-                    fig.update_layout(barmode='group', height=400)
+                    fig.add_trace(go.Bar(x=meses_list, y=res_mes['Ingreso'], name='Ingreso', marker_color='#00CC96'))
+                    fig.add_trace(go.Bar(x=meses_list, y=res_mes['Gasto'], name='Gasto', marker_color='#EF553B'))
+                    fig.add_trace(go.Scatter(x=meses_list, y=res_mes['Ahorro'], name='Ahorro Neto', line=dict(color='#636EFA', width=4)))
                     st.plotly_chart(fig, use_container_width=True)
-                    st.divider()
-                    st.subheader("Control Anual (Meta x12)")
-                    g_cat_an = df_an[df_an['type'] == 'Gasto'].groupby('category_id')['quantity'].sum().reset_index()
-                    for _, r in pd.merge(pd.DataFrame(cat_g), g_cat_an, left_on='id', right_on='category_id', how='left').fillna(0).iterrows():
-                        b_an, p_an = r['budget'] * 12, r['quantity'] / (r['budget']*12) if r['budget'] > 0 else 0
-                        st.write(f"{'🟢' if p_an < 0.8 else '🟡' if p_an <= 1 else '🔴'} **{r['name']}**: {r['quantity']:.2f}€ / {b_an:.2f}€")
-                        st.progress(min(p_an, 1.0))
-
 else:
-    st.info("Inicia sesión en el panel lateral para empezar.")
+    st.info("Inicia sesión para empezar.")
