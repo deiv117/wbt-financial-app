@@ -2,17 +2,15 @@ import streamlit as st
 from supabase import create_client, Client
 import pandas as pd
 from datetime import datetime
-import plotly.express as px # Nueva librería para gráficos bonitos
+import plotly.express as px
 
-# 1. Conexión segura con Supabase
+# 1. CONEXIÓN SEGURA CON SUPABASE
 url = st.secrets["SUPABASE_URL"]
 key = st.secrets["SUPABASE_KEY"]
 supabase: Client = create_client(url, key)
 
-st.set_page_config(page_title="Mis Gastos", page_icon="💰")
+st.set_page_config(page_title="Mis Gastos", page_icon="💰", layout="centered")
 st.title("💰 Mi App de Gastos")
-
-# IMPORTANTE: Asegúrate de añadir 'plotly' a tu archivo requirements.txt en GitHub
 
 # --- CONTROL DE SESIÓN ---
 if 'user' not in st.session_state:
@@ -23,38 +21,56 @@ with st.sidebar:
     if not st.session_state.user:
         email = st.text_input("Correo electrónico")
         password = st.text_input("Contraseña", type="password")
-        if st.button("Entrar"):
-            try:
-                res = supabase.auth.sign_in_with_password({"email": email, "password": password})
-                st.session_state.user = res.user
-                st.rerun()
-            except: st.error("Credenciales incorrectas")
+        col1, col2 = st.columns(2)
+        with col1:
+            if st.button("Entrar"):
+                try:
+                    res = supabase.auth.sign_in_with_password({"email": email, "password": password})
+                    st.session_state.user = res.user
+                    st.rerun()
+                except: st.error("Error de acceso")
+        with col2:
+            if st.button("Registrarse"):
+                try:
+                    supabase.auth.sign_up({"email": email, "password": password})
+                    st.info("Revisa tu email o intenta entrar.")
+                except: st.error("Error al registrar")
     else:
-        st.write(f"Usuario: {st.session_state.user.email}")
+        st.write(f"Conectado como: **{st.session_state.user.email}**")
         if st.button("Cerrar Sesión"):
             supabase.auth.sign_out()
             st.session_state.user = None
             st.rerun()
 
+# --- CONTENIDO PRINCIPAL ---
 if st.session_state.user:
     tab_gastos, tab_categorias, tab_informes = st.tabs(["💸 Movimientos", "⚙️ Categorías", "📊 Resumen Mensual"])
 
+    # --- CARGA DE DATOS BASE ---
     res_cats = supabase.table("user_categories").select("*").execute()
     current_cats = res_cats.data if res_cats.data else []
 
-    # --- PESTAÑA: CATEGORÍAS ---
+    # --- PESTAÑA: GESTIONAR CATEGORÍAS ---
     with tab_categorias:
-        st.subheader("Gestionar Categorías")
+        st.subheader("Tus Categorías")
         cat_names_upper = [c['name'].upper() for c in current_cats]
+        
         with st.expander("➕ Crear Nueva Categoría"):
             with st.form("form_cat"):
-                name = st.text_input("Nombre")
-                budget = st.number_input("Presupuesto (€)", min_value=0.0)
+                name = st.text_input("Nombre de categoría")
+                budget = st.number_input("Presupuesto Mensual (€)", min_value=0.0, step=10.0)
                 if st.form_submit_button("Guardar"):
-                    if name.upper() in cat_names_upper: st.error("Ya existe.")
+                    if name.upper() in cat_names_upper:
+                        st.error("Esta categoría ya existe.")
                     elif name:
-                        supabase.table("user_categories").insert({"user_id": st.session_state.user.id, "name": name, "budget": budget}).execute()
+                        supabase.table("user_categories").insert({
+                            "user_id": st.session_state.user.id, 
+                            "name": name, 
+                            "budget": budget
+                        }).execute()
                         st.rerun()
+
+        st.divider()
         for c in current_cats:
             col1, col2, col3 = st.columns([2, 1, 1])
             col1.write(f"**{c['name']}**")
@@ -63,46 +79,47 @@ if st.session_state.user:
                 supabase.table("user_categories").delete().eq("id", c['id']).execute()
                 st.rerun()
 
-    # --- PESTAÑA: MOVIMIENTOS (CON SELECTOR DE FECHA) ---
+    # --- PESTAÑA: REGISTRAR MOVIMIENTOS ---
     with tab_gastos:
-        st.subheader("Nuevo Movimiento")
+        st.subheader("Nuevo Registro")
         col_q, col_t = st.columns(2)
         qty = col_q.number_input("Cantidad (€)", min_value=0.0, step=0.01)
         t_type = col_t.selectbox("Tipo", ["Gasto", "Ingreso"])
-        
-        # EL NUEVO CAMPO DE FECHA:
-        fecha_mov = st.date_input("Fecha del movimiento", datetime.now())
+        fecha_mov = st.date_input("Fecha", datetime.now())
         
         options = {c['name']: c['id'] for c in current_cats}
         if options:
             sel_cat = st.selectbox("Categoría", options.keys())
-            if st.button("Registrar"):
+            if st.button("Guardar Registro"):
                 supabase.table("user_imputs").insert({
                     "user_id": st.session_state.user.id, 
                     "quantity": qty, 
                     "type": t_type, 
                     "category_id": options[sel_cat],
-                    "date": str(fecha_mov) # Guardamos la fecha elegida
+                    "date": str(fecha_mov)
                 }).execute()
-                st.success("¡Registrado!")
+                st.success("¡Anotado!")
                 st.rerun()
+        else:
+            st.warning("Crea una categoría primero en la pestaña correspondiente.")
         
         st.divider()
-        st.subheader("Últimos 10 registros")
-        res_inputs = supabase.table("user_imputs").select("*, user_categories(name)").order("date", desc=True).limit(10).execute()
+        st.subheader("Últimos Registros")
+        res_inputs = supabase.table("user_imputs").select("*, user_categories(name)").order("date", desc=True).limit(15).execute()
         if res_inputs.data:
             for i in res_inputs.data:
                 c1, c2, c3, c4 = st.columns([2, 1, 1, 1])
-                c1.write(f"{i['date']} | {i['user_categories']['name'] if i['user_categories'] else 'S/C'}")
+                nombre_cat = i['user_categories']['name'] if i['user_categories'] else "S/C"
+                c1.write(f"**{i['date']}** | {nombre_cat}")
                 c2.write(f"{i['quantity']}€")
-                c3.write(i['type'])
+                c3.write("📉" if i['type'] == "Gasto" else "📈")
                 if c4.button("🗑️", key=f"del_inp_{i['id']}"):
                     supabase.table("user_imputs").delete().eq("id", i['id']).execute()
                     st.rerun()
 
-    # --- PESTAÑA: INFORMES (CON GRÁFICO) ---
+    # --- PESTAÑA: INFORMES MENSUALES ---
     with tab_informes:
-        st.subheader("Análisis de Gastos")
+        st.subheader("Análisis Mensual")
         col_m, col_a = st.columns(2)
         meses = ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"]
         sel_mes_nombre = col_m.selectbox("Mes", meses, index=datetime.now().month-1)
@@ -113,7 +130,8 @@ if st.session_state.user:
         if current_cats and inputs_data:
             df_inputs = pd.DataFrame(inputs_data)
             df_inputs['date'] = pd.to_datetime(df_inputs['date'])
-            df_filtrado = df_inputs[(df_inputs['date'].dt.month == meses.index(sel_mes_nombre) + 1) & (df_inputs['date'].dt.year == sel_año)]
+            sel_mes_num = meses.index(sel_mes_nombre) + 1
+            df_filtrado = df_inputs[(df_inputs['date'].dt.month == sel_mes_num) & (df_inputs['date'].dt.year == sel_año)]
             
             if not df_filtrado.empty:
                 ingresos = df_filtrado[df_filtrado['type'] == 'Ingreso']['quantity'].sum()
@@ -124,26 +142,41 @@ if st.session_state.user:
                 c2.metric("Gastos", f"{gastos}€")
                 c3.metric("Ahorro", f"{ingresos - gastos}€")
 
-                # GRÁFICO DE TARTA (Distribución del gasto)
-                df_gastos = df_filtrado[df_filtrado['type'] == 'Gasto']
-                if not df_gastos.empty:
-                    # Extraer el nombre de la categoría para el gráfico
-                    df_gastos['cat_name'] = df_gastos['user_categories'].apply(lambda x: x['name'] if x else 'S/C')
-                    fig = px.pie(df_gastos, values='quantity', names='cat_name', title='Distribución por Categoría')
+                # Gráfico de tarta
+                df_gastos_pie = df_filtrado[df_filtrado['type'] == 'Gasto']
+                if not df_gastos_pie.empty:
+                    df_gastos_pie['cat_name'] = df_gastos_pie['user_categories'].apply(lambda x: x['name'] if x else 'S/C')
+                    fig = px.pie(df_gastos_pie, values='quantity', names='cat_name', title='Gasto por Categoría', hole=0.4)
                     st.plotly_chart(fig, use_container_width=True)
 
                 st.divider()
-                # Barras de presupuesto
-                gastos_mes = df_gastos.groupby('category_id')['quantity'].sum().reset_index()
+                st.subheader("Presupuestos")
+                gastos_por_cat = df_gastos_pie.groupby('category_id')['quantity'].sum().reset_index()
                 df_cats = pd.DataFrame(current_cats)
-                rep = pd.merge(df_cats, gastos_mes, left_on='id', right_on='category_id', how='left').fillna(0)
+                rep = pd.merge(df_cats, gastos_por_cat, left_on='id', right_on='category_id', how='left').fillna(0)
+                
                 for _, r in rep.iterrows():
                     if r['budget'] > 0 or r['quantity'] > 0:
-                        st.write(f"**{r['name']}** ({r['quantity']}€ / {r['budget']}€)")
-                        st.progress(min(r['quantity']/r['budget'], 1.0) if r['budget'] > 0 else 0)
+                        porcentaje = r['quantity'] / r['budget'] if r['budget'] > 0 else 0
+                        
+                        # Lógica de colores por emoji
+                        if porcentaje < 0.8: status = "🟢"
+                        elif porcentaje <= 1.0: status = "🟡"
+                        else: status = "🔴"
+                        
+                        st.write(f"{status} **{r['name']}**")
+                        st.progress(min(porcentaje, 1.0))
+                        
+                        texto = f"{r['quantity']}€ de {r['budget']}€"
+                        if porcentaje > 1.0:
+                            st.write(f":red[{texto} - ¡Exceso de {round(r['quantity'] - r['budget'], 2)}€!]")
+                        else:
+                            st.write(texto)
+                        st.divider()
             else:
-                st.info("No hay datos para este mes.")
+                st.info("No hay datos para el mes seleccionado.")
         else:
-            st.info("Crea categorías y movimientos primero.")
+            st.info("Registra categorías y movimientos para ver el análisis.")
+
 else:
-    st.info("Inicia sesión para continuar.")
+    st.info("👋 ¡Hola! Inicia sesión para gestionar tus finanzas personales.")
