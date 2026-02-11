@@ -3,6 +3,7 @@ from supabase import create_client, Client
 import pandas as pd
 from datetime import datetime, timedelta
 import plotly.express as px
+import plotly.graph_objects as go
 import io
 
 # 1. CONEXIÓN SEGURA CON SUPABASE
@@ -188,7 +189,7 @@ if st.session_state.user:
                     st.write(f"{emoji} **{r['name']}**: {r['quantity']:.2f}€ / {r['budget']:.2f}€")
                     st.progress(min(p, 1.0))
 
-    # 6. ANUAL (CON GRÁFICA DE EVOLUCIÓN)
+    # 6. ANUAL (CON GRÁFICA DE EVOLUCIÓN Y LÍNEA DE AHORRO)
     with tab_anual:
         st.subheader("Resumen Anual")
         s_an = st.selectbox("Seleccionar Año", range(2024, 2030), index=datetime.now().year-2024)
@@ -197,7 +198,6 @@ if st.session_state.user:
             if not df_an.empty:
                 i_an, g_an = df_an[df_an['type'] == 'Ingreso']['quantity'].sum(), df_an[df_an['type'] == 'Gasto']['quantity'].sum()
                 
-                # Métricas principales
                 with st.container(border=True):
                     ca1, ca2, ca3 = st.columns(3)
                     ca1.metric("Ingresos Anuales", f"{i_an:.2f}€")
@@ -205,34 +205,43 @@ if st.session_state.user:
                     ca3.metric("Balance Total", f"{(i_an - g_an):.2f}€")
                 
                 st.divider()
+                st.subheader("📈 Evolución y Ahorro Neto")
                 
-                # --- GRÁFICA DE EVOLUCIÓN MENSUAL ---
-                st.subheader("📈 Evolución Mensual")
-                # Agrupamos por mes y tipo
+                # --- PREPARACIÓN DE DATOS PARA LA GRÁFICA ---
+                meses_labels = ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"]
                 df_evo = df_an.copy()
                 df_evo['mes_num'] = df_evo['date'].dt.month
-                df_evo_res = df_evo.groupby(['mes_num', 'type'])['quantity'].sum().reset_index()
                 
-                # Aseguramos que los meses tengan nombre
-                meses_map = {i+1: m for i, m in enumerate(meses)}
-                df_evo_res['Mes'] = df_evo_res['mes_num'].map(meses_map)
+                # Agrupamos ingresos y gastos por mes
+                res_mes = df_evo.pivot_table(index='mes_num', columns='type', values='quantity', aggfunc='sum').fillna(0)
+                # Aseguramos que existan ambas columnas para evitar errores
+                for t in ['Ingreso', 'Gasto']:
+                    if t not in res_mes.columns: res_mes[t] = 0
                 
-                fig_evo = px.bar(
-                    df_evo_res, 
-                    x='Mes', 
-                    y='quantity', 
-                    color='type',
+                res_mes['Ahorro'] = res_mes['Ingreso'] - res_mes['Gasto']
+                res_mes = res_mes.reindex(range(1, 13), fill_value=0)
+                res_mes['NombreMes'] = meses_labels
+
+                # --- CREACIÓN DE GRÁFICA MIXTA (BAR + LINE) ---
+                fig = go.Figure()
+                # Barras de Ingresos
+                fig.add_trace(go.Bar(x=meses_labels, y=res_mes['Ingreso'], name='Ingreso', marker_color='#00CC96'))
+                # Barras de Gastos
+                fig.add_trace(go.Bar(x=meses_labels, y=res_mes['Gasto'], name='Gasto', marker_color='#EF553B'))
+                # Línea de Ahorro Neto
+                fig.add_trace(go.Scatter(x=meses_labels, y=res_mes['Ahorro'], name='Ahorro Neto', 
+                                         line=dict(color='#636EFA', width=4), marker=dict(size=8)))
+
+                fig.update_layout(
                     barmode='group',
-                    color_discrete_map={'Ingreso': '#00CC96', 'Gasto': '#EF553B'},
-                    labels={'quantity': 'Cantidad (€)', 'type': 'Tipo'},
-                    height=400
+                    legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
+                    margin=dict(l=20, r=20, t=50, b=20),
+                    height=450,
+                    yaxis_title="Euros (€)"
                 )
-                fig_evo.update_layout(xaxis={'categoryorder':'array', 'categoryarray':meses})
-                st.plotly_chart(fig_evo, use_container_width=True)
+                st.plotly_chart(fig, use_container_width=True)
                 
                 st.divider()
-                
-                # Semáforos Anuales
                 st.subheader("Control Anual (Meta x12)")
                 g_cat_an = df_an[df_an['type'] == 'Gasto'].groupby('category_id')['quantity'].sum().reset_index()
                 for _, r in pd.merge(pd.DataFrame(cat_g), g_cat_an, left_on='id', right_on='category_id', how='left').fillna(0).iterrows():
