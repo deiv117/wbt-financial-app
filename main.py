@@ -64,12 +64,12 @@ if st.session_state.user:
     res_cats = supabase.table("user_categories").select("*").execute()
     current_cats = sorted(res_cats.data, key=lambda x: x['name'].lower()) if res_cats.data else []
     
-    inputs_res = supabase.table("user_imputs").select("quantity, type, category_id, date, user_categories(name)").execute()
+    inputs_res = supabase.table("user_imputs").select("*, user_categories(name)").execute()
     df_all = pd.DataFrame(inputs_res.data) if inputs_res.data else pd.DataFrame()
     if not df_all.empty:
         df_all['date'] = pd.to_datetime(df_all['date'])
 
-    # --- PESTAÑA: MOVIMIENTOS (ÚLTIMOS 20) ---
+    # --- PESTAÑA: MOVIMIENTOS ---
     with tab_gastos:
         st.subheader("Nuevo Registro")
         col_q, col_t, col_d = st.columns(3)
@@ -89,8 +89,7 @@ if st.session_state.user:
                 }).execute()
                 st.success("¡Registrado!")
                 st.rerun()
-        else: st.warning(f"Crea primero una categoría de {t_type}.")
-
+        
         st.divider()
         st.subheader("Últimos 20 movimientos")
         res_recent = supabase.table("user_imputs").select("*, user_categories(name)").order("date", desc=True).limit(20).execute()
@@ -119,8 +118,8 @@ if st.session_state.user:
             
             if not df_h.empty:
                 items_per_page = 50
-                total_pages = max(1, (len(df_h) // items_per_page) + (1 if len(df_h) % items_per_page > 0 else 0))
-                page = st.number_input("Página", min_value=1, max_value=total_pages, step=1)
+                total_p = max(1, (len(df_h) // items_per_page) + (1 if len(df_h) % items_per_page > 0 else 0))
+                page = st.number_input("Página", min_value=1, max_value=total_p, step=1)
                 
                 start = (page - 1) * items_per_page
                 df_pag = df_h.iloc[start : start + items_per_page].copy()
@@ -165,11 +164,13 @@ if st.session_state.user:
         total_p = sum(c['budget'] for c in cat_g)
         media_i = df_all[df_all['type']=='Ingreso'].groupby(df_all['date'].dt.to_period('M'))['quantity'].sum().mean() if not df_all.empty else 0
         
-        m1, m2, m3 = st.columns(3)
-        m1.metric("Gasto Presupuestado", f"{total_p:.2f}€")
-        m2.metric("Media Ingresos Reales", f"{media_i:.2f}€")
-        m3.metric("Ahorro Potencial", f"{(media_i - total_p):.2f}€")
+        with st.container(border=True):
+            m1, m2, m3 = st.columns(3)
+            m1.metric("Gasto Presupuestado", f"{total_p:.2f}€")
+            m2.metric("Media Ingresos Reales", f"{media_i:.2f}€")
+            m3.metric("Ahorro Potencial", f"{(media_i - total_p):.2f}€")
         
+        st.divider()
         if cat_g:
             col_g1, col_g2 = st.columns(2)
             with col_g1:
@@ -180,7 +181,7 @@ if st.session_state.user:
                 df_p_table['Presupuesto'] = df_p_table['Presupuesto'].map('{:.2f}€'.format)
                 st.dataframe(df_p_table, hide_index=True, use_container_width=True)
 
-    # --- PESTAÑA: MENSUAL (CON SEMÁFOROS) ---
+    # --- PESTAÑA: MENSUAL ---
     with tab_informes:
         st.subheader("Resumen Mensual")
         col_m1, col_m2 = st.columns(2)
@@ -193,21 +194,26 @@ if st.session_state.user:
             if not df_m.empty:
                 i_m = df_m[df_m['type'] == 'Ingreso']['quantity'].sum()
                 g_m = df_m[df_m['type'] == 'Gasto']['quantity'].sum()
-                st.columns(3)[0].metric("Ingresos", f"{i_m:.2f}€")
-                st.columns(3)[1].metric("Gastos", f"{g_m:.2f}€")
-                st.columns(3)[2].metric("Ahorro", f"{(i_m - g_m):.2f}€")
+                
+                # --- CORRECCIÓN COLUMNAS MENSUAL ---
+                with st.container(border=True):
+                    c1, c2, c3 = st.columns(3)
+                    c1.metric("Ingresos", f"{i_m:.2f}€")
+                    c2.metric("Gastos", f"{g_m:.2f}€")
+                    c3.metric("Ahorro", f"{(i_m - g_m):.2f}€")
                 
                 st.divider()
                 st.subheader("Semáforo de Gastos")
                 g_cat_m = df_m[df_m['type'] == 'Gasto'].groupby('category_id')['quantity'].sum().reset_index()
-                if cat_g:
-                    rep_m = pd.merge(pd.DataFrame(cat_g), g_cat_m, left_on='id', right_on='category_id', how='left').fillna(0)
+                cat_g_list = [c for c in current_cats if c.get('type') == 'Gasto']
+                if cat_g_list:
+                    rep_m = pd.merge(pd.DataFrame(cat_g_list), g_cat_m, left_on='id', right_on='category_id', how='left').fillna(0)
                     for _, r in rep_m.iterrows():
                         porc = r['quantity'] / r['budget'] if r['budget'] > 0 else 0
                         color = "🟢" if porc < 0.8 else "🟡" if porc <= 1.0 else "🔴"
                         st.write(f"{color} **{r['name']}**: {r['quantity']:.2f}€ / {r['budget']:.2f}€")
                         st.progress(min(porc, 1.0))
-            else: st.info("Sin datos.")
+            else: st.info("Sin datos para este periodo.")
 
     # --- PESTAÑA: ANUAL ---
     with tab_anual:
@@ -218,20 +224,26 @@ if st.session_state.user:
             if not df_an.empty:
                 i_an = df_an[df_an['type'] == 'Ingreso']['quantity'].sum()
                 g_an = df_an[df_an['type'] == 'Gasto']['quantity'].sum()
-                st.columns(3)[0].metric("Ingresos", f"{i_an:.2f}€")
-                st.columns(3)[1].metric("Gastos", f"{g_an:.2f}€")
-                st.columns(3)[2].metric("Balance", f"{(i_an - g_an):.2f}€")
+                
+                # --- CORRECCIÓN COLUMNAS ANUAL ---
+                with st.container(border=True):
+                    ca1, ca2, ca3 = st.columns(3)
+                    ca1.metric("Ingresos", f"{i_an:.2f}€")
+                    ca2.metric("Gastos", f"{g_an:.2f}€")
+                    ca3.metric("Balance", f"{(i_an - g_an):.2f}€")
                 
                 st.divider()
                 st.subheader("Control Anual (Meta x12)")
                 g_cat_an = df_an[df_an['type'] == 'Gasto'].groupby('category_id')['quantity'].sum().reset_index()
-                if cat_g:
-                    rep_an = pd.merge(pd.DataFrame(cat_g), g_cat_an, left_on='id', right_on='category_id', how='left').fillna(0)
+                cat_g_an = [c for c in current_cats if c.get('type') == 'Gasto']
+                if cat_g_an:
+                    rep_an = pd.merge(pd.DataFrame(cat_g_an), g_cat_an, left_on='id', right_on='category_id', how='left').fillna(0)
                     for _, r in rep_an.iterrows():
                         b_an = r['budget'] * 12
                         porc_an = r['quantity'] / b_an if b_an > 0 else 0
                         color_an = "🟢" if porc_an < 0.8 else "🟡" if porc_an <= 1.0 else "🔴"
                         st.write(f"{color_an} **{r['name']}**: {r['quantity']:.2f}€ / {b_an:.2f}€")
                         st.progress(min(porc_an, 1.0))
+            else: st.info("No hay datos registrados para este año.")
 else:
     st.info("Inicia sesión para continuar.")
