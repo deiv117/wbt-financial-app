@@ -4,7 +4,6 @@ import pandas as pd
 from datetime import datetime, timedelta
 import plotly.express as px
 import plotly.graph_objects as go
-import io
 
 # 1. CONEXIÓN SEGURA CON SUPABASE
 url = st.secrets["SUPABASE_URL"]
@@ -12,7 +11,6 @@ key = st.secrets["SUPABASE_KEY"]
 supabase: Client = create_client(url, key)
 
 st.set_page_config(page_title="Mis Gastos", page_icon="💰", layout="wide")
-st.title("💰 Mi App de Gastos")
 
 # --- CONTROL DE SESIÓN ---
 if 'user' not in st.session_state:
@@ -20,7 +18,7 @@ if 'user' not in st.session_state:
 
 # --- SIDEBAR (MENÚ LATERAL) ---
 with st.sidebar:
-    st.header("👤 Usuario")
+    st.header("👤 Acceso")
     if not st.session_state.user:
         email = st.text_input("Correo electrónico")
         password = st.text_input("Contraseña", type="password")
@@ -31,7 +29,10 @@ with st.sidebar:
                 st.rerun()
             except: st.error("Error de acceso")
     else:
-        st.write(f"Conectado: **{st.session_state.user.email}**")
+        res_p = supabase.table("profiles").select("name").eq("id", st.session_state.user.id).maybe_single().execute()
+        nombre_user = res_p.data['name'] if (res_p.data and res_p.data.get('name')) else st.session_state.user.email
+        st.write(f"Hola, **{nombre_user}** 👋")
+        
         if st.button("Cerrar Sesión"):
             supabase.auth.sign_out()
             st.session_state.user = None
@@ -39,9 +40,8 @@ with st.sidebar:
         
         st.divider()
         st.header("📥 Importación CSV")
-        template_data = "fecha,cantidad,categoria\n2026-02-11,15.50,Alimentacion\n2026-02-12,500.00,Nomina"
-        st.download_button(label="📄 Descargar Plantilla CSV", data=template_data, file_name="plantilla.csv", mime="text/csv")
-        
+        template_data = "fecha,cantidad,categoria\n2026-02-12,15.50,Alimentacion"
+        st.download_button(label="📄 Descargar Plantilla", data=template_data, file_name="plantilla.csv", mime="text/csv")
         uploaded_file = st.file_uploader("Subir CSV", type=["csv"])
         if uploaded_file and st.button("🚀 Confirmar Importación"):
             try:
@@ -58,11 +58,11 @@ with st.sidebar:
                     supabase.table("user_imputs").insert(rows).execute()
                     st.success(f"¡{len(rows)} registros importados!")
                     st.rerun()
-            except: st.error("Error al procesar")
+            except: st.error("Error al procesar archivo")
 
-# --- FUNCIONES ---
+# --- FUNCIONES DIALOG ---
 @st.dialog("➕ Nueva Categoría")
-def crear_categoria_dialog(current_cats):
+def crear_categoria_dialog():
     name = st.text_input("Nombre")
     c_type = st.selectbox("Tipo", ["Gasto", "Ingreso"])
     budget = st.number_input("Presupuesto Mensual (€)", min_value=0.0) if c_type == "Gasto" else 0.0
@@ -71,19 +71,21 @@ def crear_categoria_dialog(current_cats):
             supabase.table("user_categories").insert({"user_id": st.session_state.user.id, "name": name, "type": c_type, "budget": budget}).execute()
             st.rerun()
 
-# --- CARGA DE DATOS ---
+# --- LÓGICA PRINCIPAL ---
 if st.session_state.user:
-    tab_gastos, tab_historial, tab_categorias, tab_prevision, tab_informes, tab_anual = st.tabs([
-        "💸 Movimientos", "🗄️ Historial", "⚙️ Categorías", "🔮 Previsión", "📊 Mensual", "📅 Anual"
+    tab_gastos, tab_historial, tab_categorias, tab_prevision, tab_informes, tab_anual, tab_perfil = st.tabs([
+        "💸 Movimientos", "🗄️ Historial", "⚙️ Categorías", "🔮 Previsión", "📊 Mensual", "📅 Anual", "👤 Perfil"
     ])
 
+    # Carga de datos global
     res_cats = supabase.table("user_categories").select("*").execute()
     current_cats = sorted(res_cats.data, key=lambda x: x['name'].lower()) if res_cats.data else []
     res_all = supabase.table("user_imputs").select("*, user_categories(name)").execute()
     df_all = pd.DataFrame(res_all.data) if res_all.data else pd.DataFrame()
     if not df_all.empty: df_all['date'] = pd.to_datetime(df_all['date'])
+    cat_g = [c for c in current_cats if c.get('type') == 'Gasto']
 
-    # 1. MOVIMIENTOS
+    # --- 1. MOVIMIENTOS ---
     with tab_gastos:
         st.subheader("Nuevo Registro")
         c1, c2, c3 = st.columns(3)
@@ -98,18 +100,17 @@ if st.session_state.user:
                 supabase.table("user_imputs").insert({"user_id": st.session_state.user.id, "quantity": qty, "type": t_type, "category_id": c_id, "date": str(f_mov)}).execute()
                 st.rerun()
         st.divider()
-        st.subheader("Últimos 20 movimientos")
-        res_r = supabase.table("user_imputs").select("*, user_categories(name)").order("date", desc=True).limit(20).execute()
-        for i in (res_r.data if res_r.data else []):
-            col1, col2, col3, col4 = st.columns([2, 1, 1, 1])
-            col1.write(f"**{i['date']}** | {i['user_categories']['name'] if i['user_categories'] else 'S/C'}")
-            col2.write(f"{i['quantity']:.2f}€")
-            col3.write("📉" if i['type'] == "Gasto" else "📈")
-            if col4.button("🗑️", key=f"del_{i['id']}"):
+        res_recent = supabase.table("user_imputs").select("*, user_categories(name)").order("date", desc=True).limit(20).execute()
+        for i in (res_recent.data if res_recent.data else []):
+            cl1, cl2, cl3, cl4 = st.columns([2, 1, 1, 1])
+            cl1.write(f"**{i['date']}** | {i['user_categories']['name'] if i['user_categories'] else 'S/C'}")
+            cl2.write(f"{i['quantity']:.2f}€")
+            cl3.write("📉" if i['type'] == "Gasto" else "📈")
+            if cl4.button("🗑️", key=f"del_{i['id']}"):
                 supabase.table("user_imputs").delete().eq("id", i['id']).execute()
                 st.rerun()
 
-    # 2. HISTORIAL
+    # --- 2. HISTORIAL ---
     with tab_historial:
         st.subheader("🗄️ Historial Completo")
         h1, h2, h3 = st.columns(3)
@@ -125,9 +126,9 @@ if st.session_state.user:
                 df_p['Categoría'] = df_p['user_categories'].apply(lambda x: x['name'] if x else 'S/C')
                 st.dataframe(df_p[['date', 'Categoría', 'quantity', 'type']].rename(columns={'quantity':'Importe (€)'}), use_container_width=True, hide_index=True)
 
-    # 3. CATEGORÍAS
+    # --- 3. CATEGORÍAS ---
     with tab_categorias:
-        if st.button("➕ Añadir Categoría"): crear_categoria_dialog(current_cats)
+        if st.button("➕ Añadir Categoría"): crear_categoria_dialog()
         c_ing, c_gas = st.columns(2)
         for col, t in zip([c_ing, c_gas], ["Ingreso", "Gasto"]):
             with col:
@@ -140,32 +141,26 @@ if st.session_state.user:
                             supabase.table("user_categories").delete().eq("id", c['id']).execute()
                             st.rerun()
 
-    # 4. PREVISIÓN
+    # --- 4. PREVISIÓN ---
     with tab_prevision:
         st.subheader("🔮 Previsión Mensual Teórica")
-        cat_g = [c for c in current_cats if c.get('type') == 'Gasto']
         total_p = sum(c['budget'] for c in cat_g)
         media_i = df_all[df_all['type']=='Ingreso'].groupby(df_all['date'].dt.to_period('M'))['quantity'].sum().mean() if not df_all.empty else 0
-        
         with st.container(border=True):
             m1, m2, m3 = st.columns(3)
             m1.metric("Gasto Presupuestado", f"{total_p:.2f}€")
             m2.metric("Media Ingresos", f"{media_i:.2f}€")
             m3.metric("Ahorro Potencial", f"{(media_i - total_p):.2f}€")
-        
         st.divider()
         if cat_g:
             col_g1, col_g2 = st.columns(2)
-            with col_g1:
-                st.plotly_chart(px.pie(pd.DataFrame(cat_g), values='budget', names='name', hole=0.4, title="Reparto de Gastos Previstos"), use_container_width=True)
+            with col_g1: st.plotly_chart(px.pie(pd.DataFrame(cat_g), values='budget', names='name', hole=0.4, title="Reparto de Gastos"), use_container_width=True)
             with col_g2:
-                st.write("**Detalle de Presupuestos**")
-                df_prev_tab = pd.DataFrame(cat_g)[['name', 'budget']]
-                df_prev_tab.columns = ['Categoría', 'Presupuesto']
+                df_prev_tab = pd.DataFrame(cat_g)[['name', 'budget']].rename(columns={'name':'Categoría','budget':'Presupuesto'})
                 df_prev_tab['Presupuesto'] = df_prev_tab['Presupuesto'].map('{:.2f}€'.format)
                 st.dataframe(df_prev_tab, hide_index=True, use_container_width=True)
 
-    # 5. MENSUAL
+    # --- 5. MENSUAL ---
     with tab_informes:
         st.subheader("Resumen Mensual")
         im1, im2 = st.columns(2)
@@ -189,7 +184,7 @@ if st.session_state.user:
                     st.write(f"{emoji} **{r['name']}**: {r['quantity']:.2f}€ / {r['budget']:.2f}€")
                     st.progress(min(p, 1.0))
 
-    # 6. ANUAL (CON GRÁFICA DE EVOLUCIÓN Y LÍNEA DE AHORRO)
+    # --- 6. ANUAL ---
     with tab_anual:
         st.subheader("Resumen Anual")
         s_an = st.selectbox("Seleccionar Año", range(2024, 2030), index=datetime.now().year-2024)
@@ -197,58 +192,54 @@ if st.session_state.user:
             df_an = df_all[df_all['date'].dt.year == s_an]
             if not df_an.empty:
                 i_an, g_an = df_an[df_an['type'] == 'Ingreso']['quantity'].sum(), df_an[df_an['type'] == 'Gasto']['quantity'].sum()
-                
                 with st.container(border=True):
                     ca1, ca2, ca3 = st.columns(3)
                     ca1.metric("Ingresos Anuales", f"{i_an:.2f}€")
                     ca2.metric("Gastos Anuales", f"{g_an:.2f}€")
                     ca3.metric("Balance Total", f"{(i_an - g_an):.2f}€")
-                
                 st.divider()
-                st.subheader("📈 Evolución y Ahorro Neto")
-                
-                # --- PREPARACIÓN DE DATOS PARA LA GRÁFICA ---
-                meses_labels = ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"]
+                # Gráfica mixta restaurada
                 df_evo = df_an.copy()
                 df_evo['mes_num'] = df_evo['date'].dt.month
-                
-                # Agrupamos ingresos y gastos por mes
                 res_mes = df_evo.pivot_table(index='mes_num', columns='type', values='quantity', aggfunc='sum').fillna(0)
-                # Aseguramos que existan ambas columnas para evitar errores
-                for t in ['Ingreso', 'Gasto']:
+                for t in ['Ingreso', 'Gasto']: 
                     if t not in res_mes.columns: res_mes[t] = 0
-                
                 res_mes['Ahorro'] = res_mes['Ingreso'] - res_mes['Gasto']
                 res_mes = res_mes.reindex(range(1, 13), fill_value=0)
-                res_mes['NombreMes'] = meses_labels
-
-                # --- CREACIÓN DE GRÁFICA MIXTA (BAR + LINE) ---
                 fig = go.Figure()
-                # Barras de Ingresos
-                fig.add_trace(go.Bar(x=meses_labels, y=res_mes['Ingreso'], name='Ingreso', marker_color='#00CC96'))
-                # Barras de Gastos
-                fig.add_trace(go.Bar(x=meses_labels, y=res_mes['Gasto'], name='Gasto', marker_color='#EF553B'))
-                # Línea de Ahorro Neto
-                fig.add_trace(go.Scatter(x=meses_labels, y=res_mes['Ahorro'], name='Ahorro Neto', 
-                                         line=dict(color='#636EFA', width=4), marker=dict(size=8)))
-
-                fig.update_layout(
-                    barmode='group',
-                    legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
-                    margin=dict(l=20, r=20, t=50, b=20),
-                    height=450,
-                    yaxis_title="Euros (€)"
-                )
+                fig.add_trace(go.Bar(x=meses, y=res_mes['Ingreso'], name='Ingreso', marker_color='#00CC96'))
+                fig.add_trace(go.Bar(x=meses, y=res_mes['Gasto'], name='Gasto', marker_color='#EF553B'))
+                fig.add_trace(go.Scatter(x=meses, y=res_mes['Ahorro'], name='Ahorro Neto', line=dict(color='#636EFA', width=4)))
+                fig.update_layout(barmode='group', height=400)
                 st.plotly_chart(fig, use_container_width=True)
-                
                 st.divider()
+                # Semáforos Anuales restaurados
                 st.subheader("Control Anual (Meta x12)")
                 g_cat_an = df_an[df_an['type'] == 'Gasto'].groupby('category_id')['quantity'].sum().reset_index()
                 for _, r in pd.merge(pd.DataFrame(cat_g), g_cat_an, left_on='id', right_on='category_id', how='left').fillna(0).iterrows():
                     b_an, p_an = r['budget'] * 12, r['quantity'] / (r['budget']*12) if r['budget'] > 0 else 0
                     st.write(f"{'🟢' if p_an < 0.8 else '🟡' if p_an <= 1 else '🔴'} **{r['name']}**: {r['quantity']:.2f}€ / {b_an:.2f}€")
                     st.progress(min(p_an, 1.0))
-            else:
-                st.info("No hay datos para el año seleccionado.")
+
+    # --- 7. PERFIL ---
+    with tab_perfil:
+        st.subheader("Configuración de Perfil")
+        p_res = supabase.table("profiles").select("*").eq("id", st.session_state.user.id).maybe_single().execute()
+        p_data = p_res.data if p_res.data else {}
+        col_p1, col_p2 = st.columns([1, 2])
+        with col_p1:
+            if p_data.get('avatar_url'): st.image(p_data['avatar_url'], width=150)
+            else: st.info("Sin foto")
+            new_avatar = st.text_input("URL Avatar", value=p_data.get('avatar_url', ""))
+        with col_p2:
+            with st.form("perfil_form"):
+                n_name = st.text_input("Nombre (name)", value=p_data.get('name', ""))
+                n_lastname = st.text_input("Apellido (lastname)", value=p_data.get('lastname', ""))
+                n_social = st.toggle("Elegible para gastos en grupo", value=p_data.get('social_active', False))
+                if st.form_submit_button("Actualizar Perfil"):
+                    payload = {"id": st.session_state.user.id, "name": n_name, "lastname": n_lastname, "avatar_url": new_avatar, "social_active": n_social, "updated_at": str(datetime.now())}
+                    supabase.table("profiles").upsert(payload).execute()
+                    st.success("¡Perfil actualizado!")
+                    st.rerun()
 else:
-    st.info("Inicia sesión para empezar.")
+    st.info("Inicia sesión para continuar.")
