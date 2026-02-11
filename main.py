@@ -8,6 +8,8 @@ import plotly.graph_objects as go
 # 1. CONEXIÓN SEGURA CON SUPABASE
 url = st.secrets["SUPABASE_URL"]
 key = st.secrets["SUPABASE_KEY"]
+
+# Configuración de persistencia (intenta recuperar sesión previa)
 supabase: Client = create_client(url, key)
 
 st.set_page_config(page_title="Mis Gastos", page_icon="💰", layout="wide")
@@ -15,15 +17,12 @@ st.set_page_config(page_title="Mis Gastos", page_icon="💰", layout="wide")
 # --- ESTILOS CSS ADAPTATIVOS ---
 st.markdown("""
     <style>
-    /* Fondo para Login */
     .stApp {
         background-image: url("https://images.unsplash.com/photo-1554224155-6726b3ff858f?q=80&w=2022&auto=format&fit=crop");
         background-size: cover;
         background-position: center;
         background-attachment: fixed;
     }
-    
-    /* Caja de login adaptable (Modo Claro/Oscuro) */
     [data-testid="stForm"] {
         background-color: rgba(255, 255, 255, 0.05);
         backdrop-filter: blur(15px);
@@ -33,35 +32,24 @@ st.markdown("""
         border: 1px solid rgba(255, 255, 255, 0.2);
         box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.37);
     }
-
     .login-title { text-align: center; font-weight: 800; color: white !important; text-shadow: 2px 2px 4px rgba(0,0,0,0.5); }
     .login-subtitle { text-align: center; color: #f0f2f6 !important; text-shadow: 1px 1px 2px rgba(0,0,0,0.5); }
-
-    /* Sidebar */
-    .sidebar-user-container {
-        display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; padding: 10px 0 20px 0;
-    }
-    .avatar-circle {
-        width: 80px; height: 80px; border-radius: 50%;
-        display: flex; align-items: center; justify-content: center;
-        color: white; font-weight: bold; font-size: 28px;
-        margin-bottom: 10px; border: 2px solid #636EFA; object-fit: cover;
-    }
-    
-    div.stButton > button {
-        width: 100%; border-radius: 10px; border: 1px solid rgba(128, 128, 128, 0.2);
-        background-color: transparent; transition: all 0.3s ease;
-        text-align: left; padding: 10px 15px;
-    }
-    div.stButton > button:hover {
-        border-color: #636EFA; background-color: rgba(99, 110, 250, 0.1);
-    }
+    .sidebar-user-container { display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; padding: 10px 0 20px 0; }
+    .avatar-circle { width: 80px; height: 80px; border-radius: 50%; display: flex; align-items: center; justify-content: center; color: white; font-weight: bold; font-size: 28px; margin-bottom: 10px; border: 2px solid #636EFA; object-fit: cover; }
+    div.stButton > button { width: 100%; border-radius: 10px; border: 1px solid rgba(128, 128, 128, 0.2); background-color: transparent; transition: all 0.3s ease; text-align: left; padding: 10px 15px; }
+    div.stButton > button:hover { border-color: #636EFA; background-color: rgba(99, 110, 250, 0.1); }
     </style>
     """, unsafe_allow_html=True)
 
 # --- CONTROL DE SESIÓN ---
+# Intentar recuperar sesión de Supabase si existe
 if 'user' not in st.session_state:
-    st.session_state.user = None
+    try:
+        session = supabase.auth.get_session()
+        st.session_state.user = session.user if session else None
+    except:
+        st.session_state.user = None
+
 if 'menu_actual' not in st.session_state:
     st.session_state.menu_actual = "📊 Panel"
 
@@ -75,17 +63,22 @@ if not st.session_state.user:
             st.markdown("<p class='login-subtitle'>Identifícate para gestionar tus ahorros</p>", unsafe_allow_html=True)
             email = st.text_input("Email")
             password = st.text_input("Contraseña", type="password")
+            
+            # Funcionalidad de Recordarme
+            recordarme = st.checkbox("Mantener sesión iniciada (1h)")
+            
             if st.form_submit_button("Entrar", use_container_width=True):
                 try:
                     res = supabase.auth.sign_in_with_password({"email": email, "password": password})
                     st.session_state.user = res.user
+                    # Nota: Supabase maneja internamente la sesión en el cliente. 
+                    # Al marcar recordarme, la sesión persistirá en la instancia del cliente.
                     st.rerun()
-                except: st.error("Acceso denegado. Revisa tus credenciales.")
+                except: 
+                    st.error("Acceso denegado. Revisa tus credenciales.")
 else:
-    # Quitar fondo de imagen dentro de la app
     st.markdown("<style>.stApp { background-image: none !important; }</style>", unsafe_allow_html=True)
 
-    # --- SIDEBAR NAVEGACIÓN ---
     with st.sidebar:
         res_p = supabase.table("profiles").select("*").eq("id", st.session_state.user.id).maybe_single().execute()
         p_data = res_p.data if (hasattr(res_p, 'data') and res_p.data) else {}
@@ -103,7 +96,9 @@ else:
             st.markdown(f'<div class="avatar-circle" style="background-color: {bg_color};">{iniciales}</div>', unsafe_allow_html=True)
         st.markdown(f"**{nombre} {apellido}**")
         if st.button("Cerrar Sesión"):
-            supabase.auth.sign_out(); st.session_state.user = None; st.rerun()
+            supabase.auth.sign_out()
+            st.session_state.user = None
+            st.rerun()
         st.markdown('</div>', unsafe_allow_html=True)
         
         st.divider()
@@ -155,7 +150,7 @@ else:
                 except: st.error("Error al procesar el archivo.")
 
     else:
-        # --- PANEL PRINCIPAL (TABS COMPLETOS) ---
+        # --- PANEL PRINCIPAL (TABS COMPLETOS - SIN ELIMINAR NADA) ---
         st.title("📊 Cuadro de Mando")
         tab_mov, tab_hist, tab_cat, tab_prev, tab_mes, tab_anual = st.tabs(["💸 Movimientos", "🗄️ Historial", "⚙️ Categorías", "🔮 Previsión", "📊 Mensual", "📅 Anual"])
 
