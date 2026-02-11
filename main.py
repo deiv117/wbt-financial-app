@@ -12,10 +12,10 @@ supabase: Client = create_client(url, key)
 
 st.set_page_config(page_title="Mis Gastos", page_icon="💰", layout="wide")
 
-# --- ESTILOS CSS (Fondo de pantalla y Diseño Moderno) ---
+# --- ESTILOS CSS ADAPTATIVOS (Modo Claro/Oscuro) ---
 st.markdown("""
     <style>
-    /* Estilo para el fondo de la pantalla de login */
+    /* Fondo para Login (se atenúa en modo oscuro por el navegador) */
     .stApp {
         background-image: url("https://images.unsplash.com/photo-1554224155-6726b3ff858f?q=80&w=2022&auto=format&fit=crop");
         background-size: cover;
@@ -23,12 +23,28 @@ st.markdown("""
         background-attachment: fixed;
     }
     
-    /* Caja de login semi-transparente */
+    /* Caja de login: Fondo adaptativo (Glassmorphism) */
     [data-testid="stForm"] {
-        background-color: rgba(255, 255, 255, 0.95);
+        background-color: rgba(255, 255, 255, 0.05); /* Muy transparente por defecto */
+        backdrop-filter: blur(15px); /* Efecto cristal */
+        -webkit-backdrop-filter: blur(15px);
         padding: 40px;
         border-radius: 20px;
-        box-shadow: 0 10px 30px rgba(0,0,0,0.3);
+        border: 1px solid rgba(255, 255, 255, 0.2);
+        box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.37);
+    }
+
+    /* Forzar visibilidad de textos en la pantalla de Login */
+    .login-title {
+        text-align: center;
+        font-weight: 800;
+        color: white !important;
+        text-shadow: 2px 2px 4px rgba(0,0,0,0.5);
+    }
+    .login-subtitle {
+        text-align: center;
+        color: #f0f2f6 !important;
+        text-shadow: 1px 1px 2px rgba(0,0,0,0.5);
     }
 
     /* Estilo sidebar una vez dentro */
@@ -46,18 +62,18 @@ st.markdown("""
         color: white; font-weight: bold; font-size: 28px;
         margin-bottom: 10px; border: 2px solid #636EFA; object-fit: cover;
     }
-    .user-name-sidebar {
-        font-weight: bold; font-size: 1.1em; color: #31333F; margin-bottom: 5px;
-    }
     
-    /* Botones laterales modernos */
+    /* Botones laterales adaptativos */
     div.stButton > button {
-        width: 100%; border-radius: 10px; border: 1px solid #f0f2f6;
-        background-color: transparent; transition: all 0.3s ease;
+        width: 100%; border-radius: 10px; 
+        border: 1px solid rgba(128, 128, 128, 0.2);
+        background-color: transparent; 
+        transition: all 0.3s ease;
         text-align: left; padding: 10px 15px;
     }
     div.stButton > button:hover {
-        background-color: #f0f2f6; border-color: #636EFA;
+        border-color: #636EFA;
+        background-color: rgba(99, 110, 250, 0.1);
     }
     </style>
     """, unsafe_allow_html=True)
@@ -70,14 +86,14 @@ if 'menu_actual' not in st.session_state:
 
 # --- LÓGICA DE LOGIN O CONTENIDO ---
 if not st.session_state.user:
-    # LOGIN CENTRADO
+    # LOGIN CENTRADO ADAPTADO
     _, col_login, _ = st.columns([1, 1.5, 1])
     with col_login:
         st.write("#")
         st.write("#")
         with st.form("login_form"):
-            st.markdown("<h1 style='text-align: center;'>💰 Finanzas App</h1>", unsafe_allow_html=True)
-            st.markdown("<p style='text-align: center;'>Bienvenido de nuevo. Identifícate para continuar.</p>", unsafe_allow_html=True)
+            st.markdown("<h1 class='login-title'>💰 Finanzas App</h1>", unsafe_allow_html=True)
+            st.markdown("<p class='login-subtitle'>Gestión inteligente de gastos e ingresos</p>", unsafe_allow_html=True)
             email = st.text_input("Email")
             password = st.text_input("Password", type="password")
             if st.form_submit_button("Entrar", use_container_width=True):
@@ -85,10 +101,10 @@ if not st.session_state.user:
                     res = supabase.auth.sign_in_with_password({"email": email, "password": password})
                     st.session_state.user = res.user
                     st.rerun()
-                except: st.error("Acceso denegado")
+                except: st.error("Acceso denegado. Revisa tus datos.")
 else:
-    # QUITAR FONDO AL ENTRAR (Opcional, pero recomendado para legibilidad)
-    st.markdown("<style>.stApp { background-image: none !important; background-color: white; }</style>", unsafe_allow_html=True)
+    # Quitar fondo de imagen al entrar para máxima legibilidad
+    st.markdown("<style>.stApp { background-image: none !important; }</style>", unsafe_allow_html=True)
 
     # --- SIDEBAR NAVEGACIÓN ---
     with st.sidebar:
@@ -106,7 +122,7 @@ else:
             st.markdown(f'<img src="{avatar_url}" class="avatar-circle">', unsafe_allow_html=True)
         else:
             st.markdown(f'<div class="avatar-circle" style="background-color: {bg_color};">{iniciales}</div>', unsafe_allow_html=True)
-        st.markdown(f'<p class="user-name-sidebar">{nombre} {apellido}</p>', unsafe_allow_html=True)
+        st.markdown(f"**{nombre} {apellido}**")
         if st.button("Cerrar Sesión", key="logout_btn"):
             supabase.auth.sign_out(); st.session_state.user = None; st.rerun()
         st.markdown('</div>', unsafe_allow_html=True)
@@ -116,7 +132,7 @@ else:
         if st.button("⚙️ Configuración Perfil"): st.session_state.menu_actual = "⚙️ Perfil"; st.rerun()
         if st.button("📥 Importar Movimientos"): st.session_state.menu_actual = "📥 Importar"; st.rerun()
 
-    # --- DIALOGS ---
+    # --- DIALOGS (Mantenido) ---
     @st.dialog("➕ Nueva Categoría")
     def crear_categoria_dialog():
         name = st.text_input("Nombre")
@@ -160,7 +176,7 @@ else:
                 except: st.error("Error en archivo")
 
     else:
-        # --- PANEL PRINCIPAL (RECUPERADO 100%) ---
+        # --- PANEL PRINCIPAL (FUNCIONALIDADES COMPLETAS) ---
         st.title("📊 Cuadro de Mando")
         tab_mov, tab_hist, tab_cat, tab_prev, tab_mes, tab_anual = st.tabs(["💸 Movimientos", "🗄️ Historial", "⚙️ Categorías", "🔮 Previsión", "📊 Mensual", "📅 Anual"])
 
@@ -173,7 +189,7 @@ else:
 
         with tab_mov:
             c1, c2, c3 = st.columns(3)
-            qty = c1.number_input("Cantidad (€)", min_value=0.0)
+            qty = c1.number_input("Cantidad (€)", min_value=0.0, step=0.01)
             t_t = c2.selectbox("Tipo", ["Gasto", "Ingreso"])
             f_m = c3.date_input("Fecha", datetime.now())
             f_cs = [c for c in current_cats if c.get('type') == t_t]
@@ -198,8 +214,7 @@ else:
             if not df_all.empty:
                 df_h = df_all[(df_all['date'].dt.date >= f_i) & (df_all['date'].dt.date <= f_f)]
                 if f_t != "Todos": df_h = df_h[df_h['type'] == f_t]
-                page = st.number_input("Página", min_value=1, value=1)
-                st.dataframe(df_h.iloc[(page-1)*50:page*50][['date', 'quantity', 'type']].rename(columns={'quantity':'Importe'}), use_container_width=True, hide_index=True)
+                st.dataframe(df_h[['date', 'quantity', 'type']].sort_values('date', ascending=False), use_container_width=True, hide_index=True)
 
         with tab_cat:
             if st.button("➕ Añadir Categoría"): crear_categoria_dialog()
@@ -272,9 +287,11 @@ else:
                     fig.add_trace(go.Scatter(x=ml, y=rm['Ahorro'], name='Ahorro Neto', line=dict(color='#636EFA', width=4)))
                     st.plotly_chart(fig, use_container_width=True)
                     st.divider()
-                    st.subheader("Meta x12")
+                    st.subheader("Meta Anual (x12)")
                     gca = df_an[df_an['type'] == 'Gasto'].groupby('category_id')['quantity'].sum().reset_index()
                     for _, r in pd.merge(pd.DataFrame(cat_g), gca, left_on='id', right_on='category_id', how='left').fillna(0).iterrows():
                         b12, p12 = r['budget']*12, r['quantity']/(r['budget']*12) if r['budget']>0 else 0
                         st.write(f"{'🟢' if p12 < 0.8 else '🟡' if p12 <= 1 else '🔴'} **{r['name']}**: {r['quantity']:.2f} / {b12:.2f}")
                         st.progress(min(p12, 1.0))
+else:
+    st.info("Inicia sesión para empezar.")
