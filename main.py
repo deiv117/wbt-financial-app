@@ -29,8 +29,11 @@ with st.sidebar:
                 st.rerun()
             except: st.error("Error de acceso")
     else:
+        # CONSULTA SEGURA DEL PERFIL PARA EL SIDEBAR
         res_p = supabase.table("profiles").select("name").eq("id", st.session_state.user.id).maybe_single().execute()
-        nombre_user = res_p.data['name'] if (res_p.data and res_p.data.get('name')) else st.session_state.user.email
+        p_sidebar = res_p.data if (hasattr(res_p, 'data') and res_p.data) else {}
+        nombre_user = p_sidebar.get('name') if p_sidebar.get('name') else st.session_state.user.email
+        
         st.write(f"Hola, **{nombre_user}** 👋")
         
         if st.button("Cerrar Sesión"):
@@ -164,10 +167,10 @@ if st.session_state.user:
     with tab_informes:
         st.subheader("Resumen Mensual")
         im1, im2 = st.columns(2)
-        meses = ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"]
-        s_m, s_a = im1.selectbox("Mes", meses, index=datetime.now().month-1), im2.selectbox("Año ", range(2024, 2030), index=datetime.now().year-2024)
+        meses_lista = ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"]
+        s_m, s_a = im1.selectbox("Mes", meses_lista, index=datetime.now().month-1), im2.selectbox("Año ", range(2024, 2030), index=datetime.now().year-2024)
         if not df_all.empty:
-            df_m = df_all[(df_all['date'].dt.month == meses.index(s_m)+1) & (df_all['date'].dt.year == s_a)]
+            df_m = df_all[(df_all['date'].dt.month == meses_lista.index(s_m)+1) & (df_all['date'].dt.year == s_a)]
             if not df_m.empty:
                 i_m, g_m = df_m[df_m['type'] == 'Ingreso']['quantity'].sum(), df_m[df_m['type'] == 'Gasto']['quantity'].sum()
                 with st.container(border=True):
@@ -198,7 +201,7 @@ if st.session_state.user:
                     ca2.metric("Gastos Anuales", f"{g_an:.2f}€")
                     ca3.metric("Balance Total", f"{(i_an - g_an):.2f}€")
                 st.divider()
-                # Gráfica mixta restaurada
+                # Gráfica mixta
                 df_evo = df_an.copy()
                 df_evo['mes_num'] = df_evo['date'].dt.month
                 res_mes = df_evo.pivot_table(index='mes_num', columns='type', values='quantity', aggfunc='sum').fillna(0)
@@ -207,13 +210,12 @@ if st.session_state.user:
                 res_mes['Ahorro'] = res_mes['Ingreso'] - res_mes['Gasto']
                 res_mes = res_mes.reindex(range(1, 13), fill_value=0)
                 fig = go.Figure()
-                fig.add_trace(go.Bar(x=meses, y=res_mes['Ingreso'], name='Ingreso', marker_color='#00CC96'))
-                fig.add_trace(go.Bar(x=meses, y=res_mes['Gasto'], name='Gasto', marker_color='#EF553B'))
-                fig.add_trace(go.Scatter(x=meses, y=res_mes['Ahorro'], name='Ahorro Neto', line=dict(color='#636EFA', width=4)))
+                fig.add_trace(go.Bar(x=meses_lista, y=res_mes['Ingreso'], name='Ingreso', marker_color='#00CC96'))
+                fig.add_trace(go.Bar(x=meses_lista, y=res_mes['Gasto'], name='Gasto', marker_color='#EF553B'))
+                fig.add_trace(go.Scatter(x=meses_lista, y=res_mes['Ahorro'], name='Ahorro Neto', line=dict(color='#636EFA', width=4)))
                 fig.update_layout(barmode='group', height=400)
                 st.plotly_chart(fig, use_container_width=True)
                 st.divider()
-                # Semáforos Anuales restaurados
                 st.subheader("Control Anual (Meta x12)")
                 g_cat_an = df_an[df_an['type'] == 'Gasto'].groupby('category_id')['quantity'].sum().reset_index()
                 for _, r in pd.merge(pd.DataFrame(cat_g), g_cat_an, left_on='id', right_on='category_id', how='left').fillna(0).iterrows():
@@ -221,25 +223,35 @@ if st.session_state.user:
                     st.write(f"{'🟢' if p_an < 0.8 else '🟡' if p_an <= 1 else '🔴'} **{r['name']}**: {r['quantity']:.2f}€ / {b_an:.2f}€")
                     st.progress(min(p_an, 1.0))
 
-    # --- 7. PERFIL ---
+    # --- 7. PERFIL (CORREGIDO Y SEGURO) ---
     with tab_perfil:
         st.subheader("Configuración de Perfil")
         p_res = supabase.table("profiles").select("*").eq("id", st.session_state.user.id).maybe_single().execute()
-        p_data = p_res.data if p_res.data else {}
+        
+        # FIX: Comprobación robusta de existencia de datos
+        p_data = p_res.data if (hasattr(p_res, 'data') and p_res.data) else {}
+        
         col_p1, col_p2 = st.columns([1, 2])
         with col_p1:
             if p_data.get('avatar_url'): st.image(p_data['avatar_url'], width=150)
-            else: st.info("Sin foto")
-            new_avatar = st.text_input("URL Avatar", value=p_data.get('avatar_url', ""))
+            else: st.info("Sin foto configurada")
+            new_avatar = st.text_input("URL Avatar (Imagen)", value=p_data.get('avatar_url', ""))
         with col_p2:
             with st.form("perfil_form"):
-                n_name = st.text_input("Nombre (name)", value=p_data.get('name', ""))
-                n_lastname = st.text_input("Apellido (lastname)", value=p_data.get('lastname', ""))
+                n_name = st.text_input("Nombre", value=p_data.get('name', ""))
+                n_lastname = st.text_input("Apellido", value=p_data.get('lastname', ""))
                 n_social = st.toggle("Elegible para gastos en grupo", value=p_data.get('social_active', False))
                 if st.form_submit_button("Actualizar Perfil"):
-                    payload = {"id": st.session_state.user.id, "name": n_name, "lastname": n_lastname, "avatar_url": new_avatar, "social_active": n_social, "updated_at": str(datetime.now())}
+                    payload = {
+                        "id": st.session_state.user.id, 
+                        "name": n_name, 
+                        "lastname": n_lastname, 
+                        "avatar_url": new_avatar, 
+                        "social_active": n_social, 
+                        "updated_at": str(datetime.now())
+                    }
                     supabase.table("profiles").upsert(payload).execute()
-                    st.success("¡Perfil actualizado!")
+                    st.success("¡Perfil actualizado con éxito!")
                     st.rerun()
 else:
-    st.info("Inicia sesión para continuar.")
+    st.info("Inicia sesión en el panel lateral para empezar.")
