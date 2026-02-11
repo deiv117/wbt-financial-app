@@ -2,6 +2,7 @@ import streamlit as st
 from supabase import create_client, Client
 import pandas as pd
 from datetime import datetime
+import plotly.express as px # Nueva librería para gráficos bonitos
 
 # 1. Conexión segura con Supabase
 url = st.secrets["SUPABASE_URL"]
@@ -10,6 +11,8 @@ supabase: Client = create_client(url, key)
 
 st.set_page_config(page_title="Mis Gastos", page_icon="💰")
 st.title("💰 Mi App de Gastos")
+
+# IMPORTANTE: Asegúrate de añadir 'plotly' a tu archivo requirements.txt en GitHub
 
 # --- CONTROL DE SESIÓN ---
 if 'user' not in st.session_state:
@@ -36,7 +39,6 @@ with st.sidebar:
 if st.session_state.user:
     tab_gastos, tab_categorias, tab_informes = st.tabs(["💸 Movimientos", "⚙️ Categorías", "📊 Resumen Mensual"])
 
-    # --- CARGAR CATEGORÍAS (Para uso en varias pestañas) ---
     res_cats = supabase.table("user_categories").select("*").execute()
     current_cats = res_cats.data if res_cats.data else []
 
@@ -49,8 +51,7 @@ if st.session_state.user:
                 name = st.text_input("Nombre")
                 budget = st.number_input("Presupuesto (€)", min_value=0.0)
                 if st.form_submit_button("Guardar"):
-                    if name.upper() in cat_names_upper:
-                        st.error("Ya existe.")
+                    if name.upper() in cat_names_upper: st.error("Ya existe.")
                     elif name:
                         supabase.table("user_categories").insert({"user_id": st.session_state.user.id, "name": name, "budget": budget}).execute()
                         st.rerun()
@@ -62,30 +63,33 @@ if st.session_state.user:
                 supabase.table("user_categories").delete().eq("id", c['id']).execute()
                 st.rerun()
 
-    # --- PESTAÑA: MOVIMIENTOS ---
+    # --- PESTAÑA: MOVIMIENTOS (CON SELECTOR DE FECHA) ---
     with tab_gastos:
         st.subheader("Nuevo Movimiento")
-        qty = st.number_input("Cantidad (€)", min_value=0.0, step=0.01)
-        t_type = st.selectbox("Tipo", ["Gasto", "Ingreso"])
+        col_q, col_t = st.columns(2)
+        qty = col_q.number_input("Cantidad (€)", min_value=0.0, step=0.01)
+        t_type = col_t.selectbox("Tipo", ["Gasto", "Ingreso"])
+        
+        # EL NUEVO CAMPO DE FECHA:
+        fecha_mov = st.date_input("Fecha del movimiento", datetime.now())
+        
         options = {c['name']: c['id'] for c in current_cats}
         if options:
             sel_cat = st.selectbox("Categoría", options.keys())
             if st.button("Registrar"):
-                # Enviamos la fecha actual formateada para Supabase
-                fecha_hoy = datetime.now().strftime("%Y-%m-%d")
                 supabase.table("user_imputs").insert({
                     "user_id": st.session_state.user.id, 
                     "quantity": qty, 
                     "type": t_type, 
                     "category_id": options[sel_cat],
-                    "date": fecha_hoy
+                    "date": str(fecha_mov) # Guardamos la fecha elegida
                 }).execute()
                 st.success("¡Registrado!")
                 st.rerun()
         
         st.divider()
         st.subheader("Últimos 10 registros")
-        res_inputs = supabase.table("user_imputs").select("*, user_categories(name)").order("id", desc=True).limit(10).execute()
+        res_inputs = supabase.table("user_imputs").select("*, user_categories(name)").order("date", desc=True).limit(10).execute()
         if res_inputs.data:
             for i in res_inputs.data:
                 c1, c2, c3, c4 = st.columns([2, 1, 1, 1])
@@ -96,65 +100,50 @@ if st.session_state.user:
                     supabase.table("user_imputs").delete().eq("id", i['id']).execute()
                     st.rerun()
 
-    # --- PESTAÑA: INFORMES (CON FILTRO POR MES) ---
+    # --- PESTAÑA: INFORMES (CON GRÁFICO) ---
     with tab_informes:
         st.subheader("Análisis de Gastos")
-        
-        # Selectores de fecha
         col_m, col_a = st.columns(2)
-        mes_actual = datetime.now().month
-        año_actual = datetime.now().year
-        
         meses = ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"]
-        sel_mes_nombre = col_m.selectbox("Mes", meses, index=mes_actual-1)
-        sel_mes_num = meses.index(sel_mes_nombre) + 1
-        sel_año = col_a.selectbox("Año", range(año_actual-2, año_actual+1), index=2)
+        sel_mes_nombre = col_m.selectbox("Mes", meses, index=datetime.now().month-1)
+        sel_año = col_a.selectbox("Año", range(datetime.now().year-2, datetime.now().year+1), index=2)
 
-        # Cargar todos los movimientos del usuario
-        inputs_data = supabase.table("user_imputs").select("quantity, type, category_id, date").execute().data
+        inputs_data = supabase.table("user_imputs").select("quantity, type, category_id, date, user_categories(name)").execute().data
         
         if current_cats and inputs_data:
-            df_cats = pd.DataFrame(current_cats)
             df_inputs = pd.DataFrame(inputs_data)
-            
-            # Convertir columna date a formato fecha de Python
             df_inputs['date'] = pd.to_datetime(df_inputs['date'])
-            
-            # FILTRAR por el mes y año seleccionados
-            df_filtrado = df_inputs[
-                (df_inputs['date'].dt.month == sel_mes_num) & 
-                (df_inputs['date'].dt.year == sel_año)
-            ]
+            df_filtrado = df_inputs[(df_inputs['date'].dt.month == meses.index(sel_mes_nombre) + 1) & (df_inputs['date'].dt.year == sel_año)]
             
             if not df_filtrado.empty:
-                # Calcular gastos e ingresos del mes
-                gastos_mes = df_filtrado[df_filtrado['type'] == 'Gasto'].groupby('category_id')['quantity'].sum().reset_index()
-                ingresos_total = df_filtrado[df_filtrado['type'] == 'Ingreso']['quantity'].sum()
-                gastos_total = df_filtrado[df_filtrado['type'] == 'Gasto']['quantity'].sum()
-
-                # Resumen rápido
+                ingresos = df_filtrado[df_filtrado['type'] == 'Ingreso']['quantity'].sum()
+                gastos = df_filtrado[df_filtrado['type'] == 'Gasto']['quantity'].sum()
+                
                 c1, c2, c3 = st.columns(3)
-                c1.metric("Ingresos", f"{ingresos_total}€")
-                c2.metric("Gastos", f"{gastos_total}€", delta=f"-{gastos_total}€", delta_color="inverse")
-                c3.metric("Ahorro", f"{ingresos_total - gastos_total}€")
+                c1.metric("Ingresos", f"{ingresos}€")
+                c2.metric("Gastos", f"{gastos}€")
+                c3.metric("Ahorro", f"{ingresos - gastos}€")
+
+                # GRÁFICO DE TARTA (Distribución del gasto)
+                df_gastos = df_filtrado[df_filtrado['type'] == 'Gasto']
+                if not df_gastos.empty:
+                    # Extraer el nombre de la categoría para el gráfico
+                    df_gastos['cat_name'] = df_gastos['user_categories'].apply(lambda x: x['name'] if x else 'S/C')
+                    fig = px.pie(df_gastos, values='quantity', names='cat_name', title='Distribución por Categoría')
+                    st.plotly_chart(fig, use_container_width=True)
 
                 st.divider()
-                
-                # Unir con categorías para ver presupuesto
+                # Barras de presupuesto
+                gastos_mes = df_gastos.groupby('category_id')['quantity'].sum().reset_index()
+                df_cats = pd.DataFrame(current_cats)
                 rep = pd.merge(df_cats, gastos_mes, left_on='id', right_on='category_id', how='left').fillna(0)
-                
                 for _, r in rep.iterrows():
-                    # Solo mostrar categorías que tienen presupuesto o algún gasto
                     if r['budget'] > 0 or r['quantity'] > 0:
-                        st.write(f"**{r['name']}**")
-                        prog = min(r['quantity']/r['budget'], 1.0) if r['budget'] > 0 else 0
-                        color = "green" if r['quantity'] <= r['budget'] else "red"
-                        st.progress(prog)
-                        st.write(f"Consumido: {r['quantity']}€ de {r['budget']}€")
+                        st.write(f"**{r['name']}** ({r['quantity']}€ / {r['budget']}€)")
+                        st.progress(min(r['quantity']/r['budget'], 1.0) if r['budget'] > 0 else 0)
             else:
-                st.info(f"No hay movimientos registrados en {sel_mes_nombre} de {sel_año}.")
+                st.info("No hay datos para este mes.")
         else:
-            st.info("Aún no tienes suficientes datos.")
-
+            st.info("Crea categorías y movimientos primero.")
 else:
     st.info("Inicia sesión para continuar.")
