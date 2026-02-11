@@ -44,18 +44,16 @@ with st.sidebar:
 
 # --- CONTENIDO PRINCIPAL ---
 if st.session_state.user:
-    tab_gastos, tab_categorias, tab_informes = st.tabs(["💸 Movimientos", "⚙️ Categorías", "📊 Resumen Mensual"])
+    tab_gastos, tab_categorias, tab_informes, tab_anual = st.tabs(["💸 Movimientos", "⚙️ Categorías", "📊 Resumen Mensual", "📅 Resumen Anual"])
 
     # --- CARGA Y ORDENACIÓN DE CATEGORÍAS ---
     res_cats = supabase.table("user_categories").select("*").execute()
-    # Ordenamos las categorías alfabéticamente por el campo 'name'
     current_cats = sorted(res_cats.data, key=lambda x: x['name'].lower()) if res_cats.data else []
 
     # --- PESTAÑA: GESTIONAR CATEGORÍAS ---
     with tab_categorias:
         st.subheader("Tus Categorías")
         cat_names_upper = [c['name'].upper() for c in current_cats]
-        
         with st.expander("➕ Crear Nueva Categoría"):
             with st.form("form_cat"):
                 name = st.text_input("Nombre de categoría")
@@ -64,18 +62,13 @@ if st.session_state.user:
                     if name.upper() in cat_names_upper:
                         st.error("Esta categoría ya existe.")
                     elif name:
-                        supabase.table("user_categories").insert({
-                            "user_id": st.session_state.user.id, 
-                            "name": name, 
-                            "budget": budget
-                        }).execute()
+                        supabase.table("user_categories").insert({"user_id": st.session_state.user.id, "name": name, "budget": budget}).execute()
                         st.rerun()
-
         st.divider()
         for c in current_cats:
             col1, col2, col3 = st.columns([2, 1, 1])
             col1.write(f"**{c['name']}**")
-            col2.write(f"{c['budget']}€")
+            col2.write(f"{c['budget']}€/mes")
             if col3.button("Eliminar", key=f"del_cat_{c['id']}"):
                 supabase.table("user_categories").delete().eq("id", c['id']).execute()
                 st.rerun()
@@ -87,39 +80,22 @@ if st.session_state.user:
         qty = col_q.number_input("Cantidad (€)", min_value=0.0, step=0.01)
         t_type = col_t.selectbox("Tipo", ["Gasto", "Ingreso"])
         fecha_mov = st.date_input("Fecha", datetime.now())
-        
-        # LÓGICA DE SELECTOR VACÍO Y BUSCADOR
         if current_cats:
-            # Creamos la lista de nombres para el selector
             cat_list = [c['name'] for c in current_cats]
-            # Añadimos la opción vacía al principio
             display_options = ["Selecciona una categoría..."] + cat_list
-            
-            # El componente selectbox permite escribir para buscar automáticamente
             sel_cat_name = st.selectbox("Categoría", options=display_options, index=0)
-            
             if st.button("Guardar Registro"):
                 if sel_cat_name == "Selecciona una categoría...":
-                    st.warning("Por favor, selecciona una categoría válida.")
+                    st.warning("Selecciona una categoría.")
                 else:
-                    # Buscamos el ID de la categoría seleccionada
                     cat_id = next(c['id'] for c in current_cats if c['name'] == sel_cat_name)
-                    
-                    supabase.table("user_imputs").insert({
-                        "user_id": st.session_state.user.id, 
-                        "quantity": qty, 
-                        "type": t_type, 
-                        "category_id": cat_id,
-                        "date": str(fecha_mov)
-                    }).execute()
+                    supabase.table("user_imputs").insert({"user_id": st.session_state.user.id, "quantity": qty, "type": t_type, "category_id": cat_id, "date": str(fecha_mov)}).execute()
                     st.success("¡Anotado!")
                     st.rerun()
-        else:
-            st.warning("Crea una categoría primero en la pestaña correspondiente.")
-        
+        else: st.warning("Crea una categoría primero.")
         st.divider()
         st.subheader("Últimos Registros")
-        res_inputs = supabase.table("user_imputs").select("*, user_categories(name)").order("date", desc=True).limit(15).execute()
+        res_inputs = supabase.table("user_imputs").select("*, user_categories(name)").order("date", desc=True).limit(10).execute()
         if res_inputs.data:
             for i in res_inputs.data:
                 c1, c2, c3, c4 = st.columns([2, 1, 1, 1])
@@ -131,64 +107,92 @@ if st.session_state.user:
                     supabase.table("user_imputs").delete().eq("id", i['id']).execute()
                     st.rerun()
 
+    # --- CARGA GENERAL DE INPUTS PARA INFORMES ---
+    inputs_all = supabase.table("user_imputs").select("quantity, type, category_id, date, user_categories(name)").execute().data
+    df_all = pd.DataFrame(inputs_all) if inputs_all else pd.DataFrame()
+    if not df_all.empty:
+        df_all['date'] = pd.to_datetime(df_all['date'])
+
     # --- PESTAÑA: INFORMES MENSUALES ---
     with tab_informes:
         st.subheader("Análisis Mensual")
         col_m, col_a = st.columns(2)
         meses = ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"]
         sel_mes_nombre = col_m.selectbox("Mes", meses, index=datetime.now().month-1)
-        sel_año = col_a.selectbox("Año", range(datetime.now().year-2, datetime.now().year+1), index=2)
-
-        inputs_data = supabase.table("user_imputs").select("quantity, type, category_id, date, user_categories(name)").execute().data
+        sel_año_m = col_a.selectbox("Año ", range(datetime.now().year-2, datetime.now().year+1), index=2)
         
-        if current_cats and inputs_data:
-            df_inputs = pd.DataFrame(inputs_data)
-            df_inputs['date'] = pd.to_datetime(df_inputs['date'])
+        if not df_all.empty:
             sel_mes_num = meses.index(sel_mes_nombre) + 1
-            df_filtrado = df_inputs[(df_inputs['date'].dt.month == sel_mes_num) & (df_inputs['date'].dt.year == sel_año)]
-            
-            if not df_filtrado.empty:
-                ingresos = df_filtrado[df_filtrado['type'] == 'Ingreso']['quantity'].sum()
-                gastos = df_filtrado[df_filtrado['type'] == 'Gasto']['quantity'].sum()
+            df_m = df_all[(df_all['date'].dt.month == sel_mes_num) & (df_all['date'].dt.year == sel_año_m)]
+            if not df_m.empty:
+                ing_m = df_m[df_m['type'] == 'Ingreso']['quantity'].sum()
+                gas_m = df_m[df_m['type'] == 'Gasto']['quantity'].sum()
+                c1, c2, c3 = st.columns(3)
+                c1.metric("Ingresos", f"{round(ing_m,2)}€")
+                c2.metric("Gastos", f"{round(gas_m,2)}€")
+                c3.metric("Ahorro", f"{round(ing_m - gas_m, 2)}€")
+                
+                df_g_m = df_m[df_m['type'] == 'Gasto']
+                if not df_g_m.empty:
+                    df_g_m['cat_name'] = df_g_m['user_categories'].apply(lambda x: x['name'] if x else 'S/C')
+                    st.plotly_chart(px.pie(df_g_m, values='quantity', names='cat_name', title='Gasto Mensual', hole=0.4), use_container_width=True)
+                    
+                    st.divider()
+                    st.subheader("Presupuestos Mensuales")
+                    res_g_m = df_g_m.groupby('category_id')['quantity'].sum().reset_index()
+                    rep_m = pd.merge(pd.DataFrame(current_cats), res_g_m, left_on='id', right_on='category_id', how='left').fillna(0)
+                    for _, r in rep_m.iterrows():
+                        porc = r['quantity']/r['budget'] if r['budget'] > 0 else 0
+                        status = "🟢" if porc < 0.8 else "🟡" if porc <= 1.0 else "🔴"
+                        st.write(f"{status} **{r['name']}**")
+                        st.progress(min(porc, 1.0))
+                        st.write(f"{r['quantity']}€ de {r['budget']}€")
+            else: st.info("Sin datos este mes.")
+
+    # --- PESTAÑA: INFORMES ANUALES ---
+    with tab_anual:
+        st.subheader("Análisis Anual")
+        sel_año_a = st.selectbox("Selecciona Año", range(datetime.now().year-2, datetime.now().year+1), index=2)
+        
+        if not df_all.empty:
+            df_a = df_all[df_all['date'].dt.year == sel_año_a]
+            if not df_a.empty:
+                ing_a = df_a[df_a['type'] == 'Ingreso']['quantity'].sum()
+                gas_a = df_a[df_a['type'] == 'Gasto']['quantity'].sum()
                 
                 c1, c2, c3 = st.columns(3)
-                c1.metric("Ingresos", f"{ingresos}€")
-                c2.metric("Gastos", f"{gastos}€")
-                c3.metric("Ahorro", f"{ingresos - gastos}€")
+                c1.metric("Ingresos Anuales", f"{round(ing_a, 2)}€")
+                c2.metric("Gastos Anuales", f"{round(gas_a, 2)}€")
+                c3.metric("Balance Anual", f"{round(ing_a - gas_a, 2)}€")
 
-                df_gastos_pie = df_filtrado[df_filtrado['type'] == 'Gasto']
-                if not df_gastos_pie.empty:
-                    df_gastos_pie['cat_name'] = df_gastos_pie['user_categories'].apply(lambda x: x['name'] if x else 'S/C')
-                    fig = px.pie(df_gastos_pie, values='quantity', names='cat_name', title='Gasto por Categoría', hole=0.4)
-                    st.plotly_chart(fig, use_container_width=True)
+                # Gráfico de barras mensual del año
+                df_a['month'] = df_all['date'].dt.month
+                df_a_mes = df_a.groupby(['month', 'type'])['quantity'].sum().reset_index()
+                df_a_mes['Mes'] = df_a_mes['month'].apply(lambda x: meses[int(x)-1])
+                fig_bar = px.bar(df_a_mes, x='Mes', y='quantity', color='type', barmode='group', title='Ingresos vs Gastos por Mes')
+                st.plotly_chart(fig_bar, use_container_width=True)
 
                 st.divider()
-                st.subheader("Presupuestos")
-                # Aquí también usamos 'current_cats' que ya está ordenada alfabéticamente
-                gastos_por_cat = df_gastos_pie.groupby('category_id')['quantity'].sum().reset_index()
-                df_cats = pd.DataFrame(current_cats)
-                rep = pd.merge(df_cats, gastos_por_cat, left_on='id', right_on='category_id', how='left').fillna(0)
+                st.subheader("Presupuestos Anuales (Meta vs Real)")
+                df_g_a = df_a[df_a['type'] == 'Gasto']
+                res_g_a = df_g_a.groupby('category_id')['quantity'].sum().reset_index()
                 
-                for _, r in rep.iterrows():
-                    if r['budget'] > 0 or r['quantity'] > 0:
-                        porcentaje = r['quantity'] / r['budget'] if r['budget'] > 0 else 0
-                        if porcentaje < 0.8: status = "🟢"
-                        elif porcentaje <= 1.0: status = "🟡"
-                        else: status = "🔴"
-                        
-                        st.write(f"{status} **{r['name']}**")
-                        st.progress(min(porcentaje, 1.0))
-                        
-                        texto = f"{r['quantity']}€ de {r['budget']}€"
-                        if porcentaje > 1.0:
-                            st.write(f":red[{texto} - ¡Exceso de {round(r['quantity'] - r['budget'], 2)}€!]")
-                        else:
-                            st.write(texto)
-                        st.divider()
-            else:
-                st.info("No hay datos para el mes seleccionado.")
-        else:
-            st.info("Registra categorías y movimientos para ver el análisis.")
-
+                rep_a = pd.merge(pd.DataFrame(current_cats), res_g_a, left_on='id', right_on='category_id', how='left').fillna(0)
+                
+                for _, r in rep_a.iterrows():
+                    budget_anual = r['budget'] * 12
+                    porc_a = r['quantity'] / budget_anual if budget_anual > 0 else 0
+                    
+                    status_a = "🟢" if porc_a < 0.8 else "🟡" if porc_a <= 1.0 else "🔴"
+                    st.write(f"{status_a} **{r['name']}**")
+                    st.progress(min(porc_a, 1.0))
+                    
+                    texto_a = f"Gastado: {round(r['quantity'],2)}€ / Presupuesto Anual: {round(budget_anual,2)}€"
+                    if porc_a > 1.0:
+                        st.write(f":red[{texto_a} - ¡Exceso anual de {round(r['quantity'] - budget_anual, 2)}€!]")
+                    else:
+                        st.write(texto_a)
+                    st.divider()
+            else: st.info("No hay datos para este año.")
 else:
-    st.info("👋 ¡Hola! Inicia sesión para gestionar tus finanzas personales.")
+    st.info("👋 Inicia sesión para continuar.")
