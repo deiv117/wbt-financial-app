@@ -39,31 +39,9 @@ with st.sidebar:
         st.write(f"Hola, **{nombre_user}** 👋")
         
         st.divider()
-        menu_opcion = st.radio("Navegación", ["📊 Cuadro de Mando", "⚙️ Perfil"])
+        menu_opcion = st.radio("Navegación", ["📊 Cuadro de Mando", "⚙️ Perfil", "📥 Importar Datos"])
         st.divider()
         
-        # IMPORTACIÓN CSV (Mantenida en sidebar por utilidad)
-        st.subheader("📥 Importar Datos")
-        template_data = "fecha,cantidad,categoria\n2026-02-12,15.50,Alimentacion"
-        st.download_button(label="📄 Plantilla CSV", data=template_data, file_name="plantilla.csv", mime="text/csv")
-        uploaded_file = st.file_uploader("Subir CSV", type=["csv"])
-        if uploaded_file and st.button("🚀 Importar"):
-            try:
-                df_imp = pd.read_csv(uploaded_file)
-                res_c = supabase.table("user_categories").select("*").execute()
-                cat_map = {c['name'].upper(): (c['id'], c['type']) for c in res_c.data}
-                rows = []
-                for _, row in df_imp.iterrows():
-                    c_up = str(row['categoria']).upper()
-                    if c_up in cat_map:
-                        c_id, c_type = cat_map[c_up]
-                        rows.append({"user_id": st.session_state.user.id, "quantity": float(row['cantidad']), "type": c_type, "category_id": c_id, "date": str(row['fecha'])})
-                if rows:
-                    supabase.table("user_imputs").insert(rows).execute()
-                    st.success(f"¡{len(rows)} registros importados!")
-                    st.rerun()
-            except: st.error("Error al procesar archivo")
-
         if st.button("Cerrar Sesión"):
             supabase.auth.sign_out()
             st.session_state.user = None
@@ -83,7 +61,7 @@ def crear_categoria_dialog():
 # --- LÓGICA DE CONTENIDO ---
 if st.session_state.user:
     
-    # 1. PÁGINA PERFIL
+    # --- PÁGINA: PERFIL ---
     if menu_opcion == "⚙️ Perfil":
         st.title("⚙️ Configuración de Perfil")
         p_res = supabase.table("profiles").select("*").eq("id", st.session_state.user.id).maybe_single().execute()
@@ -105,7 +83,57 @@ if st.session_state.user:
                     st.success("¡Perfil actualizado!")
                     st.rerun()
 
-    # 2. PÁGINA CUADRO DE MANDO
+    # --- PÁGINA: IMPORTAR DATOS ---
+    elif menu_opcion == "📥 Importar Datos":
+        st.title("📥 Centro de Importación CSV")
+        st.markdown("""
+        Esta sección te permite cargar múltiples movimientos de una sola vez usando un archivo CSV.
+        Asegúrate de que los nombres de las categorías coincidan exactamente con las que has creado.
+        """)
+        
+        col_i1, col_i2 = st.columns(2)
+        
+        with col_i1:
+            with st.container(border=True):
+                st.subheader("1. Descarga la Plantilla")
+                st.write("Usa este archivo como base para rellenar tus datos.")
+                template_data = "fecha,cantidad,categoria\n2026-02-12,15.50,Alimentacion\n2026-02-13,1200.00,Nomina"
+                st.download_button(label="📄 Descargar Plantilla .CSV", data=template_data, file_name="plantilla_gastos.csv", mime="text/csv")
+        
+        with col_i2:
+            with st.container(border=True):
+                st.subheader("2. Sube tu archivo")
+                uploaded_file = st.file_uploader("Selecciona tu archivo CSV", type=["csv"])
+                if uploaded_file:
+                    df_preview = pd.read_csv(uploaded_file)
+                    st.write("Vista previa de los datos:")
+                    st.dataframe(df_preview.head(), use_container_width=True)
+                    
+                    if st.button("🚀 Confirmar e Importar Todo"):
+                        try:
+                            res_c = supabase.table("user_categories").select("*").execute()
+                            cat_map = {c['name'].upper(): (c['id'], c['type']) for c in res_c.data}
+                            rows = []
+                            for _, row in df_preview.iterrows():
+                                c_up = str(row['categoria']).upper()
+                                if c_up in cat_map:
+                                    c_id, c_type = cat_map[c_up]
+                                    rows.append({
+                                        "user_id": st.session_state.user.id, 
+                                        "quantity": float(row['cantidad']), 
+                                        "type": c_type, 
+                                        "category_id": c_id, 
+                                        "date": str(row['fecha'])
+                                    })
+                            if rows:
+                                supabase.table("user_imputs").insert(rows).execute()
+                                st.success(f"¡Éxito! Se han importado {len(rows)} registros.")
+                            else:
+                                st.warning("No se encontraron categorías coincidentes. Revisa los nombres.")
+                        except Exception as e:
+                            st.error(f"Error técnico: {e}")
+
+    # --- PÁGINA: CUADRO DE MANDO ---
     else:
         st.title("📊 Panel de Control")
         tab_gastos, tab_historial, tab_categorias, tab_prevision, tab_informes, tab_anual = st.tabs([
