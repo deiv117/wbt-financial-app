@@ -3,7 +3,6 @@ from supabase import create_client, Client
 import pandas as pd
 from datetime import datetime
 import plotly.express as px
-import plotly.graph_objects as go
 
 # 1. CONEXIÓN SEGURA CON SUPABASE
 url = st.secrets["SUPABASE_URL"]
@@ -43,7 +42,7 @@ with st.sidebar:
             st.session_state.user = None
             st.rerun()
 
-# --- FUNCIONES POP-UP (DIALOGS) ---
+# --- FUNCIONES POP-UP ---
 @st.dialog("➕ Crear Nueva Categoría")
 def crear_categoria_dialog(current_cats):
     name = st.text_input("Nombre de categoría")
@@ -65,88 +64,69 @@ def crear_categoria_dialog(current_cats):
 
 # --- CONTENIDO PRINCIPAL ---
 if st.session_state.user:
-    # AÑADIDA LA PESTAÑA DE PREVISIÓN
     tab_gastos, tab_categorias, tab_prevision, tab_informes, tab_anual = st.tabs([
         "💸 Movimientos", "⚙️ Categorías", "🔮 Previsión", "📊 Mensual", "📅 Anual"
     ])
 
-    # Carga de categorías
+    # Carga de datos
     res_cats = supabase.table("user_categories").select("*").execute()
     current_cats = sorted(res_cats.data, key=lambda x: x['name'].lower()) if res_cats.data else []
 
-    # Carga de movimientos para cálculos
     inputs_all = supabase.table("user_imputs").select("quantity, type, category_id, date, user_categories(name)").execute().data
     df_all = pd.DataFrame(inputs_all) if inputs_all else pd.DataFrame()
     if not df_all.empty:
         df_all['date'] = pd.to_datetime(df_all['date'])
 
-    # --- PESTAÑA: PREVISIÓN (NUEVA) ---
+    # --- PESTAÑA: PREVISIÓN ---
     with tab_prevision:
-        st.subheader("🔮 Previsión de Gastos Mensuales")
-        st.info("Este es tu escenario teórico basado en tus presupuestos.")
-
-        cat_gastos = [c for c in current_cats if c.get('type') == 'Gasto']
-        total_presupuestado = sum(c['budget'] for c in cat_gastos)
+        st.subheader("🔮 Previsión Mensual Teórica")
         
-        # Calcular ingresos medios (últimos 3 meses) para la previsión
+        cat_gastos = [c for c in current_cats if c.get('type') == 'Gasto']
+        total_previsto = sum(c['budget'] for c in cat_gastos)
+        
         ingresos_medios = 0
         if not df_all.empty:
             df_ing = df_all[df_all['type'] == 'Ingreso']
             if not df_ing.empty:
+                # Media de ingresos de los meses que tienen datos
                 ingresos_medios = df_ing.groupby(df_ing['date'].dt.to_period('M'))['quantity'].sum().mean()
 
         c1, c2, c3 = st.columns(3)
-        c1.metric("Gasto Comprometido", f"{round(total_presupuestado, 2)}€", help="Suma de todos tus presupuestos mensuales")
-        c2.metric("Ingreso Estimado", f"{round(ingresos_medios, 2)}€", help="Media de tus ingresos mensuales reales")
-        balance_prev = ingresos_medios - total_presupuestado
-        c3.metric("Capacidad de Ahorro", f"{round(balance_prev, 2)}€", delta=f"{round(balance_prev,2)}€", delta_color="normal")
+        c1.metric("Gasto Presupuestado", f"{total_previsto:.2f}€")
+        c2.metric("Media Ingresos Reales", f"{ingresos_medios:.2f}€")
+        balance = ingresos_medios - total_previsto
+        c3.metric("Ahorro Potencial", f"{balance:.2f}€")
 
         st.divider()
-        st.markdown("### 📋 Desglose de Previsión por Categoría")
         
         if cat_gastos:
-            prev_data = []
-            for c in cat_gastos:
-                # Gasto real del mes actual para comparar
-                real_mes_actual = 0
-                if not df_all.empty:
-                    mes_act = datetime.now().month
-                    año_act = datetime.now().year
-                    real_mes_actual = df_all[(df_all['category_id'] == c['id']) & 
-                                            (df_all['date'].dt.month == mes_act) & 
-                                            (df_all['date'].dt.year == año_act)]['quantity'].sum()
-                
-                prev_data.append({
-                    "Categoría": c['name'],
-                    "Presupuesto": c['budget'],
-                    "Real (Este mes)": real_mes_actual
-                })
+            col_graph, col_table = st.columns([1, 1])
             
-            df_prev = pd.DataFrame(prev_data)
+            df_prev = pd.DataFrame(cat_gastos)
             
-            # Gráfico comparativo
-            fig_prev = go.Figure(data=[
-                go.Bar(name='Presupuesto', x=df_prev['Categoría'], y=df_prev['Presupuesto'], marker_color='lightgray'),
-                go.Bar(name='Real (Actual)', x=df_prev['Categoría'], y=df_prev['Real (Este mes)'], marker_color='#1f77b4')
-            ])
-            fig_prev.update_layout(barmode='group', title="Presupuesto vs Realidad (Mes en curso)")
-            st.plotly_chart(fig_prev, use_container_width=True)
+            with col_graph:
+                st.write("**Distribución del Gasto Previsto**")
+                fig = px.pie(df_prev, values='budget', names='name', hole=0.4)
+                st.plotly_chart(fig, use_container_width=True)
             
-            # Tabla de alertas rápida
-            with st.expander("Ver lista de previsiones"):
-                st.table(df_prev)
+            with col_table:
+                st.write("**Detalle de Presupuestos**")
+                # Formateamos la tabla para que se vea limpia
+                df_table = df_prev[['name', 'budget']].copy()
+                df_table.columns = ['Categoría', 'Presupuesto']
+                df_table['Presupuesto'] = df_table['Presupuesto'].map('{:.2f}€'.format)
+                st.dataframe(df_table, hide_index=True, use_container_width=True)
         else:
-            st.warning("No tienes categorías de gasto con presupuesto definido.")
+            st.warning("Añade categorías de gasto con presupuesto para ver la previsión.")
 
     # --- PESTAÑA: CATEGORÍAS ---
     with tab_categorias:
         st.subheader("Gestión de Categorías")
         if st.button("➕ Añadir Categoría"):
             crear_categoria_dialog(current_cats)
-
+        
         st.divider()
         col_ing, col_gas = st.columns(2)
-        
         with col_ing:
             st.markdown("### 📈 Ingresos")
             for c in [cat for cat in current_cats if cat.get('type') == "Ingreso"]:
@@ -170,7 +150,7 @@ if st.session_state.user:
             for c in [cat for cat in current_cats if cat.get('type') == "Gasto"]:
                 with st.container(border=True):
                     st.write(f"**{c['name']}**")
-                    st.caption(f"Presupuesto: {c['budget']}€")
+                    st.caption(f"Presupuesto: {c['budget']:.2f}€")
                     c1, c2 = st.columns(2)
                     if c1.button("📝", key=f"ed_g_{c['id']}"): st.session_state[f"edit_{c['id']}"] = True
                     if c2.button("🗑️", key=f"del_g_{c['id']}"):
@@ -210,29 +190,28 @@ if st.session_state.user:
             for i in res_i.data:
                 c1, c2, c3, c4 = st.columns([2, 1, 1, 1])
                 c1.write(f"**{i['date']}** | {i['user_categories']['name'] if i['user_categories'] else 'S/C'}")
-                c2.write(f"{i['quantity']}€")
+                c2.write(f"{i['quantity']:.2f}€")
                 c3.write("📉" if i['type'] == "Gasto" else "📈")
                 if c4.button("🗑️", key=f"del_i_row_{i['id']}"):
                     supabase.table("user_imputs").delete().eq("id", i['id']).execute()
                     st.rerun()
 
-    # --- INFORMES MENSUALES ---
+    # --- PESTAÑAS INFORMES (MISMA LÓGICA ANTERIOR) ---
     with tab_informes:
         st.subheader("Resumen Mensual")
         col_m, col_a = st.columns(2)
         meses = ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"]
         sel_mes = col_m.selectbox("Mes", meses, index=datetime.now().month-1)
         sel_año_m = col_a.selectbox("Año ", range(datetime.now().year-2, datetime.now().year+1), index=2)
-        
         if not df_all.empty:
             df_m = df_all[(df_all['date'].dt.month == meses.index(sel_mes)+1) & (df_all['date'].dt.year == sel_año_m)]
             if not df_m.empty:
                 ing_m = df_m[df_m['type'] == 'Ingreso']['quantity'].sum()
                 gas_m = df_m[df_m['type'] == 'Gasto']['quantity'].sum()
                 c1, c2, c3 = st.columns(3)
-                c1.metric("Ingresos", f"{round(ing_m,2)}€")
-                c2.metric("Gastos", f"{round(gas_m,2)}€")
-                c3.metric("Ahorro", f"{round(ing_m - gas_m, 2)}€")
+                c1.metric("Ingresos", f"{ing_m:.2f}€")
+                c2.metric("Gastos", f"{gas_m:.2f}€")
+                c3.metric("Ahorro", f"{(ing_m - gas_m):.2f}€")
                 
                 df_g_m = df_m[df_m['type'] == 'Gasto']
                 if not df_g_m.empty:
@@ -240,7 +219,6 @@ if st.session_state.user:
                     st.plotly_chart(px.pie(df_g_m, values='quantity', names='cat_name', hole=0.4), use_container_width=True)
                     
                     st.divider()
-                    st.subheader("Estado de Presupuestos")
                     gastos_cat_m = df_g_m.groupby('category_id')['quantity'].sum().reset_index()
                     cat_gastos_list = [c for c in current_cats if c.get('type') == 'Gasto']
                     if cat_gastos_list:
@@ -250,11 +228,9 @@ if st.session_state.user:
                             status = "🟢" if porc < 0.8 else "🟡" if porc <= 1.0 else "🔴"
                             st.write(f"{status} **{r['name']}**")
                             st.progress(min(porc, 1.0))
-                            st.write(f"{round(r['quantity'],2)}€ de {r['budget']}€")
+                            st.write(f"{r['quantity']:.2f}€ de {r['budget']:.2f}€")
                             st.divider()
-            else: st.info("No hay datos este mes.")
 
-    # --- PESTAÑA: ANUAL ---
     with tab_anual:
         st.subheader("Resumen Anual")
         sel_año_a = st.selectbox("Año Seleccionado", range(datetime.now().year-2, datetime.now().year+1), index=2)
@@ -264,23 +240,8 @@ if st.session_state.user:
                 ing_a = df_a[df_a['type'] == 'Ingreso']['quantity'].sum()
                 gas_a = df_a[df_a['type'] == 'Gasto']['quantity'].sum()
                 c1, c2, c3 = st.columns(3)
-                c1.metric("Ingresos", f"{round(ing_a,2)}€")
-                c2.metric("Gastos", f"{round(gas_a,2)}€")
-                c3.metric("Balance", f"{round(ing_a - gas_a,2)}€")
-                
-                st.divider()
-                st.subheader("Control Anual (Presupuesto x12)")
-                df_g_a = df_a[df_a['type'] == 'Gasto']
-                gastos_cat_a = df_g_a.groupby('category_id')['quantity'].sum().reset_index()
-                if cat_gastos:
-                    rep_a = pd.merge(pd.DataFrame(cat_gastos), gastos_cat_a, left_on='id', right_on='category_id', how='left').fillna(0)
-                    for _, r in rep_a.iterrows():
-                        b_anual = r['budget'] * 12
-                        porc_a = r['quantity'] / b_anual if b_anual > 0 else 0
-                        status_a = "🟢" if porc_a < 0.8 else "🟡" if porc_a <= 1.0 else "🔴"
-                        st.write(f"{status_a} **{r['name']}**")
-                        st.progress(min(porc_a, 1.0))
-                        st.write(f"{round(r['quantity'],2)}€ de {round(b_anual,2)}€")
-                        st.divider()
+                c1.metric("Ingresos", f"{ing_a:.2f}€")
+                c2.metric("Gastos", f"{gas_a:.2f}€")
+                c3.metric("Balance", f"{(ing_a - gas_a):.2f}€")
 else:
     st.info("Inicia sesión para continuar.")
