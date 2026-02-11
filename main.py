@@ -45,35 +45,36 @@ with st.sidebar:
 # --- FUNCIONES POP-UP (DIALOGS) ---
 @st.dialog("➕ Crear Nueva Categoría")
 def crear_categoria_dialog(current_cats):
-    with st.form("form_pop_cat", clear_on_submit=True):
-        name = st.text_input("Nombre de categoría")
-        c_type = st.selectbox("Tipo", ["Gasto", "Ingreso"])
+    # Usamos un contenedor para que el formulario reaccione al cambio de tipo
+    name = st.text_input("Nombre de categoría")
+    c_type = st.selectbox("Tipo", ["Gasto", "Ingreso"])
+    
+    # Lógica condicional: Solo mostrar presupuesto si es Gasto
+    budget = 0.0
+    if c_type == "Gasto":
         budget = st.number_input("Presupuesto Mensual (€)", min_value=0.0, step=10.0)
-        
-        if st.form_submit_button("Guardar"):
-            exists = any(c['name'].upper() == name.upper() and c.get('type') == c_type for c in current_cats)
-            if exists:
-                st.error("Ya existe esta categoría.")
-            elif name:
-                supabase.table("user_categories").insert({
-                    "user_id": st.session_state.user.id, 
-                    "name": name, "type": c_type, "budget": budget
-                }).execute()
-                st.rerun()
+    
+    if st.button("Guardar"):
+        exists = any(c['name'].upper() == name.upper() and c.get('type') == c_type for c in current_cats)
+        if exists:
+            st.error("Ya existe esta categoría.")
+        elif name:
+            supabase.table("user_categories").insert({
+                "user_id": st.session_state.user.id, 
+                "name": name, "type": c_type, "budget": budget
+            }).execute()
+            st.rerun()
 
 # --- CONTENIDO PRINCIPAL ---
 if st.session_state.user:
     tab_gastos, tab_categorias, tab_informes, tab_anual = st.tabs(["💸 Movimientos", "⚙️ Categorías", "📊 Mensual", "📅 Anual"])
 
-    # Carga de categorías
     res_cats = supabase.table("user_categories").select("*").execute()
     current_cats = sorted(res_cats.data, key=lambda x: x['name'].lower()) if res_cats.data else []
 
     # --- PESTAÑA: CATEGORÍAS ---
     with tab_categorias:
         st.subheader("Gestión de Categorías")
-        
-        # Botón que dispara el Pop-up
         if st.button("➕ Añadir Categoría"):
             crear_categoria_dialog(current_cats)
 
@@ -94,9 +95,14 @@ if st.session_state.user:
                     
                     if st.session_state.get(f"edit_{c['id']}", False):
                         with st.form(f"f_ed_{c['id']}"):
-                            n_type = st.selectbox("Tipo", ["Gasto", "Ingreso"], index=1)
+                            n_type = st.selectbox("Cambiar a", ["Gasto", "Ingreso"], index=1)
+                            # En edición también aplicamos la lógica si cambia a Gasto
+                            n_budget = 0.0
+                            if n_type == "Gasto":
+                                n_budget = st.number_input("Asignar Presupuesto", min_value=0.0)
+                            
                             if st.form_submit_button("Actualizar"):
-                                supabase.table("user_categories").update({"type": n_type}).eq("id", c['id']).execute()
+                                supabase.table("user_categories").update({"type": n_type, "budget": n_budget}).eq("id", c['id']).execute()
                                 st.session_state[f"edit_{c['id']}"] = False
                                 st.rerun()
 
@@ -116,7 +122,10 @@ if st.session_state.user:
                     if st.session_state.get(f"edit_{c['id']}", False):
                         with st.form(f"f_ed_g_{c['id']}"):
                             n_type = st.selectbox("Tipo", ["Gasto", "Ingreso"], index=0)
-                            n_budget = st.number_input("Presupuesto", value=float(c['budget']))
+                            n_budget = 0.0
+                            if n_type == "Gasto":
+                                n_budget = st.number_input("Presupuesto", value=float(c['budget']))
+                            
                             if st.form_submit_button("Actualizar"):
                                 supabase.table("user_categories").update({"type": n_type, "budget": n_budget}).eq("id", c['id']).execute()
                                 st.session_state[f"edit_{c['id']}"] = False
@@ -139,7 +148,7 @@ if st.session_state.user:
                 supabase.table("user_imputs").insert({"user_id": st.session_state.user.id, "quantity": qty, "type": t_type, "category_id": c_id, "date": str(fecha_mov)}).execute()
                 st.success("¡Registrado!")
                 st.rerun()
-        else: st.warning("No hay categorías para este tipo.")
+        else: st.warning(f"Crea primero una categoría de {t_type}.")
 
         st.divider()
         res_i = supabase.table("user_imputs").select("*, user_categories(name)").order("date", desc=True).limit(10).execute()
@@ -154,15 +163,12 @@ if st.session_state.user:
                     st.rerun()
 
     # --- INFORMES (MENSUAL Y ANUAL) ---
-    # [Aquí se mantiene la misma lógica de los informes mensuales y anuales de la versión anterior]
-    # (Para no alargar el código, recuerda que la lógica de las pestañas Informes y Anual ya está optimizada)
     inputs_all = supabase.table("user_imputs").select("quantity, type, category_id, date, user_categories(name)").execute().data
     df_all = pd.DataFrame(inputs_all) if inputs_all else pd.DataFrame()
     if not df_all.empty:
         df_all['date'] = pd.to_datetime(df_all['date'])
 
     with tab_informes:
-        # Lógica mensual... (Igual que el anterior)
         st.subheader("Resumen Mensual")
         col_m, col_a = st.columns(2)
         meses = ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"]
@@ -173,9 +179,10 @@ if st.session_state.user:
             if not df_m.empty:
                 ing_m = df_m[df_m['type'] == 'Ingreso']['quantity'].sum()
                 gas_m = df_m[df_m['type'] == 'Gasto']['quantity'].sum()
-                st.columns(3)[0].metric("Ingresos", f"{round(ing_m,2)}€")
-                st.columns(3)[1].metric("Gastos", f"{round(gas_m,2)}€")
-                st.columns(3)[2].metric("Ahorro", f"{round(ing_m - gas_m, 2)}€")
+                c1, c2, c3 = st.columns(3)
+                c1.metric("Ingresos", f"{round(ing_m,2)}€")
+                c2.metric("Gastos", f"{round(gas_m,2)}€")
+                c3.metric("Ahorro", f"{round(ing_m - gas_m, 2)}€")
                 
                 df_g_m = df_m[df_m['type'] == 'Gasto']
                 if not df_g_m.empty:
@@ -183,7 +190,6 @@ if st.session_state.user:
                     st.plotly_chart(px.pie(df_g_m, values='quantity', names='cat_name', hole=0.4), use_container_width=True)
 
     with tab_anual:
-        # Lógica anual... (Igual que el anterior)
         st.subheader("Resumen Anual")
         sel_año_a = st.selectbox("Año", range(datetime.now().year-2, datetime.now().year+1), index=2)
         if not df_all.empty:
@@ -191,9 +197,9 @@ if st.session_state.user:
             if not df_a.empty:
                 ing_a = df_a[df_a['type'] == 'Ingreso']['quantity'].sum()
                 gas_a = df_a[df_a['type'] == 'Gasto']['quantity'].sum()
-                st.columns(3)[0].metric("Ingresos", f"{round(ing_a,2)}€")
-                st.columns(3)[1].metric("Gastos", f"{round(gas_a,2)}€")
-                st.columns(3)[2].metric("Balance", f"{round(ing_a - gas_a,2)}€")
-
+                c1, c2, c3 = st.columns(3)
+                c1.metric("Ingresos", f"{round(ing_a,2)}€")
+                c2.metric("Gastos", f"{round(gas_a,2)}€")
+                c3.metric("Balance", f"{round(ing_a - gas_a,2)}€")
 else:
     st.info("Inicia sesión para continuar.")
