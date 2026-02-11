@@ -47,54 +47,89 @@ if st.session_state.user:
     tab_gastos, tab_categorias, tab_informes, tab_anual = st.tabs(["💸 Movimientos", "⚙️ Categorías", "📊 Resumen Mensual", "📅 Resumen Anual"])
 
     # --- CARGA Y ORDENACIÓN DE CATEGORÍAS ---
+    # Nota: Asegúrate de que tu tabla 'user_categories' tenga una columna llamada 'type'
     res_cats = supabase.table("user_categories").select("*").execute()
     current_cats = sorted(res_cats.data, key=lambda x: x['name'].lower()) if res_cats.data else []
 
     # --- PESTAÑA: GESTIONAR CATEGORÍAS ---
     with tab_categorias:
-        st.subheader("Tus Categorías")
-        cat_names_upper = [c['name'].upper() for c in current_cats]
+        st.subheader("Gestionar Categorías")
+        
         with st.expander("➕ Crear Nueva Categoría"):
             with st.form("form_cat"):
                 name = st.text_input("Nombre de categoría")
-                budget = st.number_input("Presupuesto Mensual (€)", min_value=0.0, step=10.0)
+                c_type = st.selectbox("Tipo de categoría", ["Gasto", "Ingreso"])
+                budget = st.number_input("Presupuesto Mensual (€) - Solo para gastos", min_value=0.0, step=10.0)
+                
                 if st.form_submit_button("Guardar"):
-                    if name.upper() in cat_names_upper:
-                        st.error("Esta categoría ya existe.")
+                    # Validar duplicados por nombre Y tipo
+                    exists = any(c['name'].upper() == name.upper() and c.get('type') == c_type for c in current_cats)
+                    if exists:
+                        st.error(f"La categoría de {c_type} '{name}' ya existe.")
                     elif name:
-                        supabase.table("user_categories").insert({"user_id": st.session_state.user.id, "name": name, "budget": budget}).execute()
+                        supabase.table("user_categories").insert({
+                            "user_id": st.session_state.user.id, 
+                            "name": name, 
+                            "type": c_type,
+                            "budget": budget if c_type == "Gasto" else 0
+                        }).execute()
                         st.rerun()
+
         st.divider()
-        for c in current_cats:
-            col1, col2, col3 = st.columns([2, 1, 1])
-            col1.write(f"**{c['name']}**")
-            col2.write(f"{c['budget']}€/mes")
-            if col3.button("Eliminar", key=f"del_cat_{c['id']}"):
-                supabase.table("user_categories").delete().eq("id", c['id']).execute()
-                st.rerun()
+        col_ing, col_gas = st.columns(2)
+        with col_ing:
+            st.markdown("### 📈 Ingresos")
+            for c in [cat for cat in current_cats if cat.get('type') == "Ingreso"]:
+                c1, c2 = st.columns([3, 1])
+                c1.write(f"{c['name']}")
+                if c2.button("🗑️", key=f"del_cat_{c['id']}"):
+                    supabase.table("user_categories").delete().eq("id", c['id']).execute()
+                    st.rerun()
+
+        with col_gas:
+            st.markdown("### 📉 Gastos")
+            for c in [cat for cat in current_cats if cat.get('type') == "Gasto"]:
+                c1, c2 = st.columns([3, 1])
+                c1.write(f"{c['name']} ({c['budget']}€)")
+                if c2.button("🗑️", key=f"del_cat_{c['id']}"):
+                    supabase.table("user_categories").delete().eq("id", c['id']).execute()
+                    st.rerun()
 
     # --- PESTAÑA: REGISTRAR MOVIMIENTOS ---
     with tab_gastos:
         st.subheader("Nuevo Registro")
         col_q, col_t = st.columns(2)
         qty = col_q.number_input("Cantidad (€)", min_value=0.0, step=0.01)
-        t_type = col_t.selectbox("Tipo", ["Gasto", "Ingreso"])
+        t_type = col_t.selectbox("¿Qué vas a registrar?", ["Gasto", "Ingreso"])
         fecha_mov = st.date_input("Fecha", datetime.now())
-        if current_cats:
-            cat_list = [c['name'] for c in current_cats]
-            display_options = ["Selecciona una categoría..."] + cat_list
+        
+        # FILTRO DINÁMICO DE CATEGORÍAS
+        filtered_cats = [c for c in current_cats if c.get('type') == t_type]
+        
+        if filtered_cats:
+            cat_list = [c['name'] for c in filtered_cats]
+            display_options = [f"Selecciona categoría de {t_type}..."] + cat_list
             sel_cat_name = st.selectbox("Categoría", options=display_options, index=0)
+            
             if st.button("Guardar Registro"):
-                if sel_cat_name == "Selecciona una categoría...":
+                if sel_cat_name.startswith("Selecciona"):
                     st.warning("Selecciona una categoría.")
                 else:
-                    cat_id = next(c['id'] for c in current_cats if c['name'] == sel_cat_name)
-                    supabase.table("user_imputs").insert({"user_id": st.session_state.user.id, "quantity": qty, "type": t_type, "category_id": cat_id, "date": str(fecha_mov)}).execute()
+                    cat_id = next(c['id'] for c in filtered_cats if c['name'] == sel_cat_name)
+                    supabase.table("user_imputs").insert({
+                        "user_id": st.session_state.user.id, 
+                        "quantity": qty, 
+                        "type": t_type, 
+                        "category_id": cat_id, 
+                        "date": str(fecha_mov)
+                    }).execute()
                     st.success("¡Anotado!")
                     st.rerun()
-        else: st.warning("Crea una categoría primero.")
+        else:
+            st.warning(f"No tienes categorías de tipo '{t_type}' creadas.")
+        
         st.divider()
-        st.subheader("Últimos Registros")
+        st.subheader("Historial")
         res_inputs = supabase.table("user_imputs").select("*, user_categories(name)").order("date", desc=True).limit(10).execute()
         if res_inputs.data:
             for i in res_inputs.data:
@@ -135,18 +170,21 @@ if st.session_state.user:
                 df_g_m = df_m[df_m['type'] == 'Gasto']
                 if not df_g_m.empty:
                     df_g_m['cat_name'] = df_g_m['user_categories'].apply(lambda x: x['name'] if x else 'S/C')
-                    st.plotly_chart(px.pie(df_g_m, values='quantity', names='cat_name', title='Gasto Mensual', hole=0.4), use_container_width=True)
+                    st.plotly_chart(px.pie(df_g_m, values='quantity', names='cat_name', title='Distribución de Gastos', hole=0.4), use_container_width=True)
                     
                     st.divider()
-                    st.subheader("Presupuestos Mensuales")
+                    st.subheader("Presupuestos")
                     res_g_m = df_g_m.groupby('category_id')['quantity'].sum().reset_index()
-                    rep_m = pd.merge(pd.DataFrame(current_cats), res_g_m, left_on='id', right_on='category_id', how='left').fillna(0)
-                    for _, r in rep_m.iterrows():
-                        porc = r['quantity']/r['budget'] if r['budget'] > 0 else 0
-                        status = "🟢" if porc < 0.8 else "🟡" if porc <= 1.0 else "🔴"
-                        st.write(f"{status} **{r['name']}**")
-                        st.progress(min(porc, 1.0))
-                        st.write(f"{r['quantity']}€ de {r['budget']}€")
+                    # Filtrar solo categorías de tipo Gasto para el informe de presupuestos
+                    gastos_cats = [c for c in current_cats if c.get('type') == "Gasto"]
+                    if gastos_cats:
+                        rep_m = pd.merge(pd.DataFrame(gastos_cats), res_g_m, left_on='id', right_on='category_id', how='left').fillna(0)
+                        for _, r in rep_m.iterrows():
+                            porc = r['quantity']/r['budget'] if r['budget'] > 0 else 0
+                            status = "🟢" if porc < 0.8 else "🟡" if porc <= 1.0 else "🔴"
+                            st.write(f"{status} **{r['name']}**")
+                            st.progress(min(porc, 1.0))
+                            st.write(f"{r['quantity']}€ de {r['budget']}€")
             else: st.info("Sin datos este mes.")
 
     # --- PESTAÑA: INFORMES ANUALES ---
@@ -165,34 +203,29 @@ if st.session_state.user:
                 c2.metric("Gastos Anuales", f"{round(gas_a, 2)}€")
                 c3.metric("Balance Anual", f"{round(ing_a - gas_a, 2)}€")
 
-                # Gráfico de barras mensual del año
-                df_a['month'] = df_all['date'].dt.month
-                df_a_mes = df_a.groupby(['month', 'type'])['quantity'].sum().reset_index()
+                # Gráfico barras
+                df_a_mes = df_a.copy()
+                df_a_mes['month'] = df_a_mes['date'].dt.month
+                df_a_mes = df_a_mes.groupby(['month', 'type'])['quantity'].sum().reset_index()
                 df_a_mes['Mes'] = df_a_mes['month'].apply(lambda x: meses[int(x)-1])
-                fig_bar = px.bar(df_a_mes, x='Mes', y='quantity', color='type', barmode='group', title='Ingresos vs Gastos por Mes')
-                st.plotly_chart(fig_bar, use_container_width=True)
+                st.plotly_chart(px.bar(df_a_mes, x='Mes', y='quantity', color='type', barmode='group', title='Histórico Mensual'), use_container_width=True)
 
                 st.divider()
-                st.subheader("Presupuestos Anuales (Meta vs Real)")
+                st.subheader("Metas Anuales (Solo Gastos)")
                 df_g_a = df_a[df_a['type'] == 'Gasto']
                 res_g_a = df_g_a.groupby('category_id')['quantity'].sum().reset_index()
+                gastos_cats = [c for c in current_cats if c.get('type') == "Gasto"]
                 
-                rep_a = pd.merge(pd.DataFrame(current_cats), res_g_a, left_on='id', right_on='category_id', how='left').fillna(0)
-                
-                for _, r in rep_a.iterrows():
-                    budget_anual = r['budget'] * 12
-                    porc_a = r['quantity'] / budget_anual if budget_anual > 0 else 0
-                    
-                    status_a = "🟢" if porc_a < 0.8 else "🟡" if porc_a <= 1.0 else "🔴"
-                    st.write(f"{status_a} **{r['name']}**")
-                    st.progress(min(porc_a, 1.0))
-                    
-                    texto_a = f"Gastado: {round(r['quantity'],2)}€ / Presupuesto Anual: {round(budget_anual,2)}€"
-                    if porc_a > 1.0:
-                        st.write(f":red[{texto_a} - ¡Exceso anual de {round(r['quantity'] - budget_anual, 2)}€!]")
-                    else:
-                        st.write(texto_a)
-                    st.divider()
-            else: st.info("No hay datos para este año.")
+                if gastos_cats:
+                    rep_a = pd.merge(pd.DataFrame(gastos_cats), res_g_a, left_on='id', right_on='category_id', how='left').fillna(0)
+                    for _, r in rep_a.iterrows():
+                        budget_anual = r['budget'] * 12
+                        porc_a = r['quantity'] / budget_anual if budget_anual > 0 else 0
+                        status_a = "🟢" if porc_a < 0.8 else "🟡" if porc_a <= 1.0 else "🔴"
+                        st.write(f"{status_a} **{r['name']}**")
+                        st.progress(min(porc_a, 1.0))
+                        st.write(f"{round(r['quantity'],2)}€ de {round(budget_anual,2)}€")
+                        st.divider()
+            else: st.info("Sin datos para este año.")
 else:
     st.info("👋 Inicia sesión para continuar.")
