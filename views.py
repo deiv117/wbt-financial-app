@@ -6,48 +6,41 @@ from database import save_input, delete_input, get_categories, delete_category, 
 from components import editar_movimiento_dialog, editar_categoria_dialog, crear_categoria_dialog
 
 def render_dashboard(df_all, current_cats, user_id):
-    # --- CSS RESPONSIVE TOTAL ---
+    # --- CSS RESPONSIVE Y SEGURO ---
     st.markdown("""
         <style>
-        /* 1. Forzar que las columnas NO se apilen nunca en horizontal */
+        /* Forzar que las columnas de la tabla se mantengan en fila en móvil */
         [data-testid="column"] {
-            width: calc(100% / 5) !important; /* Aproximado para 5 columnas */
-            flex: 1 1 0% !important;
             min-width: 0px !important;
-        }
-
-        /* 2. Forzar el contenedor padre a mantener el layout de fila */
-        [data-testid="stHorizontalBlock"] {
-            display: flex !important;
             flex-direction: row !important;
-            flex-wrap: nowrap !important;
-            align-items: center !important;
         }
 
-        /* 3. Ajustar márgenes y fuentes en móvil para que quepa todo */
-        @media (max-width: 640px) {
-            [data-testid="stHorizontalBlock"] {
-                gap: 5px !important;
-            }
-            .stMarkdown div p {
-                font-size: 11px !important;
-                white-space: nowrap;
-                overflow: hidden;
-                text-overflow: ellipsis;
-            }
-            /* Botones más compactos para que quepan en la misma línea */
-            .contenedor-acciones-tabla button {
-                width: 28px !important;
-                height: 28px !important;
-            }
-        }
-
-        /* Contenedor de acciones */
+        /* Contenedor de acciones (Botones lápiz/papelera) */
         .contenedor-acciones-tabla {
             display: flex !important;
             flex-direction: row !important;
-            gap: 4px !important;
+            gap: 8px !important;
+            align-items: center !important;
             justify-content: flex-end !important;
+        }
+        
+        /* Ajuste de botones para que no se deformen en móvil */
+        .contenedor-acciones-tabla button {
+            height: 30px !important;
+            width: 30px !important;
+            padding: 0px !important;
+            min-height: 30px !important;
+            border-radius: 6px !important;
+        }
+
+        /* Ajuste de fuentes para pantallas pequeñas (< 640px) */
+        @media (max-width: 640px) {
+            .stMarkdown div p {
+                font-size: 12px !important;
+            }
+            .stMetric div div {
+                font-size: 16px !important;
+            }
         }
         </style>
     """, unsafe_allow_html=True)
@@ -57,18 +50,17 @@ def render_dashboard(df_all, current_cats, user_id):
     ml = ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"]
 
     with t1:
-        # Formulario de entrada (ahora con keys para asegurar limpieza)
         st.subheader("Nuevo Movimiento")
+        # Usamos form con clear_on_submit para que se borre al guardar
         with st.form("nuevo_mov_form", clear_on_submit=True):
             c1, c2, c3 = st.columns(3)
-            qty = c1.number_input("Cantidad (€)", min_value=0.0, step=0.01, key="f_qty")
-            t_type = c2.selectbox("Tipo", ["Gasto", "Ingreso"], key="f_type")
-            f_mov = c3.date_input("Fecha", datetime.now(), key="f_date")
+            qty = c1.number_input("Cantidad (€)", min_value=0.0, step=0.01)
+            t_type = c2.selectbox("Tipo", ["Gasto", "Ingreso"])
+            f_mov = c3.date_input("Fecha", datetime.now())
             
             f_cs = [c for c in current_cats if c.get('type') == t_type]
-            # CORRECCIÓN AQUÍ: Se ha corregido el bucle 'for c in f_cs'
-            sel = st.selectbox("Categoría", ["Selecciona..."] + [f"{c.get('emoji', '📁')} {c['name']}" for c in f_cs], key="f_cat")
-            concepto = st.text_input("Concepto", key="f_note")
+            sel = st.selectbox("Categoría", ["Selecciona..."] + [f"{c.get('emoji', '📁')} {c['name']}" for c in f_cs])
+            concepto = st.text_input("Concepto (ej. Supermercado)")
             
             if st.form_submit_button("Guardar Movimiento", use_container_width=True):
                 if sel != "Selecciona..." and qty > 0:
@@ -82,28 +74,33 @@ def render_dashboard(df_all, current_cats, user_id):
                         "notes": concepto
                     })
                     st.rerun()
+                else:
+                    st.warning("Revisa la cantidad y la categoría.")
 
         st.divider()
         st.subheader("Últimos movimientos")
         df_rec = df_all.sort_values('date', ascending=False).head(10) if not df_all.empty else pd.DataFrame()
         
         for _, i in df_rec.iterrows():
-            # Reducimos a 5 columnas para maximizar el espacio
-            cl1, cl2, cl3, cl4, cl5 = st.columns([1, 2, 1.2, 0.4, 1.2])
-            cl1.write(f"{i['date'].strftime('%d/%m')}")
+            # Ajustamos los pesos de columna para optimizar el espacio móvil
+            cl1, cl2, cl3, cl4, cl5 = st.columns([1.5, 2, 1.5, 0.5, 1])
+            cl1.write(f"**{i['date'].strftime('%d/%m')}**")
             cl2.write(f"{i['cat_display']}")
-            cl3.write(f"**{i['quantity']:.1f}€**") # Un solo decimal para ahorrar espacio en móvil
+            cl3.write(f"**{i['quantity']:.2f}€**")
             cl4.write("📉" if i['type'] == "Gasto" else "📈")
             
             with cl5:
                 st.markdown('<div class="contenedor-acciones-tabla">', unsafe_allow_html=True)
-                # Botones sin columnas internas para evitar el salto de línea de Streamlit
-                if st.button("✏️", key=f"e_dash_{i['id']}"): editar_movimiento_dialog(i, current_cats)
-                if st.button("🗑️", key=f"d_dash_{i['id']}"): delete_input(i['id']); st.rerun()
+                col_e, col_d = st.columns(2)
+                with col_e:
+                    if st.button("✏️", key=f"e_dash_{i['id']}"): editar_movimiento_dialog(i, current_cats)
+                with col_d:
+                    if st.button("🗑️", key=f"d_dash_{i['id']}"): delete_input(i['id']); st.rerun()
                 st.markdown('</div>', unsafe_allow_html=True)
 
     with t2:
         st.subheader("Historial de Movimientos")
+        # Filtros de historial (se mantienen igual pero con columnas que no colapsan)
         h1, h2 = st.columns(2)
         f_i = h1.date_input("Desde", datetime.now()-timedelta(days=30), key="hi")
         f_f = h2.date_input("Hasta", datetime.now(), key="hf")
@@ -112,15 +109,18 @@ def render_dashboard(df_all, current_cats, user_id):
             df_h = df_all[(df_all['date'].dt.date >= f_i) & (df_all['date'].dt.date <= f_f)].sort_values('date', ascending=False)
             if not df_h.empty:
                 for _, i in df_h.iterrows():
-                    cl1, cl2, cl3, cl4, cl5 = st.columns([1, 2, 1.2, 0.4, 1.2])
+                    cl1, cl2, cl3, cl4, cl5 = st.columns([1.5, 2, 1.5, 0.5, 1])
                     cl1.write(f"{i['date'].strftime('%d/%m')}")
                     cl2.write(f"{i['cat_display']}")
-                    cl3.write(f"**{i['quantity']:.1f}€**")
+                    cl3.write(f"**{i['quantity']:.2f}€**")
                     cl4.write("📉" if i['type'] == "Gasto" else "📈")
                     with cl5:
                         st.markdown('<div class="contenedor-acciones-tabla">', unsafe_allow_html=True)
-                        if st.button("✏️", key=f"e_hist_{i['id']}"): editar_movimiento_dialog(i, current_cats)
-                        if st.button("🗑️", key=f"d_hist_{i['id']}"): delete_input(i['id']); st.rerun()
+                        cb1, cb2 = st.columns(2)
+                        with cb1:
+                            if st.button("✏️", key=f"e_hist_{i['id']}"): editar_movimiento_dialog(i, current_cats)
+                        with cb2:
+                            if st.button("🗑️", key=f"d_hist_{i['id']}"): delete_input(i['id']); st.rerun()
                         st.markdown('</div>', unsafe_allow_html=True)
 
     with t3:
