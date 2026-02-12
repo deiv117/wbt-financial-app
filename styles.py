@@ -52,5 +52,11 @@ def get_custom_css():
         min-height: 0px !important;
         font-size: 14px !important;
     }
+
+    /* 5. Login */
+    .st-emotion-cache-1ne20ew {
+    background-color: #fff;
+}
+    
     </style>
     """
