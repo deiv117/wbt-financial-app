@@ -74,5 +74,19 @@ def get_custom_css():
         border-color: #636EFA; 
         background-color: rgba(99, 110, 250, 0.1); 
     }
+
+    .login-box {
+        background-color: var(--secondary-background-color); /* Usa el color del tema de Streamlit */
+        padding: 2rem;
+        border-radius: 15px;
+        box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+        border: 1px solid rgba(128,128,128,0.2);
+    }
+    
+    .login-title {
+        text-align: center;
+        color: var(--text-color);
+        margin-bottom: 2rem;
+    }
     </style>
     """
