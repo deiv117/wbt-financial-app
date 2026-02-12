@@ -63,8 +63,9 @@ def render_dashboard(df_all, current_cats, user_id):
         df_rec = df_all.sort_values('date', ascending=False).head(10) if not df_all.empty else pd.DataFrame()
         
         for _, i in df_rec.iterrows():
-            # Distribución de columnas optimizada
-            cl1, cl2, cl3, cl4, cl5 = st.columns([1.2, 2.5, 1.3, 0.5, 1.2])
+            # NUEVA PROPORCIÓN: Fecha pequeña, Categoría grande, Cantidad media, Icono mínimo, Botones justos
+            # Antes: [1.2, 2.5, 1.3, 0.5, 1.2] -> Ahora: [1, 3, 1.2, 0.4, 1.2]
+            cl1, cl2, cl3, cl4, cl5 = st.columns([1, 3, 1.2, 0.4, 1.2])
             
             cl1.write(f"{i['date'].strftime('%d/%m')}")
             cl2.write(f"{i['cat_display']}")
@@ -91,7 +92,9 @@ def render_dashboard(df_all, current_cats, user_id):
             df_h = df_all[(df_all['date'].dt.date >= f_i) & (df_all['date'].dt.date <= f_f)].sort_values('date', ascending=False)
             if not df_h.empty:
                 for _, i in df_h.iterrows():
-                    cl1, cl2, cl3, cl4, cl5 = st.columns([1.2, 2.5, 1.3, 0.5, 1.2])
+                    # Misma proporción aquí
+                    cl1, cl2, cl3, cl4, cl5 = st.columns([1, 3, 1.2, 0.4, 1.2])
+                    
                     cl1.write(f"{i['date'].strftime('%d/%m')}")
                     cl2.write(f"{i['cat_display']}")
                     cl3.write(f"**{i['quantity']:.0f}€**")
