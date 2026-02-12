@@ -105,6 +105,9 @@ if not st.session_state.user:
                         st.rerun()
                 except: st.error("Acceso denegado.")
 else:
+    # --- ARREGLO DEL FONDO: Eliminamos la imagen de login ---
+    st.markdown("<style>.stApp { background-image: none !important; }</style>", unsafe_allow_html=True)
+
     # --- SIDEBAR ---
     with st.sidebar:
         res_p = supabase.table("profiles").select("*").eq("id", st.session_state.user.id).maybe_single().execute()
@@ -177,7 +180,7 @@ else:
             except: st.error("Error en formato")
 
     else:
-        # --- PANEL PRINCIPAL ---
+        # --- PANEL PRINCIPAL (Manteniendo todas las pestañas) ---
         st.title("📊 Cuadro de Mando")
         t1, t2, t3, t4, t5 = st.tabs(["💸 Registro", "🗄️ Historial", "🔮 Previsión", "📊 Mensual", "📅 Anual"])
 
@@ -215,20 +218,13 @@ else:
 
         with t3:
             st.subheader("🔮 Previsión y Comparativa")
-            # --- TABLA DE COMPARATIVA POR CATEGORÍA ---
             if not df_all.empty:
                 df_mes_actual = df_all[(df_all['date'].dt.month == datetime.now().month) & (df_all['date'].dt.year == datetime.now().year)]
                 gastos_cat = df_mes_actual[df_mes_actual['type'] == 'Gasto'].groupby('category_id')['quantity'].sum().reset_index()
-                
-                # Fusionamos categorías con sus gastos actuales
                 df_prev = pd.DataFrame(cat_g)
                 df_prev = pd.merge(df_prev, gastos_cat, left_on='id', right_on='category_id', how='left').fillna(0)
                 df_prev['Diferencia'] = df_prev['budget'] - df_prev['quantity']
-                
-                st.write("Estado de tus presupuestos este mes:")
                 st.dataframe(df_prev[['emoji', 'name', 'budget', 'quantity', 'Diferencia']].rename(columns={'emoji':'Icono', 'name':'Categoría', 'budget':'Presupuesto (€)', 'quantity':'Gastado (€)'}), use_container_width=True, hide_index=True)
-
-            # --- MÉTRICAS TEÓRICAS ---
             tp = sum(c['budget'] for c in cat_g)
             mi = df_all[df_all['type']=='Ingreso'].groupby(df_all['date'].dt.to_period('M'))['quantity'].sum().mean() if not df_all.empty else 0
             m1, m2, m3 = st.columns(3)
@@ -242,17 +238,12 @@ else:
             sm = st.selectbox("Mes", ml, index=datetime.now().month-1)
             if not df_all.empty:
                 df_m = df_all[(df_all['date'].dt.month == ml.index(sm)+1) & (df_all['date'].dt.year == datetime.now().year)]
-                im = df_m[df_m['type'] == 'Ingreso']['quantity'].sum()
-                gm = df_m[df_m['type'] == 'Gasto']['quantity'].sum()
+                im, gm = df_m[df_m['type'] == 'Ingreso']['quantity'].sum(), df_m[df_m['type'] == 'Gasto']['quantity'].sum()
                 balance = im - gm
-                
-                # --- LAS TRES COLUMNAS RECUPERADAS ---
                 c_i, c_g, c_b = st.columns(3)
                 c_i.metric("Ingresos", f"{im:.2f}€")
                 c_g.metric("Gastos", f"{gm:.2f}€")
                 c_b.metric("Balance", f"{balance:.2f}€", delta=f"{balance:.2f}€", delta_color="normal" if balance >= 0 else "inverse")
-                
-                # Barras de progreso por categoría
                 st.divider()
                 gcm = df_m[df_m['type'] == 'Gasto'].groupby('category_id')['quantity'].sum().reset_index()
                 for _, r in pd.merge(pd.DataFrame(cat_g), gcm, left_on='id', right_on='category_id', how='left').fillna(0).iterrows():
@@ -264,17 +255,12 @@ else:
             st.subheader("Análisis Anual")
             if not df_all.empty:
                 df_an = df_all[df_all['date'].dt.year == datetime.now().year]
-                ia = df_an[df_an['type'] == 'Ingreso']['quantity'].sum()
-                ga = df_an[df_an['type'] == 'Gasto']['quantity'].sum()
+                ia, ga = df_an[df_an['type'] == 'Ingreso']['quantity'].sum(), df_an[df_an['type'] == 'Gasto']['quantity'].sum()
                 ba = ia - ga
-                
-                # --- LAS TRES COLUMNAS RECUPERADAS ---
                 a_i, a_g, a_b = st.columns(3)
                 a_i.metric("Total Ingresos", f"{ia:.2f}€")
                 a_g.metric("Total Gastos", f"{ga:.2f}€")
                 a_b.metric("Ahorro Acumulado", f"{ba:.2f}€", delta=f"{ba:.2f}€", delta_color="normal" if ba >= 0 else "inverse")
-                
-                # Gráfica de barras
                 dfe = df_an.copy(); dfe['mes_num'] = dfe['date'].dt.month
                 rm = dfe.pivot_table(index='mes_num', columns='type', values='quantity', aggfunc='sum').fillna(0).reindex(range(1,13), fill_value=0)
                 for t in ['Ingreso', 'Gasto']: 
