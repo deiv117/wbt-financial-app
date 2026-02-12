@@ -7,6 +7,20 @@ from database import save_input, delete_input, get_categories, delete_category, 
 from components import editar_movimiento_dialog, editar_categoria_dialog, crear_categoria_dialog
 
 def render_dashboard(df_all, current_cats, user_id):
+    # --- CSS PARA ICONOS PEQUEÑOS ---
+    st.markdown("""
+        <style>
+        /* Estilo para los botones de edición y borrado */
+        .stButton > button {
+            border-radius: 8px !important;
+            padding: 2px 10px !important;
+            height: auto !important;
+            min-height: 28px !important;
+            font-size: 14px !important;
+        }
+        </style>
+    """, unsafe_allow_html=True)
+
     t1, t2, t3, t4, t5 = st.tabs(["💸 Nueva entrada", "🗄️ Historial", "🔮 Previsión", "📊 Mensual", "📅 Anual"])
     cat_g = [c for c in current_cats if c.get('type') == 'Gasto']
     ml = ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"]
@@ -35,6 +49,7 @@ def render_dashboard(df_all, current_cats, user_id):
             cl3.write(f"_{i['notes']}_")
             cl4.write(f"**{i['quantity']:.2f}€**")
             cl5.write("📉" if i['type'] == "Gasto" else "📈")
+            # Botones con keys únicas
             if cl6.button("✏️", key=f"e_dash_{i['id']}"): editar_movimiento_dialog(i, current_cats)
             if cl6.button("🗑️", key=f"d_dash_{i['id']}"): delete_input(i['id']); st.rerun()
 
@@ -50,7 +65,6 @@ def render_dashboard(df_all, current_cats, user_id):
                 st.info("No hay movimientos en este rango de fechas.")
             else:
                 st.divider()
-                # Cabecera de la lista
                 hc1, hc2, hc3, hc4, hc5, hc6 = st.columns([1.5, 1.5, 2, 1, 0.4, 0.4])
                 hc1.caption("FECHA")
                 hc2.caption("CATEGORÍA")
@@ -64,7 +78,6 @@ def render_dashboard(df_all, current_cats, user_id):
                     cl3.write(f"{i['notes']}")
                     cl4.write(f"**{i['quantity']:.2f}€**")
                     cl5.write("📉" if i['type'] == "Gasto" else "📈")
-                    # Usamos prefijo 'h_' en el key para que no colisionen con los del Dashboard
                     if cl6.button("✏️", key=f"e_hist_{i['id']}"): editar_movimiento_dialog(i, current_cats)
                     if cl6.button("🗑️", key=f"d_hist_{i['id']}"): delete_input(i['id']); st.rerun()
 
