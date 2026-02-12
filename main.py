@@ -22,13 +22,24 @@ if 'menu_actual' not in st.session_state:
 
 # --- LOGIN ---
 if not st.session_state.user:
-    # Aplicamos la clase de fondo solo aquí
-    st.markdown('<div class="bg-login">', unsafe_allow_html=True) 
-    
-    _, col_login, _ = st.columns([1, 1.8, 1]) # Un poco más ancha la columna
+    # Inyectamos el fondo directamente en la app solo si no hay usuario
+    st.markdown("""
+        <style>
+        .stApp {
+            background-image: url("https://images.unsplash.com/photo-1554224155-6726b3ff858f?q=80&w=2022&auto=format&fit=crop");
+            background-size: cover;
+            background-position: center;
+            background-attachment: fixed;
+        }
+        /* Ocultamos el header de Streamlit para que luzca más limpio */
+        header {visibility: hidden;}
+        </style>
+    """, unsafe_allow_html=True)
+
+    _, col_login, _ = st.columns([1, 1.5, 1])
     with col_login:
-        st.write("#")
-        # Abrimos el contenedor de la caja
+        st.write("###") # Espaciado superior
+        # Todo el contenido va DENTRO de un solo bloque markdown para la caja
         st.markdown('<div class="login-box">', unsafe_allow_html=True)
         st.markdown("<h1 class='login-title'>💰 Finanzas App</h1>", unsafe_allow_html=True)
         
@@ -44,10 +55,9 @@ if not st.session_state.user:
             except: 
                 st.error("Credenciales incorrectas.")
         
-        st.markdown('</div>', unsafe_allow_html=True) # Cerramos login-box
-    st.markdown('</div>', unsafe_allow_html=True) # Cerramos bg-login
+        st.markdown('</div>', unsafe_allow_html=True)
 else:
-    # Cuando ya está logueado, forzamos que el fondo de .stApp sea nulo
+    # Limpiamos fondo si el usuario entra
     st.markdown("<style>.stApp { background-image: none !important; }</style>", unsafe_allow_html=True)
     
     # Sidebar y Navegación
