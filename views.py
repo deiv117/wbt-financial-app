@@ -203,11 +203,30 @@ def render_dashboard(df_all, current_cats, user_id):
             for t in ['Ingreso', 'Gasto']: 
                 if t not in rm.columns: rm[t] = 0
             
+            # --- NUEVO: CÁLCULO DE LA LÍNEA DE AHORRO ---
+            rm['Ahorro'] = rm['Ingreso'] - rm['Gasto']
+            
             fig = go.Figure()
             fig.add_trace(go.Bar(x=ml, y=rm['Ingreso'], name='Ingreso', marker_color='#00CC96'))
             fig.add_trace(go.Bar(x=ml, y=rm['Gasto'], name='Gasto', marker_color='#EF553B'))
-            fig.update_layout(barmode='group', margin=dict(l=20, r=20, t=20, b=20))
+            # --- NUEVO: AÑADIMOS LA LÍNEA DE AHORRO AL GRÁFICO ---
+            fig.add_trace(go.Scatter(x=ml, y=rm['Ahorro'], name='Ahorro', mode='lines+markers', line=dict(color='#636EFA', width=3), marker=dict(size=8)))
+            
+            fig.update_layout(barmode='group', margin=dict(l=20, r=20, t=20, b=20), legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1))
             st.plotly_chart(fig, use_container_width=True)
+
+            # --- NUEVO: CÁLCULO ANUAL DE GASTOS POR CATEGORÍA ---
+            st.divider()
+            st.subheader("Presupuesto Anual por Categoría")
+            st.caption("_(Presupuesto mensual configurado multiplicado por 12)_")
+            
+            gcm_anual = df_an[df_an['type'] == 'Gasto'].groupby('category_id')['quantity'].sum().reset_index()
+            # Unimos los gastos anuales con la tabla de categorías
+            for _, r in pd.merge(pd.DataFrame(cat_g), gcm_anual, left_on='id', right_on='category_id', how='left').fillna(0).iterrows():
+                presupuesto_anual = r['budget'] * 12 # Multiplicamos la estimación por 12
+                p = r['quantity'] / presupuesto_anual if presupuesto_anual > 0 else 0
+                st.write(f"**{r.get('emoji','📁')} {r['name']}** ({r['quantity']:.2f} / {presupuesto_anual:.2f}€)")
+                st.progress(min(p, 1.0))
 
 def render_categories(current_cats):
     st.title("📂 Gestión de Categorías")
@@ -220,6 +239,7 @@ def render_categories(current_cats):
             st.subheader(f"{t}s")
             for c in [cat for cat in current_cats if cat.get('type') == t]:
                 with st.container(border=True):
+                    # Aquí usamos columnas normales sin el wrapper horizontal
                     k1, k2 = st.columns([4, 1])
                     k1.write(f"**{c.get('emoji', '📁')} {c['name']}**")
                     if t == "Gasto": 
