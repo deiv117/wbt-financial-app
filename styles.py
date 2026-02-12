@@ -1,12 +1,12 @@
 # styles.py
 def get_custom_css():
-    """Retorna todo el CSS personalizado de la aplicación"""
+    """Retorna el CSS base de la aplicación"""
     return """
     <style>
     /* 1. ESTILOS GENERALES DE TEXTO */
     h1, h2, h3 { color: #31333F; }
 
-    /* 2. SIDEBAR Y AVATAR (Se mantiene igual) */
+    /* 2. SIDEBAR Y AVATAR */
     .sidebar-user-container { 
         display: flex; 
         flex-direction: column; 
@@ -30,7 +30,7 @@ def get_custom_css():
         object-fit: cover; 
     }
 
-    /* 3. BOTONES */
+    /* 3. BOTONES SIDEBAR */
     .stSidebar div.stButton > button { 
         width: 100%; 
         border-radius: 10px; 
@@ -45,7 +45,7 @@ def get_custom_css():
         background-color: rgba(99, 110, 250, 0.1); 
     }
     
-    /* Botones pequeños para las tablas */
+    /* 4. BOTONES PEQUEÑOS EN TABLAS (Tus botones de editar/borrar) */
     div[data-testid="column"] button {
         padding: 2px 10px !important;
         height: auto !important;
