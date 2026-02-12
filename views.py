@@ -7,22 +7,23 @@ from database import save_input, delete_input, get_categories, delete_category, 
 from components import editar_movimiento_dialog, editar_categoria_dialog, crear_categoria_dialog
 
 def render_dashboard(df_all, current_cats, user_id):
-    # --- CSS MEJORADO PARA ALINEACIÓN EN LÍNEA ---
+    # --- CSS ESPECÍFICO SOLO PARA TABLAS ---
     st.markdown("""
         <style>
-        /* Ajuste general de botones de acción */
-        .stButton > button {
+        /* Solo afecta a botones dentro de nuestro contenedor especial */
+        .tabla-acciones div[data-testid="stVerticalBlock"] {
+            flex-direction: row !important;
+            gap: 5px !important;
+            align-items: center !important;
+        }
+        .tabla-acciones button {
             border-radius: 6px !important;
             padding: 2px 8px !important;
             height: 28px !important;
-            width: 32px !important;
+            width: 35px !important;
             font-size: 14px !important;
             margin: 0px !important;
-        }
-        /* Contenedor para que los botones fluyan en horizontal */
-        [data-testid="stHorizontalBlock"] [data-testid="column"]:last-child div[data-testid="stVerticalBlock"] {
-            flex-direction: row !important;
-            gap: 5px !important;
+            min-height: 28px !important;
         }
         </style>
     """, unsafe_allow_html=True)
@@ -41,7 +42,7 @@ def render_dashboard(df_all, current_cats, user_id):
         if f_cs:
             sel = st.selectbox("Categoría", ["Selecciona..."] + [f"{c.get('emoji', '📁')} {c['name']}" for c in f_cs])
             concepto = st.text_input("Concepto")
-            if st.button("Guardar") and sel != "Selecciona...":
+            if st.button("Guardar", key="btn_save_main") and sel != "Selecciona...":
                 cat_sel = next(c for c in f_cs if f"{c.get('emoji', '📁')} {c['name']}" == sel)
                 save_input({"user_id": user_id, "quantity": qty, "type": t_type, "category_id": cat_sel['id'], "date": str(f_mov), "notes": concepto})
                 st.rerun()
@@ -49,7 +50,6 @@ def render_dashboard(df_all, current_cats, user_id):
         st.subheader("Últimos movimientos")
         df_rec = df_all.sort_values('date', ascending=False).head(10) if not df_all.empty else pd.DataFrame()
         for _, i in df_rec.iterrows():
-            # Ajustamos el ancho de la última columna para que quepan ambos botones (0.8 en lugar de 0.4)
             cl1, cl2, cl3, cl4, cl5, cl6 = st.columns([1.5, 1.5, 2, 1, 0.4, 0.8])
             cl1.write(f"**{i['date'].date()}**")
             cl2.write(f"{i['cat_display']}")
@@ -57,10 +57,15 @@ def render_dashboard(df_all, current_cats, user_id):
             cl4.write(f"**{i['quantity']:.2f}€**")
             cl5.write("📉" if i['type'] == "Gasto" else "📈")
             
-            # Los dos botones en la misma columna cl6
+            # Contenedor con clase CSS personalizada
             with cl6:
-                if st.button("✏️", key=f"e_dash_{i['id']}"): editar_movimiento_dialog(i, current_cats)
-                if st.button("🗑️", key=f"d_dash_{i['id']}"): delete_input(i['id']); st.rerun()
+                st.markdown('<div class="tabla-acciones">', unsafe_allow_html=True)
+                col_e, col_d = st.columns(2)
+                with col_e:
+                    if st.button("✏️", key=f"e_dash_{i['id']}"): editar_movimiento_dialog(i, current_cats)
+                with col_d:
+                    if st.button("🗑️", key=f"d_dash_{i['id']}"): delete_input(i['id']); st.rerun()
+                st.markdown('</div>', unsafe_allow_html=True)
 
     with t2:
         st.subheader("Historial de Movimientos")
@@ -74,7 +79,6 @@ def render_dashboard(df_all, current_cats, user_id):
                 st.info("No hay movimientos en este rango de fechas.")
             else:
                 st.divider()
-                # Cabecera
                 hc1, hc2, hc3, hc4, hc5, hc6 = st.columns([1.5, 1.5, 2, 1, 0.4, 0.8])
                 hc1.caption("FECHA")
                 hc2.caption("CATEGORÍA")
@@ -88,10 +92,17 @@ def render_dashboard(df_all, current_cats, user_id):
                     cl3.write(f"{i['notes']}")
                     cl4.write(f"**{i['quantity']:.2f}€**")
                     cl5.write("📉" if i['type'] == "Gasto" else "📈")
+                    
                     with cl6:
-                        if st.button("✏️", key=f"e_hist_{i['id']}"): editar_movimiento_dialog(i, current_cats)
-                        if st.button("🗑️", key=f"d_hist_{i['id']}"): delete_input(i['id']); st.rerun()
+                        st.markdown('<div class="tabla-acciones">', unsafe_allow_html=True)
+                        col_e, col_d = st.columns(2)
+                        with col_e:
+                            if st.button("✏️", key=f"e_hist_{i['id']}"): editar_movimiento_dialog(i, current_cats)
+                        with col_d:
+                            if st.button("🗑️", key=f"d_hist_{i['id']}"): delete_input(i['id']); st.rerun()
+                        st.markdown('</div>', unsafe_allow_html=True)
 
+    # ... (t3, t4, t5 se mantienen exactamente igual que antes)
     with t3:
         st.subheader("🔮 Previsión y Comparativa")
         if not df_all.empty:
@@ -158,12 +169,18 @@ def render_categories(current_cats):
             st.subheader(f"{t}s")
             for c in [cat for cat in current_cats if cat.get('type') == t]:
                 with st.container(border=True):
-                    k1, k2, k3 = st.columns([4, 1.5])
+                    # Usamos también aquí la clase para que se vean bien
+                    k1, k2 = st.columns([4, 1.2])
                     k1.write(f"**{c.get('emoji', '📁')} {c['name']}**")
                     if t == "Gasto": k1.caption(f"Meta: {c['budget']:.2f}€")
                     with k2:
-                        if st.button("✏️", key=f"cat_e_{c['id']}"): editar_categoria_dialog(c)
-                        if st.button("🗑️", key=f"cat_d_{c['id']}"): delete_category(c['id']); st.rerun()
+                        st.markdown('<div class="tabla-acciones">', unsafe_allow_html=True)
+                        ce, cd = st.columns(2)
+                        with ce:
+                            if st.button("✏️", key=f"cat_e_{c['id']}"): editar_categoria_dialog(c)
+                        with cd:
+                            if st.button("🗑️", key=f"cat_d_{c['id']}"): delete_category(c['id']); st.rerun()
+                        st.markdown('</div>', unsafe_allow_html=True)
 
 def render_profile(user_id, p_data):
     st.title("⚙️ Mi Perfil")
@@ -179,7 +196,7 @@ def render_profile(user_id, p_data):
 
 def render_import(current_cats, user_id):
     st.title("📥 Importar Datos")
-    
+    # (El código de importación se mantiene idéntico, ahora sus botones ya no se verán pequeños por error)
     with st.expander("📖 Guía de formato y requisitos", expanded=False):
         st.markdown("""
         Para que la importación funcione correctamente, tu archivo debe cumplir:
