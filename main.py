@@ -19,10 +19,10 @@ if 'menu_actual' not in st.session_state:
 
 # --- LOGIN ---
 if not st.session_state.user:
-    # 1. INYECTAMOS EL FONDO Y EL ESTILO DE LA TARJETA (Solo afecta a esta vista)
+    # CSS ESPECÍFICO DEL LOGIN (Fondo + Estilo de la Tarjeta)
     st.markdown("""
         <style>
-        /* Fondo de pantalla */
+        /* 1. IMAGEN DE FONDO */
         .stApp {
             background-image: url("https://images.unsplash.com/photo-1554224155-6726b3ff858f?q=80&w=2022&auto=format&fit=crop");
             background-size: cover;
@@ -30,55 +30,56 @@ if not st.session_state.user:
             background-attachment: fixed;
         }
         
-        /* ESTILO MÁGICO: Transformar la COLUMNA CENTRAL en la tarjeta de login */
-        /* Seleccionamos la segunda columna (nth-of-type(2)) y le damos estilo a su contenedor interno */
-        div[data-testid="column"]:nth-of-type(2) > div {
-            background-color: rgba(255, 255, 255, 0.95); /* Blanco casi sólido */
-            backdrop-filter: blur(10px);
-            padding: 40px;
-            border-radius: 20px;
-            box-shadow: 0 10px 40px rgba(0,0,0,0.3);
-            border: 1px solid rgba(255, 255, 255, 0.5);
+        /* 2. TRANSFORMACIÓN DEL CONTENEDOR 'border=True' EN TARJETA */
+        /* Buscamos el contenedor con borde solo en esta pantalla */
+        div[data-testid="stVerticalBlockBorderWrapper"] {
+            background-color: rgba(255, 255, 255, 0.92) !important; /* Blanco casi sólido */
+            backdrop-filter: blur(15px);
+            border: 1px solid rgba(255, 255, 255, 0.5) !important;
+            border-radius: 20px !important;
+            box-shadow: 0 10px 40px rgba(0,0,0,0.4);
+            padding: 30px;
         }
 
-        /* Ocultar header y footer para limpieza visual */
+        /* 3. AJUSTES DE TEXTO PARA QUE SE LEAN SOBRE BLANCO */
+        h1 { color: #1f1f1f !important; text-align: center; margin-bottom: 0px; }
+        p, label { color: #31333F !important; font-weight: 500; }
+        
+        /* Ocultar elementos extra de Streamlit */
         header {visibility: hidden;}
         footer {visibility: hidden;}
-        
-        /* Ajustar título dentro de la tarjeta */
-        h1 {
-            text-align: center;
-            font-size: 2.5rem !important;
-            margin-bottom: 1rem !important;
-            color: #1f1f1f !important;
-        }
         </style>
     """, unsafe_allow_html=True)
 
-    # 2. ESTRUCTURA (Sin divs html manuales, usamos las columnas nativas)
-    _, col_login, _ = st.columns([1, 1.5, 1]) # La columna del medio (1.5) recibirá el estilo CSS de arriba
+    # LAYOUT DEL LOGIN
+    # Usamos columnas para centrar la caja
+    col_izq, col_centro, col_der = st.columns([1, 1.2, 1]) 
     
-    with col_login:
-        st.write("###") # Un poco de espacio arriba
-        st.title("💰 Finanzas App")
+    with col_centro:
+        st.write("###") # Espaciador superior para bajar la caja
         
-        email = st.text_input("Email", key="login_email")
-        password = st.text_input("Contraseña", type="password", key="login_pass")
-        
-        st.write("#") # Espaciador
-        
-        if st.button("Entrar", use_container_width=True):
-            try:
-                res = supabase.auth.sign_in_with_password({"email": email, "password": password})
-                if res.user:
-                    st.session_state.user = res.user
-                    st.rerun()
-            except: 
-                st.error("Credenciales incorrectas.")
+        # AQUÍ ESTÁ LA SOLUCIÓN: Usamos un contenedor nativo con borde
+        # El CSS de arriba maquillará este contenedor automáticamente
+        with st.container(border=True):
+            st.markdown("<h1 style='text-align: center; font-size: 2.5rem;'>💰 Finanzas App</h1>", unsafe_allow_html=True)
+            st.write("###")
+            
+            email = st.text_input("Email", key="login_email")
+            password = st.text_input("Contraseña", type="password", key="login_pass")
+            
+            st.write("###")
+            if st.button("Entrar", use_container_width=True):
+                try:
+                    res = supabase.auth.sign_in_with_password({"email": email, "password": password})
+                    if res.user:
+                        st.session_state.user = res.user
+                        st.rerun()
+                except: 
+                    st.error("Credenciales incorrectas.")
 
 else:
     # --- APP PRINCIPAL ---
-    # Limpiamos el fondo para que no interfiera con el panel
+    # Limpiamos fondo
     st.markdown("<style>.stApp { background-image: none !important; }</style>", unsafe_allow_html=True)
     
     # Sidebar
