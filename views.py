@@ -1,4 +1,3 @@
-# Cabecera de views.py
 import streamlit as st
 import pandas as pd
 import plotly.graph_objects as go
@@ -7,27 +6,38 @@ from database import save_input, delete_input, get_categories, delete_category, 
 from components import editar_movimiento_dialog, editar_categoria_dialog, crear_categoria_dialog
 
 def render_dashboard(df_all, current_cats, user_id):
-    # --- CSS ESPECÍFICO SOLO PARA TABLAS ---
+    # --- CSS QUIRÚRGICO: SOLO PARA FILAS DE MOVIMIENTOS ---
     st.markdown("""
         <style>
-        /* Solo afecta a botones dentro de nuestro contenedor especial */
-        .tabla-acciones div[data-testid="stVerticalBlock"] {
+        /* Contenedor específico para botones en filas de tabla */
+        .fila-movimiento-acciones {
+            display: flex !important;
             flex-direction: row !important;
-            gap: 5px !important;
+            gap: 12px !important;
+            justify-content: flex-start !important;
             align-items: center !important;
         }
-        .tabla-acciones button {
+        
+        /* Ajuste de botones solo en esas filas */
+        .fila-movimiento-acciones button {
             border-radius: 6px !important;
-            padding: 2px 8px !important;
+            padding: 0px !important;
             height: 28px !important;
-            width: 35px !important;
-            font-size: 14px !important;
-            margin: 0px !important;
+            width: 32px !important;
             min-height: 28px !important;
+            font-size: 14px !important;
+            background-color: transparent !important;
+        }
+
+        /* Hover sutil para los botones de acción */
+        .fila-movimiento-acciones button:hover {
+            border-color: #636EFA !important;
+            color: #636EFA !important;
         }
         </style>
     """, unsafe_allow_html=True)
 
+    # Mantenemos las 5 pestañas solicitadas
     t1, t2, t3, t4, t5 = st.tabs(["💸 Nueva entrada", "🗄️ Historial", "🔮 Previsión", "📊 Mensual", "📅 Anual"])
     cat_g = [c for c in current_cats if c.get('type') == 'Gasto']
     ml = ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"]
@@ -38,14 +48,23 @@ def render_dashboard(df_all, current_cats, user_id):
         qty = c1.number_input("Cantidad (€)", min_value=0.0)
         t_type = c2.selectbox("Tipo", ["Gasto", "Ingreso"])
         f_mov = c3.date_input("Fecha", datetime.now())
+        
         f_cs = [c for c in current_cats if c.get('type') == t_type]
         if f_cs:
             sel = st.selectbox("Categoría", ["Selecciona..."] + [f"{c.get('emoji', '📁')} {c['name']}" for c in f_cs])
             concepto = st.text_input("Concepto")
-            if st.button("Guardar", key="btn_save_main") and sel != "Selecciona...":
+            if st.button("Guardar", use_container_width=True) and sel != "Selecciona...":
                 cat_sel = next(c for c in f_cs if f"{c.get('emoji', '📁')} {c['name']}" == sel)
-                save_input({"user_id": user_id, "quantity": qty, "type": t_type, "category_id": cat_sel['id'], "date": str(f_mov), "notes": concepto})
+                save_input({
+                    "user_id": user_id, 
+                    "quantity": qty, 
+                    "type": t_type, 
+                    "category_id": cat_sel['id'], 
+                    "date": str(f_mov), 
+                    "notes": concepto
+                })
                 st.rerun()
+        
         st.divider()
         st.subheader("Últimos movimientos")
         df_rec = df_all.sort_values('date', ascending=False).head(10) if not df_all.empty else pd.DataFrame()
@@ -56,35 +75,24 @@ def render_dashboard(df_all, current_cats, user_id):
             cl3.write(f"_{i['notes']}_")
             cl4.write(f"**{i['quantity']:.2f}€**")
             cl5.write("📉" if i['type'] == "Gasto" else "📈")
-            
-            # Contenedor con clase CSS personalizada
             with cl6:
-                st.markdown('<div class="tabla-acciones">', unsafe_allow_html=True)
-                col_e, col_d = st.columns(2)
-                with col_e:
-                    if st.button("✏️", key=f"e_dash_{i['id']}"): editar_movimiento_dialog(i, current_cats)
-                with col_d:
-                    if st.button("🗑️", key=f"d_dash_{i['id']}"): delete_input(i['id']); st.rerun()
+                st.markdown('<div class="fila-movimiento-acciones">', unsafe_allow_html=True)
+                if st.button("✏️", key=f"e_dash_{i['id']}"): editar_movimiento_dialog(i, current_cats)
+                if st.button("🗑️", key=f"d_dash_{i['id']}"): delete_input(i['id']); st.rerun()
                 st.markdown('</div>', unsafe_allow_html=True)
 
     with t2:
-        st.subheader("Historial de Movimientos")
+        st.subheader("Historial Completo")
         h1, h2 = st.columns(2)
-        f_i, f_f = h1.date_input("Desde", datetime.now()-timedelta(days=30), key="hi"), h2.date_input("Hasta", datetime.now(), key="hf")
+        f_i = h1.date_input("Desde", datetime.now()-timedelta(days=30), key="hi")
+        f_f = h2.date_input("Hasta", datetime.now(), key="hf")
         
         if not df_all.empty:
             df_h = df_all[(df_all['date'].dt.date >= f_i) & (df_all['date'].dt.date <= f_f)].sort_values('date', ascending=False)
-            
             if df_h.empty:
-                st.info("No hay movimientos en este rango de fechas.")
+                st.info("No hay movimientos en este rango.")
             else:
                 st.divider()
-                hc1, hc2, hc3, hc4, hc5, hc6 = st.columns([1.5, 1.5, 2, 1, 0.4, 0.8])
-                hc1.caption("FECHA")
-                hc2.caption("CATEGORÍA")
-                hc3.caption("CONCEPTO")
-                hc4.caption("CANTIDAD")
-                
                 for _, i in df_h.iterrows():
                     cl1, cl2, cl3, cl4, cl5, cl6 = st.columns([1.5, 1.5, 2, 1, 0.4, 0.8])
                     cl1.write(f"{i['date'].date()}")
@@ -92,17 +100,12 @@ def render_dashboard(df_all, current_cats, user_id):
                     cl3.write(f"{i['notes']}")
                     cl4.write(f"**{i['quantity']:.2f}€**")
                     cl5.write("📉" if i['type'] == "Gasto" else "📈")
-                    
                     with cl6:
-                        st.markdown('<div class="tabla-acciones">', unsafe_allow_html=True)
-                        col_e, col_d = st.columns(2)
-                        with col_e:
-                            if st.button("✏️", key=f"e_hist_{i['id']}"): editar_movimiento_dialog(i, current_cats)
-                        with col_d:
-                            if st.button("🗑️", key=f"d_hist_{i['id']}"): delete_input(i['id']); st.rerun()
+                        st.markdown('<div class="fila-movimiento-acciones">', unsafe_allow_html=True)
+                        if st.button("✏️", key=f"e_hist_{i['id']}"): editar_movimiento_dialog(i, current_cats)
+                        if st.button("🗑️", key=f"d_hist_{i['id']}"): delete_input(i['id']); st.rerun()
                         st.markdown('</div>', unsafe_allow_html=True)
 
-    # ... (t3, t4, t5 se mantienen exactamente igual que antes)
     with t3:
         st.subheader("🔮 Previsión y Comparativa")
         if not df_all.empty:
@@ -113,6 +116,7 @@ def render_dashboard(df_all, current_cats, user_id):
                 df_prev = pd.merge(df_prev, gastos_cat, left_on='id', right_on='category_id', how='left').fillna(0)
                 df_prev['Diferencia'] = df_prev['budget'] - df_prev['quantity']
                 st.dataframe(df_prev[['emoji', 'name', 'budget', 'quantity', 'Diferencia']].rename(columns={'emoji':'Icono', 'name':'Categoría', 'budget':'Presupuesto (€)', 'quantity':'Gastado (€)'}), use_container_width=True, hide_index=True)
+        
         tp = sum(c['budget'] for c in cat_g)
         mi = df_all[df_all['type']=='Ingreso'].groupby(df_all['date'].dt.to_period('M'))['quantity'].sum().mean() if not df_all.empty else 0
         m1, m2, m3 = st.columns(3)
@@ -142,22 +146,26 @@ def render_dashboard(df_all, current_cats, user_id):
 
     with t5:
         st.subheader("Análisis Anual")
-        san = st.selectbox("Seleccionar Año", range(2024, 2031), index=datetime.now().year-2024, key="año_anual")
+        san = st.selectbox("Año", range(2024, 2031), index=datetime.now().year-2024, key="año_anual")
         if not df_all.empty:
             df_an = df_all[df_all['date'].dt.year == san]
             ia, ga = df_an[df_an['type'] == 'Ingreso']['quantity'].sum(), df_an[df_an['type'] == 'Gasto']['quantity'].sum()
             ba = ia - ga
             a_i, a_g, a_b = st.columns(3)
-            a_i.metric(f"Total Ingresos {san}", f"{ia:.2f}€")
-            a_g.metric(f"Total Gastos {san}", f"{ga:.2f}€")
-            a_b.metric(f"Ahorro Acumulado {san}", f"{ba:.2f}€", delta=f"{ba:.2f}€", delta_color="normal" if ba >= 0 else "inverse")
-            dfe = df_an.copy(); dfe['mes_num'] = dfe['date'].dt.month
+            a_i.metric(f"Ingresos {san}", f"{ia:.2f}€")
+            a_g.metric(f"Gastos {san}", f"{ga:.2f}€")
+            a_b.metric(f"Balance {san}", f"{ba:.2f}€", delta=f"{ba:.2f}€", delta_color="normal" if ba >= 0 else "inverse")
+            
+            dfe = df_an.copy()
+            dfe['mes_num'] = dfe['date'].dt.month
             rm = dfe.pivot_table(index='mes_num', columns='type', values='quantity', aggfunc='sum').fillna(0).reindex(range(1,13), fill_value=0)
             for t in ['Ingreso', 'Gasto']: 
                 if t not in rm.columns: rm[t] = 0
+            
             fig = go.Figure()
             fig.add_trace(go.Bar(x=ml, y=rm['Ingreso'], name='Ingreso', marker_color='#00CC96'))
             fig.add_trace(go.Bar(x=ml, y=rm['Gasto'], name='Gasto', marker_color='#EF553B'))
+            fig.update_layout(barmode='group', margin=dict(l=20, r=20, t=20, b=20))
             st.plotly_chart(fig, use_container_width=True)
 
 def render_categories(current_cats):
@@ -169,18 +177,12 @@ def render_categories(current_cats):
             st.subheader(f"{t}s")
             for c in [cat for cat in current_cats if cat.get('type') == t]:
                 with st.container(border=True):
-                    # Usamos también aquí la clase para que se vean bien
-                    k1, k2 = st.columns([4, 1.2])
+                    k1, k2 = st.columns([4, 1])
                     k1.write(f"**{c.get('emoji', '📁')} {c['name']}**")
                     if t == "Gasto": k1.caption(f"Meta: {c['budget']:.2f}€")
                     with k2:
-                        st.markdown('<div class="tabla-acciones">', unsafe_allow_html=True)
-                        ce, cd = st.columns(2)
-                        with ce:
-                            if st.button("✏️", key=f"cat_e_{c['id']}"): editar_categoria_dialog(c)
-                        with cd:
-                            if st.button("🗑️", key=f"cat_d_{c['id']}"): delete_category(c['id']); st.rerun()
-                        st.markdown('</div>', unsafe_allow_html=True)
+                        if st.button("✏️", key=f"cat_e_{c['id']}"): editar_categoria_dialog(c)
+                        if st.button("🗑️", key=f"cat_d_{c['id']}"): delete_category(c['id']); st.rerun()
 
 def render_profile(user_id, p_data):
     st.title("⚙️ Mi Perfil")
@@ -190,35 +192,33 @@ def render_profile(user_id, p_data):
         n_last = c1.text_input("Apellido", value=p_data.get('lastname',''))
         n_color = c1.color_picker("Color", value=p_data.get('profile_color','#636EFA'))
         n_avatar = c2.text_input("URL Foto", value=p_data.get('avatar_url',''))
-        if st.form_submit_button("Guardar"):
+        if st.form_submit_button("Guardar Cambios"):
             upsert_profile({"id": user_id, "name": n_name, "lastname": n_last, "avatar_url": n_avatar, "profile_color": n_color})
             st.rerun()
 
 def render_import(current_cats, user_id):
     st.title("📥 Importar Datos")
-    # (El código de importación se mantiene idéntico, ahora sus botones ya no se verán pequeños por error)
-    with st.expander("📖 Guía de formato y requisitos", expanded=False):
+    
+    with st.expander("📖 Guía de formato y columnas", expanded=True):
         st.markdown("""
-        Para que la importación funcione correctamente, tu archivo debe cumplir:
-        * **Formato de archivo:** CSV o Excel (.xlsx).
-        * **Formato de Fecha:** `AAAA-MM-DD` (Ej: 2026-02-12).
-        * **Formato de Cantidad:** Números sin símbolo de moneda.
+        **Requisitos del archivo:**
+        * **Formato:** CSV (coma o punto y coma) o Excel (.xlsx).
+        * **Fecha:** Formato `AAAA-MM-DD` (Ej: 2026-02-12).
+        * **Importante:** Las categorías deben existir previamente en tu gestión.
         """)
-        info_data = {
+        st.table({
             "Columna": ["Tipo", "Cantidad", "Categoría", "Fecha", "Concepto"],
-            "Descripción": ["Ingreso o Gasto", "Valor numérico", "Nombre de la categoría", "Fecha del movimiento", "Descripción breve"],
-            "Ejemplo": ["Gasto", "15.50", "Comida", "2026-02-12", "Cena restaurante"]
-        }
-        st.table(info_data)
+            "Ejemplo": ["Gasto", "45.00", "Alimentación", "2026-02-12", "Súper Semanal"]
+        })
 
     ej_cat = current_cats[0]['name'] if current_cats else "Varios"
     df_template = pd.DataFrame([{
         "Tipo": "Gasto", "Cantidad": 50.00, "Categoría": ej_cat, 
-        "Fecha": datetime.now().strftime("%Y-%m-%d"), "Concepto": "Ejemplo compra"
+        "Fecha": datetime.now().strftime("%Y-%m-%d"), "Concepto": "Ejemplo"
     }])
     
     st.download_button(
-        label="📥 Descargar Plantilla Oficial",
+        label="📥 Descargar Plantilla CSV",
         data=df_template.to_csv(index=False).encode('utf-8'),
         file_name="plantilla_finanzas.csv",
         mime="text/csv",
@@ -226,38 +226,43 @@ def render_import(current_cats, user_id):
     )
     
     st.divider()
-
-    up = st.file_uploader("Sube tu archivo aquí", type=["csv", "xlsx"])
+    up = st.file_uploader("Selecciona tu archivo", type=["csv", "xlsx"])
     
     if up:
         try:
             df = pd.read_csv(up, sep=None, engine='python') if up.name.endswith('.csv') else pd.read_excel(up)
+            st.write("### Previsualización")
             st.dataframe(df.head(3), use_container_width=True)
+            
             cols = df.columns.tolist()
-            def auto_match(name): return cols.index(name) if name in cols else 0
+            def match(n): return cols.index(n) if n in cols else 0
             
             c1, c2 = st.columns(2)
-            sel_tipo = c1.selectbox("Columna Tipo", cols, index=auto_match("Tipo"))
-            sel_qty = c1.selectbox("Columna Cantidad", cols, index=auto_match("Cantidad"))
-            sel_cat = c1.selectbox("Columna Categoría", cols, index=auto_match("Categoría"))
-            sel_date = c2.selectbox("Columna Fecha", cols, index=auto_match("Fecha"))
-            sel_note = c2.selectbox("Columna Concepto", cols, index=auto_match("Concepto"))
+            sel_tipo = c1.selectbox("Columna Tipo", cols, index=match("Tipo"))
+            sel_qty = c1.selectbox("Columna Cantidad", cols, index=match("Cantidad"))
+            sel_cat = c1.selectbox("Columna Categoría", cols, index=match("Categoría"))
+            sel_date = c2.selectbox("Columna Fecha", cols, index=match("Fecha"))
+            sel_note = c2.selectbox("Columna Concepto", cols, index=match("Concepto"))
             
-            if st.button("🚀 Procesar e Importar", use_container_width=True):
-                cat_lookup = {c['name'].upper().strip(): (c['id'], c['type']) for c in current_cats}
+            if st.button("🚀 Iniciar Importación", use_container_width=True):
+                cat_lookup = {c['name'].upper().strip(): c['id'] for c in current_cats}
                 success, errors = 0, 0
                 for _, r in df.iterrows():
                     try:
-                        nombre_cat = str(r[sel_cat]).upper().strip()
-                        if nombre_cat in cat_lookup:
-                            val_qty = str(r[sel_qty]).replace('€', '').replace(' ', '').replace(',', '.')
-                            txt_tipo = str(r[sel_tipo]).upper()
-                            val_tipo = "Ingreso" if "ING" in txt_tipo else "Gasto"
-                            save_input({"user_id": user_id, "quantity": float(val_qty), "type": val_tipo, "category_id": cat_lookup[nombre_cat][0], "date": str(pd.to_datetime(r[sel_date]).date()), "notes": str(r[sel_note]) if pd.notna(r[sel_note]) else ""})
+                        n_cat = str(r[sel_cat]).upper().strip()
+                        if n_cat in cat_lookup:
+                            qty_val = float(str(r[sel_qty]).replace('€','').replace(',','.'))
+                            t_val = "Ingreso" if "ING" in str(r[sel_tipo]).upper() else "Gasto"
+                            save_input({
+                                "user_id": user_id, "quantity": qty_val, "type": t_val,
+                                "category_id": cat_lookup[n_cat], "date": str(pd.to_datetime(r[sel_date]).date()),
+                                "notes": str(r[sel_note]) if pd.notna(r[sel_note]) else ""
+                            })
                             success += 1
                         else: errors += 1
                     except: errors += 1
-                if success > 0: st.success(f"✅ {success} añadidos."); st.rerun()
-                if errors > 0: st.warning(f"⚠️ {errors} fallidos.")
+                if success: st.success(f"✅ {success} movimientos importados.")
+                if errors: st.warning(f"⚠️ {errors} filas omitidas.")
+                st.rerun()
         except Exception as e:
-            st.error(f"Error: {e}")
+            st.error(f"Error al procesar: {e}")
