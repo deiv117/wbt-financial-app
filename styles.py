@@ -9,7 +9,6 @@ def get_custom_css():
        ========================================= */
     h1, h2, h3 { color: #31333F; }
 
-    /* Ajustes globales para evitar desbordamiento horizontal en móviles */
     .block-container {
         padding-left: 0.5rem !important;
         padding-right: 0.5rem !important;
@@ -62,8 +61,6 @@ def get_custom_css():
     /* =========================================
        4. TABLAS RESPONSIVE Y FILAS
        ========================================= */
-    
-    /* Forzar fila horizontal y permitir que los elementos se encojan sin scroll */
     [data-testid="stHorizontalBlock"] {
         display: flex !important;
         flex-direction: row !important;
@@ -73,15 +70,13 @@ def get_custom_css():
         gap: 2px !important;
     }
 
-    /* Columnas flexibles que NO empujan el ancho (Evita scroll horizontal) */
     [data-testid="column"] {
         flex: 1 1 auto !important;
-        min-width: 0px !important; /* Vital: permite que la columna sea más pequeña que su contenido */
+        min-width: 0px !important; 
         padding: 0px !important;
         overflow: hidden !important; 
     }
 
-    /* Alineación vertical de inputs en tablas */
     .st-emotion-cache-1permvm {
         align-items: center;
     }
@@ -89,8 +84,6 @@ def get_custom_css():
     /* =========================================
        5. BOTONES DE ACCIÓN (Lápiz / Basura)
        ========================================= */
-    
-    /* Contenedor específico para alinear botones a la derecha */
     .contenedor-acciones-tabla {
         display: flex !important;
         flex-direction: row !important;
@@ -101,7 +94,6 @@ def get_custom_css():
         padding-right: 2px !important;
     }
     
-    /* Estilo de los botones dentro de la tabla */
     .contenedor-acciones-tabla button {
         height: 30px !important;
         width: 34px !important;
@@ -117,7 +109,6 @@ def get_custom_css():
        6. ESTILOS PARA MÓVIL (Max-width 640px)
        ========================================= */
     @media (max-width: 640px) {
-        /* Texto más pequeño y truncado con '...' */
         .stMarkdown div p {
             font-size: 11px !important;
             white-space: nowrap !important;
@@ -126,35 +117,40 @@ def get_custom_css():
             line-height: 1.2 !important;
         }
         
-        /* Ajuste de métricas */
         [data-testid="stMetricValue"] {
             font-size: 18px !important;
         }
         
-        /* Botones ultra compactos en móvil */
         .contenedor-acciones-tabla button {
             width: 24px !important;
             height: 24px !important;
             font-size: 10px !important;
         }
         
-        /* Reducir gap vertical */
         div[data-testid="stVerticalBlock"] > div {
             gap: 0.2rem !important;
         }
     }
 
     /* =========================================
-       7. PARCHES ESPECÍFICOS DE STREAMLIT
+       7. PARCHES GENÉRICOS
        ========================================= */
-    /* Login Box (Nota: las clases hash pueden cambiar con actualizaciones) */
-    .st-emotion-cache-1ne20ew {
-        background-color: #fff;
-    }
+    .st-emotion-cache-1ne20ew { background-color: #fff; }
+    div[data-testid="column"] button { padding: 2px 10px !important; }
 
-    /* Botones genéricos en columnas (Legacy support) */
-    div[data-testid="column"] button {
-        padding: 2px 10px !important;
+    /* =========================================
+       8. OPTIMIZACIÓN FORMULARIO MÓVIL (NUEVO)
+       ========================================= */
+    /* Reduce el espacio entre inputs dentro del formulario */
+    [data-testid="stForm"] div[data-testid="stVerticalBlock"] {
+        gap: 0.5rem !important;
+    }
+    
+    /* Hace que el botón de guardar destaque un poco más */
+    [data-testid="stForm"] button {
+        margin-top: 10px !important;
+        border-color: #636EFA !important;
+        color: #636EFA !important;
     }
     </style>
     """
