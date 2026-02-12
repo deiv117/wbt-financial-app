@@ -79,7 +79,7 @@ def editar_movimiento_dialog(mov_data, categorias_disponibles):
     except:
         idx_cat = 0
     n_sel_cat = st.selectbox("Categoría", opciones, index=idx_cat)
-    n_notes = st.text_input("Concepto / Notas", value=str(mov_data.get('notes') or ''))
+    n_notes = st.text_input("Concepto", value=str(mov_data.get('notes') or ''))
     if st.button("Guardar Cambios"):
         cat_obj = next(c for c in f_cs if f"{c.get('emoji', '📁')} {c['name']}" == n_sel_cat)
         supabase.table("user_imputs").update({
@@ -105,7 +105,7 @@ if not st.session_state.user:
                         st.rerun()
                 except: st.error("Acceso denegado.")
 else:
-    # --- ARREGLO DEL FONDO: Eliminamos la imagen de login ---
+    # --- ARREGLO DEL FONDO ---
     st.markdown("<style>.stApp { background-image: none !important; }</style>", unsafe_allow_html=True)
 
     # --- SIDEBAR ---
@@ -180,7 +180,7 @@ else:
             except: st.error("Error en formato")
 
     else:
-        # --- PANEL PRINCIPAL (Manteniendo todas las pestañas) ---
+        # --- PANEL PRINCIPAL ---
         st.title("📊 Cuadro de Mando")
         t1, t2, t3, t4, t5 = st.tabs(["💸 Registro", "🗄️ Historial", "🔮 Previsión", "📊 Mensual", "📅 Anual"])
 
@@ -193,20 +193,24 @@ else:
             f_cs = [c for c in current_cats if c.get('type') == t_type]
             if f_cs:
                 sel = st.selectbox("Categoría", ["Selecciona..."] + [f"{c.get('emoji', '📁')} {c['name']}" for c in f_cs])
-                concepto = st.text_input("Notas")
+                concepto = st.text_input("Concepto")
                 if st.button("Guardar") and sel != "Selecciona...":
                     cat_sel = next(c for c in f_cs if f"{c.get('emoji', '📁')} {c['name']}" == sel)
                     supabase.table("user_imputs").insert({"user_id": st.session_state.user.id, "quantity": qty, "type": t_type, "category_id": cat_sel['id'], "date": str(f_mov), "notes": concepto}).execute(); st.rerun()
             st.divider()
+            st.subheader("Últimos movimientos")
             res_rec = supabase.table("user_imputs").select("*, user_categories(id, name, emoji)").order("date", desc=True).limit(10).execute()
             for i in (res_rec.data or []):
                 cat_obj = i.get('user_categories') or {}
-                cl1, cl2, cl3, cl4, cl5 = st.columns([3, 1, 0.5, 0.4, 0.4])
-                cl1.write(f"**{i['date']}** | {cat_obj.get('emoji','📁')} {cat_obj.get('name','S/C')}")
-                cl2.write(f"{i['quantity']:.2f}€")
-                cl3.write("📉" if i['type'] == "Gasto" else "📈")
-                if cl4.button("✏️", key=f"e_{i['id']}"): editar_movimiento_dialog(i, current_cats)
-                if cl5.button("🗑️", key=f"d_{i['id']}"): supabase.table("user_imputs").delete().eq("id", i['id']).execute(); st.rerun()
+                # Se añade cl6 para el concepto en la visualización rápida
+                cl1, cl2, cl3, cl4, cl5, cl6 = st.columns([1.5, 1.5, 1.5, 1, 0.4, 0.4])
+                cl1.write(f"**{i['date']}**")
+                cl2.write(f"{cat_obj.get('emoji','📁')} {cat_obj.get('name','S/C')}")
+                cl3.write(f"_{str(i.get('notes') or '')}_") # Columna de Concepto
+                cl4.write(f"**{i['quantity']:.2f}€**")
+                cl5.write("📉" if i['type'] == "Gasto" else "📈")
+                if cl6.button("✏️", key=f"e_{i['id']}"): editar_movimiento_dialog(i, current_cats)
+                if cl6.button("🗑️", key=f"d_{i['id']}"): supabase.table("user_imputs").delete().eq("id", i['id']).execute(); st.rerun()
 
         with t2:
             st.subheader("Historial")
@@ -214,7 +218,9 @@ else:
             f_i, f_f = h1.date_input("Desde", datetime.now()-timedelta(days=30), key="hi"), h2.date_input("Hasta", datetime.now(), key="hf")
             if not df_all.empty:
                 df_h = df_all[(df_all['date'].dt.date >= f_i) & (df_all['date'].dt.date <= f_f)]
-                st.dataframe(df_h[['date', 'cat_display', 'notes', 'quantity', 'type']].sort_values('date', ascending=False), use_container_width=True, hide_index=True)
+                # Se renombra 'notes' a 'Concepto' en el dataframe
+                df_h_display = df_h[['date', 'cat_display', 'notes', 'quantity', 'type']].rename(columns={'notes': 'Concepto', 'date': 'Fecha', 'cat_display': 'Categoría', 'quantity': 'Cantidad', 'type': 'Tipo'})
+                st.dataframe(df_h_display.sort_values('Fecha', ascending=False), use_container_width=True, hide_index=True)
 
         with t3:
             st.subheader("🔮 Previsión y Comparativa")
