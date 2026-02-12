@@ -8,8 +8,6 @@ import plotly.graph_objects as go
 # 1. CONEXIÓN SEGURA CON SUPABASE
 url = st.secrets["SUPABASE_URL"]
 key = st.secrets["SUPABASE_KEY"]
-
-# Configuración de persistencia (intenta recuperar sesión previa)
 supabase: Client = create_client(url, key)
 
 st.set_page_config(page_title="Mis Gastos", page_icon="💰", layout="wide")
@@ -41,12 +39,15 @@ st.markdown("""
     </style>
     """, unsafe_allow_html=True)
 
-# --- CONTROL DE SESIÓN ---
-# Intentar recuperar sesión de Supabase si existe
+# --- CONTROL DE SESIÓN CORREGIDO ---
 if 'user' not in st.session_state:
     try:
-        session = supabase.auth.get_session()
-        st.session_state.user = session.user if session else None
+        # Intentamos recuperar sesión persistente
+        res_session = supabase.auth.get_session()
+        if res_session and res_session.user:
+            st.session_state.user = res_session.user
+        else:
+            st.session_state.user = None
     except:
         st.session_state.user = None
 
@@ -63,23 +64,26 @@ if not st.session_state.user:
             st.markdown("<p class='login-subtitle'>Identifícate para gestionar tus ahorros</p>", unsafe_allow_html=True)
             email = st.text_input("Email")
             password = st.text_input("Contraseña", type="password")
+            recordarme = st.checkbox("Mantener sesión iniciada (1h)", value=True)
             
-            # Funcionalidad de Recordarme
-            recordarme = st.checkbox("Mantener sesión iniciada (1h)")
+            submit = st.form_submit_button("Entrar", use_container_width=True)
             
-            if st.form_submit_button("Entrar", use_container_width=True):
+            if submit:
                 try:
+                    # Al hacer el login, actualizamos directamente el session_state
                     res = supabase.auth.sign_in_with_password({"email": email, "password": password})
-                    st.session_state.user = res.user
-                    # Nota: Supabase maneja internamente la sesión en el cliente. 
-                    # Al marcar recordarme, la sesión persistirá en la instancia del cliente.
-                    st.rerun()
-                except: 
+                    if res.user:
+                        st.session_state.user = res.user
+                        st.rerun() # ESTE RERUN ES CLAVE: Recarga la página ya con el usuario detectado
+                except Exception as e:
                     st.error("Acceso denegado. Revisa tus credenciales.")
 else:
+    # Quitar fondo de imagen dentro de la app
     st.markdown("<style>.stApp { background-image: none !important; }</style>", unsafe_allow_html=True)
 
+    # --- SIDEBAR NAVEGACIÓN ---
     with st.sidebar:
+        # Recuperamos datos del perfil
         res_p = supabase.table("profiles").select("*").eq("id", st.session_state.user.id).maybe_single().execute()
         p_data = res_p.data if (hasattr(res_p, 'data') and res_p.data) else {}
         
@@ -95,6 +99,7 @@ else:
         else:
             st.markdown(f'<div class="avatar-circle" style="background-color: {bg_color};">{iniciales}</div>', unsafe_allow_html=True)
         st.markdown(f"**{nombre} {apellido}**")
+        
         if st.button("Cerrar Sesión"):
             supabase.auth.sign_out()
             st.session_state.user = None
@@ -150,7 +155,7 @@ else:
                 except: st.error("Error al procesar el archivo.")
 
     else:
-        # --- PANEL PRINCIPAL (TABS COMPLETOS - SIN ELIMINAR NADA) ---
+        # --- PANEL PRINCIPAL ---
         st.title("📊 Cuadro de Mando")
         tab_mov, tab_hist, tab_cat, tab_prev, tab_mes, tab_anual = st.tabs(["💸 Movimientos", "🗄️ Historial", "⚙️ Categorías", "🔮 Previsión", "📊 Mensual", "📅 Anual"])
 
