@@ -6,37 +6,7 @@ from database import save_input, delete_input, get_categories, delete_category, 
 from components import editar_movimiento_dialog, editar_categoria_dialog, crear_categoria_dialog
 
 def render_dashboard(df_all, current_cats, user_id):
-    # --- CSS DEFINITIVO Y SEGURO ---
-    st.markdown("""
-        <style>
-        /* Contenedor horizontal exclusivo para los botones de la tabla */
-        .contenedor-acciones-tabla {
-            display: flex !important;
-            flex-direction: row !important;
-            gap: 10px !important;
-            justify-content: flex-start !important;
-            align-items: center !important;
-            width: 100% !important;
-        }
-        
-        /* Estilo de los botones de icono en las tablas */
-        .contenedor-acciones-tabla button {
-            height: 30px !important;
-            width: 34px !important;
-            padding: 0px !important;
-            margin: 0px !important;
-            min-height: 30px !important;
-            border-radius: 6px !important;
-            font-size: 14px !important;
-            border: 1px solid #f0f2f6 !important;
-        }
-
-        /* Restaurar comportamiento normal de columnas para que las categorías respiren */
-        [data-testid="column"] {
-            flex: 1 1 auto !important;
-        }
-        </style>
-    """, unsafe_allow_html=True)
+    # Ya no hay CSS aquí, se carga desde styles.py en main.py
 
     t1, t2, t3, t4, t5 = st.tabs(["💸 Nueva entrada", "🗄️ Historial", "🔮 Previsión", "📊 Mensual", "📅 Anual"])
     cat_g = [c for c in current_cats if c.get('type') == 'Gasto']
@@ -44,45 +14,47 @@ def render_dashboard(df_all, current_cats, user_id):
 
     with t1:
         st.subheader("Nuevo Movimiento")
-        c1, c2, c3 = st.columns(3)
-        qty = c1.number_input("Cantidad (€)", min_value=0.0)
-        t_type = c2.selectbox("Tipo", ["Gasto", "Ingreso"])
-        f_mov = c3.date_input("Fecha", datetime.now())
-        
-        f_cs = [c for c in current_cats if c.get('type') == t_type]
-        if f_cs:
-            sel = st.selectbox("Categoría", ["Selecciona..."] + [f"{c.get('emoji', '📁')} {c['name']}" for c in f_cs])
-            concepto = st.text_input("Concepto")
-            if st.button("Guardar Movimiento", use_container_width=True) and sel != "Selecciona...":
-                cat_sel = next(c for c in f_cs if f"{c.get('emoji', '📁')} {c['name']}" == sel)
-                save_input({
-                    "user_id": user_id, 
-                    "quantity": qty, 
-                    "type": t_type, 
-                    "category_id": cat_sel['id'], 
-                    "date": str(f_mov), 
-                    "notes": concepto
-                })
-                st.rerun()
-        
+        # Formulario con auto-limpieza
+        with st.form("nuevo_mov_form", clear_on_submit=True):
+            c1, c2, c3 = st.columns(3)
+            qty = c1.number_input("Cantidad (€)", min_value=0.0, step=0.01, key="f_qty")
+            t_type = c2.selectbox("Tipo", ["Gasto", "Ingreso"], key="f_type")
+            f_mov = c3.date_input("Fecha", datetime.now(), key="f_date")
+            
+            f_cs = [c for c in current_cats if c.get('type') == t_type]
+            sel = st.selectbox("Categoría", ["Selecciona..."] + [f"{c.get('emoji', '📁')} {c['name']}" for c in f_cs], key="f_cat")
+            concepto = st.text_input("Concepto", key="f_note")
+            
+            if st.form_submit_button("Guardar Movimiento", use_container_width=True):
+                if sel != "Selecciona..." and qty > 0:
+                    cat_sel = next(c for c in f_cs if f"{c.get('emoji', '📁')} {c['name']}" == sel)
+                    save_input({
+                        "user_id": user_id, 
+                        "quantity": qty, 
+                        "type": t_type, 
+                        "category_id": cat_sel['id'], 
+                        "date": str(f_mov), 
+                        "notes": concepto
+                    })
+                    st.rerun()
+
         st.divider()
         st.subheader("Últimos movimientos")
         df_rec = df_all.sort_values('date', ascending=False).head(10) if not df_all.empty else pd.DataFrame()
         
         for _, i in df_rec.iterrows():
-            cl1, cl2, cl3, cl4, cl5, cl6 = st.columns([1.5, 1.5, 2, 1, 0.4, 0.8])
-            cl1.write(f"**{i['date'].date()}**")
+            # Distribución de columnas optimizada para móvil
+            cl1, cl2, cl3, cl4, cl5 = st.columns([1.2, 2.5, 1.3, 0.5, 1.2])
+            
+            cl1.write(f"{i['date'].strftime('%d/%m')}")
             cl2.write(f"{i['cat_display']}")
-            cl3.write(f"_{i['notes']}_")
-            cl4.write(f"**{i['quantity']:.2f}€**")
-            cl5.write("📉" if i['type'] == "Gasto" else "📈")
-            with cl6:
+            cl3.write(f"**{i['quantity']:.0f}**") # Sin decimales visuales para ahorrar espacio
+            cl4.write("📉" if i['type'] == "Gasto" else "📈")
+            
+            with cl5:
                 st.markdown('<div class="contenedor-acciones-tabla">', unsafe_allow_html=True)
-                col_e, col_d = st.columns(2)
-                with col_e:
-                    if st.button("✏️", key=f"e_dash_{i['id']}"): editar_movimiento_dialog(i, current_cats)
-                with col_d:
-                    if st.button("🗑️", key=f"d_dash_{i['id']}"): delete_input(i['id']); st.rerun()
+                if st.button("✏️", key=f"e_dash_{i['id']}"): editar_movimiento_dialog(i, current_cats)
+                if st.button("🗑️", key=f"d_dash_{i['id']}"): delete_input(i['id']); st.rerun()
                 st.markdown('</div>', unsafe_allow_html=True)
 
     with t2:
@@ -93,25 +65,20 @@ def render_dashboard(df_all, current_cats, user_id):
         
         if not df_all.empty:
             df_h = df_all[(df_all['date'].dt.date >= f_i) & (df_all['date'].dt.date <= f_f)].sort_values('date', ascending=False)
-            if df_h.empty:
-                st.info("No hay movimientos en este rango de fechas.")
-            else:
-                st.divider()
+            if not df_h.empty:
                 for _, i in df_h.iterrows():
-                    cl1, cl2, cl3, cl4, cl5, cl6 = st.columns([1.5, 1.5, 2, 1, 0.4, 0.8])
-                    cl1.write(f"{i['date'].date()}")
+                    cl1, cl2, cl3, cl4, cl5 = st.columns([1.2, 2.5, 1.3, 0.5, 1.2])
+                    cl1.write(f"{i['date'].strftime('%d/%m')}")
                     cl2.write(f"{i['cat_display']}")
-                    cl3.write(f"{i['notes']}")
-                    cl4.write(f"**{i['quantity']:.2f}€**")
-                    cl5.write("📉" if i['type'] == "Gasto" else "📈")
-                    with cl6:
+                    cl3.write(f"**{i['quantity']:.0f}€**")
+                    cl4.write("📉" if i['type'] == "Gasto" else "📈")
+                    with cl5:
                         st.markdown('<div class="contenedor-acciones-tabla">', unsafe_allow_html=True)
-                        cb1, cb2 = st.columns(2)
-                        with cb1:
-                            if st.button("✏️", key=f"e_hist_{i['id']}"): editar_movimiento_dialog(i, current_cats)
-                        with cb2:
-                            if st.button("🗑️", key=f"d_hist_{i['id']}"): delete_input(i['id']); st.rerun()
+                        if st.button("✏️", key=f"e_hist_{i['id']}"): editar_movimiento_dialog(i, current_cats)
+                        if st.button("🗑️", key=f"d_hist_{i['id']}"): delete_input(i['id']); st.rerun()
                         st.markdown('</div>', unsafe_allow_html=True)
+            else:
+                st.info("No hay movimientos en este rango.")
 
     with t3:
         st.subheader("🔮 Previsión y Comparativa")
@@ -192,7 +159,6 @@ def render_categories(current_cats):
             st.subheader(f"{t}s")
             for c in [cat for cat in current_cats if cat.get('type') == t]:
                 with st.container(border=True):
-                    # Aquí usamos columnas normales sin el wrapper horizontal
                     k1, k2 = st.columns([4, 1])
                     k1.write(f"**{c.get('emoji', '📁')} {c['name']}**")
                     if t == "Gasto": k1.caption(f"Meta: {c['budget']:.2f}€")
