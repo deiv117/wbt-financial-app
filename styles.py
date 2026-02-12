@@ -55,7 +55,7 @@ def get_custom_css():
 
     /* 5. PARCHES */
     .st-emotion-cache-1ne20ew { background-color: #fff; }
-    .st-emotion-cache-1permvm { align-items: center; }
+    /*.st-emotion-cache-1permvm { align-items: center; }*/
 
     /* =========================================
        7. TARJETAS DE MOVIMIENTOS (NUEVO)
