@@ -6,34 +6,41 @@ from database import save_input, delete_input, get_categories, delete_category, 
 from components import editar_movimiento_dialog, editar_categoria_dialog, crear_categoria_dialog
 
 def render_dashboard(df_all, current_cats, user_id):
-    # --- CSS DEFINITIVO Y SEGURO ---
+    # --- CSS RESPONSIVE Y SEGURO ---
     st.markdown("""
         <style>
-        /* Contenedor horizontal exclusivo para los botones de la tabla */
+        /* Forzar que las columnas de la tabla se mantengan en fila en móvil */
+        [data-testid="column"] {
+            min-width: 0px !important;
+            flex-direction: row !important;
+        }
+
+        /* Contenedor de acciones (Botones lápiz/papelera) */
         .contenedor-acciones-tabla {
             display: flex !important;
             flex-direction: row !important;
-            gap: 10px !important;
-            justify-content: flex-start !important;
+            gap: 8px !important;
             align-items: center !important;
-            width: 100% !important;
+            justify-content: flex-end !important;
         }
         
-        /* Estilo de los botones de icono en las tablas */
+        /* Ajuste de botones para que no se deformen en móvil */
         .contenedor-acciones-tabla button {
             height: 30px !important;
-            width: 34px !important;
+            width: 30px !important;
             padding: 0px !important;
-            margin: 0px !important;
             min-height: 30px !important;
             border-radius: 6px !important;
-            font-size: 14px !important;
-            border: 1px solid #f0f2f6 !important;
         }
 
-        /* Restaurar comportamiento normal de columnas para que las categorías respiren */
-        [data-testid="column"] {
-            flex: 1 1 auto !important;
+        /* Ajuste de fuentes para pantallas pequeñas (< 640px) */
+        @media (max-width: 640px) {
+            .stMarkdown div p {
+                font-size: 12px !important;
+            }
+            .stMetric div div {
+                font-size: 16px !important;
+            }
         }
         </style>
     """, unsafe_allow_html=True)
@@ -44,23 +51,18 @@ def render_dashboard(df_all, current_cats, user_id):
 
     with t1:
         st.subheader("Nuevo Movimiento")
-        
-        # Creamos un contenedor de formulario que se limpia al enviar
-        with st.form("form_nuevo_movimiento", clear_on_submit=True):
+        # Usamos form con clear_on_submit para que se borre al guardar
+        with st.form("nuevo_mov_form", clear_on_submit=True):
             c1, c2, c3 = st.columns(3)
-            qty = c1.number_input("Cantidad (€)", min_value=0.0, step=0.01, key="input_qty")
-            t_type = c2.selectbox("Tipo", ["Gasto", "Ingreso"], key="input_type")
-            f_mov = c3.date_input("Fecha", datetime.now(), key="input_date")
+            qty = c1.number_input("Cantidad (€)", min_value=0.0, step=0.01)
+            t_type = c2.selectbox("Tipo", ["Gasto", "Ingreso"])
+            f_mov = c3.date_input("Fecha", datetime.now())
             
             f_cs = [c for c in current_cats if c.get('type') == t_type]
+            sel = st.selectbox("Categoría", ["Selecciona..."] + [f"{c.get('emoji', '📁')} {c['name']}" for c in f_cs])
+            concepto = st.text_input("Concepto (ej. Supermercado)")
             
-            # Ajuste de categoría y concepto dentro del formulario
-            sel = st.selectbox("Categoría", ["Selecciona..."] + [f"{c.get('emoji', '📁')} {c['name']}" for c in f_cs], key="input_cat")
-            concepto = st.text_input("Concepto", key="input_notes")
-            
-            submit = st.form_submit_button("Guardar Movimiento", use_container_width=True)
-            
-            if submit:
+            if st.form_submit_button("Guardar Movimiento", use_container_width=True):
                 if sel != "Selecciona..." and qty > 0:
                     cat_sel = next(c for c in f_cs if f"{c.get('emoji', '📁')} {c['name']}" == sel)
                     save_input({
@@ -71,23 +73,23 @@ def render_dashboard(df_all, current_cats, user_id):
                         "date": str(f_mov), 
                         "notes": concepto
                     })
-                    st.success("¡Movimiento guardado!")
                     st.rerun()
                 else:
-                    st.error("Por favor, introduce una cantidad y selecciona una categoría.")
-        
+                    st.warning("Revisa la cantidad y la categoría.")
+
         st.divider()
         st.subheader("Últimos movimientos")
         df_rec = df_all.sort_values('date', ascending=False).head(10) if not df_all.empty else pd.DataFrame()
         
         for _, i in df_rec.iterrows():
-            cl1, cl2, cl3, cl4, cl5, cl6 = st.columns([1.5, 1.5, 2, 1, 0.4, 0.8])
-            cl1.write(f"**{i['date'].date()}**")
+            # Ajustamos los pesos de columna para optimizar el espacio móvil
+            cl1, cl2, cl3, cl4, cl5 = st.columns([1.5, 2, 1.5, 0.5, 1])
+            cl1.write(f"**{i['date'].strftime('%d/%m')}**")
             cl2.write(f"{i['cat_display']}")
-            cl3.write(f"_{i['notes']}_")
-            cl4.write(f"**{i['quantity']:.2f}€**")
-            cl5.write("📉" if i['type'] == "Gasto" else "📈")
-            with cl6:
+            cl3.write(f"**{i['quantity']:.2f}€**")
+            cl4.write("📉" if i['type'] == "Gasto" else "📈")
+            
+            with cl5:
                 st.markdown('<div class="contenedor-acciones-tabla">', unsafe_allow_html=True)
                 col_e, col_d = st.columns(2)
                 with col_e:
@@ -98,24 +100,21 @@ def render_dashboard(df_all, current_cats, user_id):
 
     with t2:
         st.subheader("Historial de Movimientos")
+        # Filtros de historial (se mantienen igual pero con columnas que no colapsan)
         h1, h2 = st.columns(2)
         f_i = h1.date_input("Desde", datetime.now()-timedelta(days=30), key="hi")
         f_f = h2.date_input("Hasta", datetime.now(), key="hf")
         
         if not df_all.empty:
             df_h = df_all[(df_all['date'].dt.date >= f_i) & (df_all['date'].dt.date <= f_f)].sort_values('date', ascending=False)
-            if df_h.empty:
-                st.info("No hay movimientos en este rango de fechas.")
-            else:
-                st.divider()
+            if not df_h.empty:
                 for _, i in df_h.iterrows():
-                    cl1, cl2, cl3, cl4, cl5, cl6 = st.columns([1.5, 1.5, 2, 1, 0.4, 0.8])
-                    cl1.write(f"{i['date'].date()}")
+                    cl1, cl2, cl3, cl4, cl5 = st.columns([1.5, 2, 1.5, 0.5, 1])
+                    cl1.write(f"{i['date'].strftime('%d/%m')}")
                     cl2.write(f"{i['cat_display']}")
-                    cl3.write(f"{i['notes']}")
-                    cl4.write(f"**{i['quantity']:.2f}€**")
-                    cl5.write("📉" if i['type'] == "Gasto" else "📈")
-                    with cl6:
+                    cl3.write(f"**{i['quantity']:.2f}€**")
+                    cl4.write("📉" if i['type'] == "Gasto" else "📈")
+                    with cl5:
                         st.markdown('<div class="contenedor-acciones-tabla">', unsafe_allow_html=True)
                         cb1, cb2 = st.columns(2)
                         with cb1:
