@@ -2,42 +2,30 @@ def get_custom_css():
     """Retorna todo el CSS personalizado de la aplicación"""
     return """
     <style>
-    /* 1. FONDO DE PANTALLA (Solo para Login) */
-    /* Definimos la variable pero la aplicaremos condicionalmente en main.py */
-    .bg-login {
-        background-image: url("https://images.unsplash.com/photo-1554224155-6726b3ff858f?q=80&w=2022&auto=format&fit=crop");
-        background-size: cover;
-        background-position: center;
-        background-attachment: fixed;
-    }
-
-    /* 2. CAJA DE LOGIN REFORMADA (Sin depender de st.form) */
+    /* 1. CAJA DE LOGIN */
     .login-box {
-        background-color: rgba(255, 255, 255, 0.85); /* Fondo sólido semi-transparente para legibilidad */
-        backdrop-filter: blur(10px);
-        -webkit-backdrop-filter: blur(10px);
+        background-color: white;
         padding: 40px;
         border-radius: 20px;
-        border: 1px solid rgba(255, 255, 255, 0.3);
-        box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.3);
-        margin-top: 50px;
+        border: 1px solid rgba(0, 0, 0, 0.1);
+        box-shadow: 0 10px 25px rgba(0,0,0,0.2);
+        margin-top: 20px;
     }
     
-    /* Forzar color de etiquetas en login para que se vean sobre el fondo */
-    .login-box label {
+    /* Forzar visibilidad de textos en login */
+    .login-box label, .login-box p, .login-box h1 {
         color: #31333F !important;
-        font-weight: bold !important;
     }
 
-    /* 3. TEXTOS DE LOGIN */
+    /* 2. TEXTO TITULO */
     .login-title { 
         text-align: center; 
         font-weight: 800; 
-        color: #1f1f1f !important; 
-        margin-bottom: 20px;
+        margin-bottom: 25px;
+        font-size: 2.5rem;
     }
 
-    /* 4. SIDEBAR Y AVATAR */
+    /* 3. SIDEBAR Y AVATAR */
     .sidebar-user-container { 
         display: flex; 
         flex-direction: column; 
@@ -61,7 +49,7 @@ def get_custom_css():
         object-fit: cover; 
     }
 
-    /* 5. BOTONES DE NAVEGACIÓN (SIDEBAR) */
+    /* 4. BOTONES DE NAVEGACIÓN (SIDEBAR) */
     .stSidebar div.stButton > button { 
         width: 100%; 
         border-radius: 10px; 
@@ -76,7 +64,7 @@ def get_custom_css():
         background-color: rgba(99, 110, 250, 0.1); 
     }
     
-    /* Botones de acción (Editar/Borrar) - Mantener pequeños */
+    /* Botones de acción pequeños en tablas */
     div[data-testid="column"] button {
         padding: 2px 10px !important;
         height: auto !important;
