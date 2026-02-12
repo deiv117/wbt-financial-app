@@ -135,80 +135,109 @@ def render_profile(user_id, p_data):
 def render_import(current_cats, user_id):
     st.title("📥 Importar Datos")
     
-    # --- BLOQUE DE PLANTILLA ---
-    st.info("Sube un CSV o Excel. Podrás mapear las columnas a: Tipo, Cantidad, Categoría, Fecha y Concepto.")
+    # --- GENERACIÓN DE PLANTILLA ---
+    # Definimos las columnas que pediste
+    columnas_necesarias = ["Tipo", "Cantidad", "Categoría", "Fecha", "Concepto"]
     
-    df_ejemplo = pd.DataFrame({
-        "Tipo": ["Gasto", "Ingreso"],
-        "Cantidad": [15.50, 1200.00],
-        "Categoría": ["Comida", "Nómina"],
-        "Fecha": [datetime.now().strftime("%Y-%m-%d"), datetime.now().strftime("%Y-%m-%d")],
-        "Concepto": ["Compra semanal", "Sueldo mes"]
-    })
+    # Creamos un ejemplo real basado en las categorías del usuario si existen
+    ej_cat = current_cats[0]['name'] if current_cats else "Comida"
     
-    csv_plantilla = df_ejemplo.to_csv(index=False).encode('utf-8')
+    df_template = pd.DataFrame([
+        {
+            "Tipo": "Gasto",
+            "Cantidad": 50.25,
+            "Categoría": ej_cat,
+            "Fecha": datetime.now().strftime("%Y-%m-%d"),
+            "Concepto": "Ejemplo de gasto"
+        },
+        {
+            "Tipo": "Ingreso",
+            "Cantidad": 1500.00,
+            "Categoría": "Nómina",
+            "Fecha": datetime.now().strftime("%Y-%m-%d"),
+            "Concepto": "Sueldo mensual"
+        }
+    ])
+
+    st.info("Utiliza la plantilla CSV para asegurar que los datos se importan correctamente.")
     
+    # Botón de descarga
     st.download_button(
-        label="📥 Descargar Plantilla CSV de ejemplo",
-        data=csv_plantilla,
-        file_name="plantilla_finanzas.csv",
+        label="📥 Descargar Plantilla CSV",
+        data=df_template.to_csv(index=False).encode('utf-8'),
+        file_name="plantilla_gastos.csv",
         mime="text/csv",
+        key="download_csv_template"
     )
+    
     st.divider()
 
-    up = st.file_uploader("Seleccionar archivo", type=["csv", "xlsx"])
+    # --- SUBIDA DE ARCHIVO ---
+    up = st.file_uploader("Selecciona tu archivo (CSV o Excel)", type=["csv", "xlsx"])
     
     if up:
         try:
-            if up.name.endswith('.csv'):
-                df = pd.read_csv(up)
-            else:
-                df = pd.read_excel(up)
-                
-            st.write("### Vista previa del archivo")
-            st.dataframe(df.head(3), use_container_width=True)
+            # Lectura del archivo
+            df = pd.read_csv(up) if up.name.endswith('.csv') else pd.read_excel(up)
+            
+            st.write("### Vista previa de tus datos")
+            st.dataframe(df.head(5), use_container_width=True)
             
             cols = df.columns.tolist()
             
-            def find_idx(name):
-                try: return cols.index(name)
-                except: return 0
+            # Función para intentar emparejar columnas automáticamente
+            def auto_match(name):
+                return cols.index(name) if name in cols else 0
 
-            st.subheader("Mapeo de columnas")
-            c1, c2 = st.columns(2)
-            sel_tipo = c1.selectbox("Tipo (Ingreso/Gasto)", cols, index=find_idx("Tipo"))
-            sel_qty = c1.selectbox("Cantidad", cols, index=find_idx("Cantidad"))
-            sel_cat = c1.selectbox("Categoría", cols, index=find_idx("Categoría"))
-            sel_date = c2.selectbox("Fecha", cols, index=find_idx("Fecha"))
-            sel_note = c2.selectbox("Concepto", cols, index=find_idx("Concepto"))
+            st.subheader("Mapeo de Columnas")
+            st.caption("Asegúrate de que cada campo apunte a la columna correcta de tu archivo.")
             
-            if st.button("🚀 Procesar e Importar", use_container_width=True):
-                cat_map = {c['name'].upper(): (c['id'], c['type']) for c in current_cats}
+            c1, c2 = st.columns(2)
+            sel_tipo = c1.selectbox("Campo: Tipo", cols, index=auto_match("Tipo"))
+            sel_qty = c1.selectbox("Campo: Cantidad", cols, index=auto_match("Cantidad"))
+            sel_cat = c1.selectbox("Campo: Categoría", cols, index=auto_match("Categoría"))
+            sel_date = c2.selectbox("Campo: Fecha", cols, index=auto_match("Fecha"))
+            sel_note = c2.selectbox("Campo: Concepto", cols, index=auto_match("Concepto"))
+            
+            if st.button("🚀 Iniciar Importación", use_container_width=True):
+                # Diccionario para buscar IDs de categorías
+                cat_lookup = {c['name'].upper().strip(): (c['id'], c['type']) for c in current_cats}
+                
                 success, errors = 0, 0
                 
                 for _, r in df.iterrows():
                     try:
-                        cat_nombre = str(r[sel_cat]).upper().strip()
-                        if cat_nombre in cat_map:
-                            val_tipo = "Ingreso" if "ING" in str(r[sel_tipo]).upper() else "Gasto"
+                        nombre_cat = str(r[sel_cat]).upper().strip()
+                        
+                        if nombre_cat in cat_lookup:
+                            c_id, c_type = cat_lookup[nombre_cat]
+                            
+                            # Limpieza de cantidad (maneja strings con comas)
+                            raw_qty = str(r[sel_qty]).replace('€', '').replace(' ', '').replace(',', '.')
+                            
+                            # Determinar tipo final (priorizamos lo que diga el CSV si contiene 'Ing')
+                            row_tipo = "Ingreso" if "ING" in str(r[sel_tipo]).upper() else "Gasto"
                             
                             save_input({
                                 "user_id": user_id,
-                                "quantity": float(str(r[sel_qty]).replace(',', '.')),
-                                "type": val_tipo,
-                                "category_id": cat_map[cat_nombre][0],
+                                "quantity": float(raw_qty),
+                                "type": row_tipo,
+                                "category_id": c_id,
                                 "date": str(pd.to_datetime(r[sel_date]).date()),
                                 "notes": str(r[sel_note]) if pd.notna(r[sel_note]) else ""
                             })
                             success += 1
                         else:
                             errors += 1
-                    except:
+                    except Exception as e:
                         errors += 1
                 
-                if success > 0: st.success(f"✅ Importados {success} registros correctamente.")
-                if errors > 0: st.warning(f"⚠️ {errors} registros fallaron (Categoría no reconocida o error de formato).")
-                st.rerun()
+                if success > 0:
+                    st.success(f"✅ Se han importado {success} movimientos correctamente.")
+                if errors > 0:
+                    st.warning(f"⚠️ Se saltaron {errors} filas (categoría no encontrada o datos corruptos).")
                 
+                st.rerun()
+
         except Exception as e:
-            st.error(f"Error: {e}")
+            st.error(f"Error al procesar el archivo: {e}")
