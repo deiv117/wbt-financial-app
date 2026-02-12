@@ -56,5 +56,60 @@ def get_custom_css():
     /* 5. PARCHES */
     .st-emotion-cache-1ne20ew { background-color: #fff; }
     .st-emotion-cache-1permvm { align-items: center; }
+
+    /* =========================================
+       7. TARJETAS DE MOVIMIENTOS (NUEVO)
+       ========================================= */
+    .movimiento-card {
+        background-color: white;
+        border: 1px solid #f0f2f6;
+        border-radius: 10px;
+        padding: 15px;
+        margin-bottom: 10px;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+        transition: transform 0.2s ease, box-shadow 0.2s ease;
+    }
+    
+    .movimiento-card:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+        border-color: #636EFA;
+    }
+
+    .card-top {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 5px;
+    }
+    
+    .card-amount {
+        font-weight: bold;
+        font-size: 1.1em;
+    }
+    
+    .gasto-color { color: #EF553B; }
+    .ingreso-color { color: #00CC96; }
+    
+    .card-date {
+        font-size: 0.8em;
+        color: #888;
+    }
+    
+    .card-note {
+        font-size: 0.9em;
+        color: #555;
+        font-style: italic;
+    }
+    
+    /* Contenedor de acciones dentro de la tarjeta */
+    .card-actions {
+        display: flex;
+        justify-content: flex-end;
+        gap: 5px;
+        margin-top: 10px;
+        padding-top: 10px;
+        border-top: 1px solid #f0f2f6;
+    }
     </style>
     """
