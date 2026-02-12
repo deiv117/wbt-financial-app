@@ -6,38 +6,38 @@ from database import save_input, delete_input, get_categories, delete_category, 
 from components import editar_movimiento_dialog, editar_categoria_dialog, crear_categoria_dialog
 
 def render_dashboard(df_all, current_cats, user_id):
-    # --- CSS QUIRÚRGICO: SOLO PARA FILAS DE MOVIMIENTOS ---
+    # --- CSS DEFINITIVO Y SEGURO ---
     st.markdown("""
         <style>
-        /* Contenedor específico para botones en filas de tabla */
-        .fila-movimiento-acciones {
+        /* Contenedor horizontal exclusivo para los botones de la tabla */
+        .contenedor-acciones-tabla {
             display: flex !important;
             flex-direction: row !important;
-            gap: 12px !important;
+            gap: 10px !important;
             justify-content: flex-start !important;
             align-items: center !important;
+            width: 100% !important;
         }
         
-        /* Ajuste de botones solo en esas filas */
-        .fila-movimiento-acciones button {
-            border-radius: 6px !important;
+        /* Estilo de los botones de icono en las tablas */
+        .contenedor-acciones-tabla button {
+            height: 30px !important;
+            width: 34px !important;
             padding: 0px !important;
-            height: 28px !important;
-            width: 32px !important;
-            min-height: 28px !important;
+            margin: 0px !important;
+            min-height: 30px !important;
+            border-radius: 6px !important;
             font-size: 14px !important;
-            background-color: transparent !important;
+            border: 1px solid #f0f2f6 !important;
         }
 
-        /* Hover sutil para los botones de acción */
-        .fila-movimiento-acciones button:hover {
-            border-color: #636EFA !important;
-            color: #636EFA !important;
+        /* Restaurar comportamiento normal de columnas para que las categorías respiren */
+        [data-testid="column"] {
+            flex: 1 1 auto !important;
         }
         </style>
     """, unsafe_allow_html=True)
 
-    # Mantenemos las 5 pestañas solicitadas
     t1, t2, t3, t4, t5 = st.tabs(["💸 Nueva entrada", "🗄️ Historial", "🔮 Previsión", "📊 Mensual", "📅 Anual"])
     cat_g = [c for c in current_cats if c.get('type') == 'Gasto']
     ml = ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"]
@@ -53,7 +53,7 @@ def render_dashboard(df_all, current_cats, user_id):
         if f_cs:
             sel = st.selectbox("Categoría", ["Selecciona..."] + [f"{c.get('emoji', '📁')} {c['name']}" for c in f_cs])
             concepto = st.text_input("Concepto")
-            if st.button("Guardar", use_container_width=True) and sel != "Selecciona...":
+            if st.button("Guardar Movimiento", use_container_width=True) and sel != "Selecciona...":
                 cat_sel = next(c for c in f_cs if f"{c.get('emoji', '📁')} {c['name']}" == sel)
                 save_input({
                     "user_id": user_id, 
@@ -68,6 +68,7 @@ def render_dashboard(df_all, current_cats, user_id):
         st.divider()
         st.subheader("Últimos movimientos")
         df_rec = df_all.sort_values('date', ascending=False).head(10) if not df_all.empty else pd.DataFrame()
+        
         for _, i in df_rec.iterrows():
             cl1, cl2, cl3, cl4, cl5, cl6 = st.columns([1.5, 1.5, 2, 1, 0.4, 0.8])
             cl1.write(f"**{i['date'].date()}**")
@@ -76,13 +77,16 @@ def render_dashboard(df_all, current_cats, user_id):
             cl4.write(f"**{i['quantity']:.2f}€**")
             cl5.write("📉" if i['type'] == "Gasto" else "📈")
             with cl6:
-                st.markdown('<div class="fila-movimiento-acciones">', unsafe_allow_html=True)
-                if st.button("✏️", key=f"e_dash_{i['id']}"): editar_movimiento_dialog(i, current_cats)
-                if st.button("🗑️", key=f"d_dash_{i['id']}"): delete_input(i['id']); st.rerun()
+                st.markdown('<div class="contenedor-acciones-tabla">', unsafe_allow_html=True)
+                col_e, col_d = st.columns(2)
+                with col_e:
+                    if st.button("✏️", key=f"e_dash_{i['id']}"): editar_movimiento_dialog(i, current_cats)
+                with col_d:
+                    if st.button("🗑️", key=f"d_dash_{i['id']}"): delete_input(i['id']); st.rerun()
                 st.markdown('</div>', unsafe_allow_html=True)
 
     with t2:
-        st.subheader("Historial Completo")
+        st.subheader("Historial de Movimientos")
         h1, h2 = st.columns(2)
         f_i = h1.date_input("Desde", datetime.now()-timedelta(days=30), key="hi")
         f_f = h2.date_input("Hasta", datetime.now(), key="hf")
@@ -90,7 +94,7 @@ def render_dashboard(df_all, current_cats, user_id):
         if not df_all.empty:
             df_h = df_all[(df_all['date'].dt.date >= f_i) & (df_all['date'].dt.date <= f_f)].sort_values('date', ascending=False)
             if df_h.empty:
-                st.info("No hay movimientos en este rango.")
+                st.info("No hay movimientos en este rango de fechas.")
             else:
                 st.divider()
                 for _, i in df_h.iterrows():
@@ -101,9 +105,12 @@ def render_dashboard(df_all, current_cats, user_id):
                     cl4.write(f"**{i['quantity']:.2f}€**")
                     cl5.write("📉" if i['type'] == "Gasto" else "📈")
                     with cl6:
-                        st.markdown('<div class="fila-movimiento-acciones">', unsafe_allow_html=True)
-                        if st.button("✏️", key=f"e_hist_{i['id']}"): editar_movimiento_dialog(i, current_cats)
-                        if st.button("🗑️", key=f"d_hist_{i['id']}"): delete_input(i['id']); st.rerun()
+                        st.markdown('<div class="contenedor-acciones-tabla">', unsafe_allow_html=True)
+                        cb1, cb2 = st.columns(2)
+                        with cb1:
+                            if st.button("✏️", key=f"e_hist_{i['id']}"): editar_movimiento_dialog(i, current_cats)
+                        with cb2:
+                            if st.button("🗑️", key=f"d_hist_{i['id']}"): delete_input(i['id']); st.rerun()
                         st.markdown('</div>', unsafe_allow_html=True)
 
     with t3:
@@ -119,6 +126,7 @@ def render_dashboard(df_all, current_cats, user_id):
         
         tp = sum(c['budget'] for c in cat_g)
         mi = df_all[df_all['type']=='Ingreso'].groupby(df_all['date'].dt.to_period('M'))['quantity'].sum().mean() if not df_all.empty else 0
+        
         m1, m2, m3 = st.columns(3)
         m1.metric("Límite Gastos", f"{tp:.2f}€")
         m2.metric("Ingresos Medios", f"{mi:.2f}€")
@@ -129,14 +137,18 @@ def render_dashboard(df_all, current_cats, user_id):
         c_fil1, c_fil2 = st.columns(2)
         sm = c_fil1.selectbox("Mes", ml, index=datetime.now().month-1)
         sa = c_fil2.selectbox("Año", range(2024, 2031), index=datetime.now().year-2024, key="año_mensual")
+        
         if not df_all.empty:
             df_m = df_all[(df_all['date'].dt.month == ml.index(sm)+1) & (df_all['date'].dt.year == sa)]
-            im, gm = df_m[df_m['type'] == 'Ingreso']['quantity'].sum(), df_m[df_m['type'] == 'Gasto']['quantity'].sum()
+            im = df_m[df_m['type'] == 'Ingreso']['quantity'].sum()
+            gm = df_m[df_m['type'] == 'Gasto']['quantity'].sum()
             balance = im - gm
+            
             c_i, c_g, c_b = st.columns(3)
             c_i.metric("Ingresos", f"{im:.2f}€")
             c_g.metric("Gastos", f"{gm:.2f}€")
             c_b.metric("Balance", f"{balance:.2f}€", delta=f"{balance:.2f}€", delta_color="normal" if balance >= 0 else "inverse")
+            
             st.divider()
             gcm = df_m[df_m['type'] == 'Gasto'].groupby('category_id')['quantity'].sum().reset_index()
             for _, r in pd.merge(pd.DataFrame(cat_g), gcm, left_on='id', right_on='category_id', how='left').fillna(0).iterrows():
@@ -146,15 +158,17 @@ def render_dashboard(df_all, current_cats, user_id):
 
     with t5:
         st.subheader("Análisis Anual")
-        san = st.selectbox("Año", range(2024, 2031), index=datetime.now().year-2024, key="año_anual")
+        san = st.selectbox("Seleccionar Año", range(2024, 2031), index=datetime.now().year-2024, key="año_anual")
         if not df_all.empty:
             df_an = df_all[df_all['date'].dt.year == san]
-            ia, ga = df_an[df_an['type'] == 'Ingreso']['quantity'].sum(), df_an[df_an['type'] == 'Gasto']['quantity'].sum()
+            ia = df_an[df_an['type'] == 'Ingreso']['quantity'].sum()
+            ga = df_an[df_an['type'] == 'Gasto']['quantity'].sum()
             ba = ia - ga
+            
             a_i, a_g, a_b = st.columns(3)
             a_i.metric(f"Ingresos {san}", f"{ia:.2f}€")
             a_g.metric(f"Gastos {san}", f"{ga:.2f}€")
-            a_b.metric(f"Balance {san}", f"{ba:.2f}€", delta=f"{ba:.2f}€", delta_color="normal" if ba >= 0 else "inverse")
+            a_b.metric(f"Balance Anual", f"{ba:.2f}€", delta=f"{ba:.2f}€", delta_color="normal" if ba >= 0 else "inverse")
             
             dfe = df_an.copy()
             dfe['mes_num'] = dfe['date'].dt.month
@@ -171,12 +185,14 @@ def render_dashboard(df_all, current_cats, user_id):
 def render_categories(current_cats):
     st.title("📂 Gestión de Categorías")
     if st.button("➕ Nueva Categoría"): crear_categoria_dialog(st.session_state.user.id)
+    
     ci, cg = st.columns(2)
     for col, t in zip([ci, cg], ["Ingreso", "Gasto"]):
         with col:
             st.subheader(f"{t}s")
             for c in [cat for cat in current_cats if cat.get('type') == t]:
                 with st.container(border=True):
+                    # Aquí usamos columnas normales sin el wrapper horizontal
                     k1, k2 = st.columns([4, 1])
                     k1.write(f"**{c.get('emoji', '📁')} {c['name']}**")
                     if t == "Gasto": k1.caption(f"Meta: {c['budget']:.2f}€")
@@ -190,79 +206,73 @@ def render_profile(user_id, p_data):
         c1, c2 = st.columns(2)
         n_name = c1.text_input("Nombre", value=p_data.get('name',''))
         n_last = c1.text_input("Apellido", value=p_data.get('lastname',''))
-        n_color = c1.color_picker("Color", value=p_data.get('profile_color','#636EFA'))
-        n_avatar = c2.text_input("URL Foto", value=p_data.get('avatar_url',''))
-        if st.form_submit_button("Guardar Cambios"):
+        n_color = c1.color_picker("Color de Perfil", value=p_data.get('profile_color','#636EFA'))
+        n_avatar = c2.text_input("URL Avatar", value=p_data.get('avatar_url',''))
+        if st.form_submit_button("Actualizar Perfil"):
             upsert_profile({"id": user_id, "name": n_name, "lastname": n_last, "avatar_url": n_avatar, "profile_color": n_color})
             st.rerun()
 
 def render_import(current_cats, user_id):
-    st.title("📥 Importar Datos")
+    st.title("📥 Importar Movimientos")
     
-    with st.expander("📖 Guía de formato y columnas", expanded=True):
-        st.markdown("""
-        **Requisitos del archivo:**
-        * **Formato:** CSV (coma o punto y coma) o Excel (.xlsx).
-        * **Fecha:** Formato `AAAA-MM-DD` (Ej: 2026-02-12).
-        * **Importante:** Las categorías deben existir previamente en tu gestión.
-        """)
+    with st.expander("📖 Guía de Columnas Sugeridas", expanded=True):
+        st.write("Para una importación exitosa, asegúrate de que tu archivo tenga estas columnas:")
         st.table({
             "Columna": ["Tipo", "Cantidad", "Categoría", "Fecha", "Concepto"],
-            "Ejemplo": ["Gasto", "45.00", "Alimentación", "2026-02-12", "Súper Semanal"]
+            "Descripción": ["Gasto o Ingreso", "Ej: 12.50", "Nombre exacto de categoría", "AAAA-MM-DD", "Descripción libre"]
         })
 
     ej_cat = current_cats[0]['name'] if current_cats else "Varios"
     df_template = pd.DataFrame([{
-        "Tipo": "Gasto", "Cantidad": 50.00, "Categoría": ej_cat, 
+        "Tipo": "Gasto", "Cantidad": 0.00, "Categoría": ej_cat, 
         "Fecha": datetime.now().strftime("%Y-%m-%d"), "Concepto": "Ejemplo"
     }])
     
     st.download_button(
         label="📥 Descargar Plantilla CSV",
         data=df_template.to_csv(index=False).encode('utf-8'),
-        file_name="plantilla_finanzas.csv",
+        file_name="plantilla_importacion.csv",
         mime="text/csv",
         use_container_width=True
     )
     
     st.divider()
-    up = st.file_uploader("Selecciona tu archivo", type=["csv", "xlsx"])
+    up = st.file_uploader("Subir Archivo (CSV o Excel)", type=["csv", "xlsx"])
     
     if up:
         try:
             df = pd.read_csv(up, sep=None, engine='python') if up.name.endswith('.csv') else pd.read_excel(up)
-            st.write("### Previsualización")
+            st.write("### Vista previa")
             st.dataframe(df.head(3), use_container_width=True)
             
             cols = df.columns.tolist()
-            def match(n): return cols.index(n) if n in cols else 0
+            def find_col(name): return cols.index(name) if name in cols else 0
             
             c1, c2 = st.columns(2)
-            sel_tipo = c1.selectbox("Columna Tipo", cols, index=match("Tipo"))
-            sel_qty = c1.selectbox("Columna Cantidad", cols, index=match("Cantidad"))
-            sel_cat = c1.selectbox("Columna Categoría", cols, index=match("Categoría"))
-            sel_date = c2.selectbox("Columna Fecha", cols, index=match("Fecha"))
-            sel_note = c2.selectbox("Columna Concepto", cols, index=match("Concepto"))
+            sel_tipo = c1.selectbox("Columna Tipo", cols, index=find_col("Tipo"))
+            sel_qty = c1.selectbox("Columna Cantidad", cols, index=find_col("Cantidad"))
+            sel_cat = c1.selectbox("Columna Categoría", cols, index=find_col("Categoría"))
+            sel_date = c2.selectbox("Columna Fecha", cols, index=find_col("Fecha"))
+            sel_note = c2.selectbox("Columna Concepto", cols, index=find_col("Concepto"))
             
-            if st.button("🚀 Iniciar Importación", use_container_width=True):
+            if st.button("🚀 Procesar Importación", use_container_width=True):
                 cat_lookup = {c['name'].upper().strip(): c['id'] for c in current_cats}
-                success, errors = 0, 0
+                count = 0
                 for _, r in df.iterrows():
                     try:
-                        n_cat = str(r[sel_cat]).upper().strip()
-                        if n_cat in cat_lookup:
-                            qty_val = float(str(r[sel_qty]).replace('€','').replace(',','.'))
-                            t_val = "Ingreso" if "ING" in str(r[sel_tipo]).upper() else "Gasto"
+                        name_clean = str(r[sel_cat]).upper().strip()
+                        if name_clean in cat_lookup:
+                            raw_qty = str(r[sel_qty]).replace('€','').replace(',','.')
                             save_input({
-                                "user_id": user_id, "quantity": qty_val, "type": t_val,
-                                "category_id": cat_lookup[n_cat], "date": str(pd.to_datetime(r[sel_date]).date()),
+                                "user_id": user_id, 
+                                "quantity": float(raw_qty),
+                                "type": "Ingreso" if "ING" in str(r[sel_tipo]).upper() else "Gasto",
+                                "category_id": cat_lookup[name_clean],
+                                "date": str(pd.to_datetime(r[sel_date]).date()),
                                 "notes": str(r[sel_note]) if pd.notna(r[sel_note]) else ""
                             })
-                            success += 1
-                        else: errors += 1
-                    except: errors += 1
-                if success: st.success(f"✅ {success} movimientos importados.")
-                if errors: st.warning(f"⚠️ {errors} filas omitidas.")
-                st.rerun()
+                            count += 1
+                    except: continue
+                st.success(f"✅ Se han importado {count} movimientos."); st.rerun()
         except Exception as e:
-            st.error(f"Error al procesar: {e}")
+            st.error(f"Error al leer el archivo: {e}")
