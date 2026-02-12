@@ -102,8 +102,9 @@ if not st.session_state.user:
                     res = supabase.auth.sign_in_with_password({"email": email, "password": password})
                     if res.user:
                         st.session_state.user = res.user
-                        st.rerun()
-                except: st.error("Acceso denegado.")
+                        st.rerun()  # Reinicio inmediato para evitar el doble clic
+                except: 
+                    st.error("Acceso denegado. Revisa tus credenciales.")
 else:
     # --- ARREGLO DEL FONDO ---
     st.markdown("<style>.stApp { background-image: none !important; }</style>", unsafe_allow_html=True)
@@ -122,7 +123,9 @@ else:
         else: st.markdown(f'<div class="avatar-circle" style="background-color: {bg_color};">{iniciales}</div>', unsafe_allow_html=True)
         st.markdown(f"**{nombre} {apellido}**")
         if st.button("Cerrar Sesión"):
-            supabase.auth.sign_out(); st.session_state.user = None; st.rerun()
+            supabase.auth.sign_out()
+            st.session_state.user = None
+            st.rerun()
         st.markdown('</div>', unsafe_allow_html=True)
         st.divider()
         if st.button("📊 Panel de Control"): st.session_state.menu_actual = "📊 Panel"; st.rerun()
@@ -238,7 +241,6 @@ else:
 
         with t4:
             st.subheader("Análisis Mensual")
-            # --- FILTRO COMBINADO MES Y AÑO ---
             ml = ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"]
             c_fil1, c_fil2 = st.columns(2)
             sm = c_fil1.selectbox("Mes", ml, index=datetime.now().month-1)
@@ -263,7 +265,6 @@ else:
 
         with t5:
             st.subheader("Análisis Anual")
-            # --- FILTRO POR AÑO ---
             san = st.selectbox("Seleccionar Año", range(2024, 2031), index=datetime.now().year-2024, key="año_anual")
             
             if not df_all.empty:
