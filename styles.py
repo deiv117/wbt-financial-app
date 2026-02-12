@@ -57,6 +57,13 @@ def get_custom_css():
     .st-emotion-cache-1ne20ew {
     background-color: #fff;
 }
+
+
+    /* Tabla Imputs */
+
+.st-emotion-cache-1permvm {
+    align-items: center;
+}
     
     </style>
     """
