@@ -1,85 +1,60 @@
 # styles.py
-
 def get_custom_css():
+    """Retorna el CSS base de la aplicación"""
     return """
     <style>
-    /* =========================================
-       0. CORE RESPONSIVE FIX (FUERZA HORIZONTAL)
-       ========================================= */
-    
-    /* Eliminar márgenes excesivos */
-    .block-container {
-        padding-top: 1rem !important;
-        padding-left: 0.2rem !important;
-        padding-right: 0.2rem !important;
-        max-width: 100vw !important;
-    }
-
-    /* OBLIGAR a que las columnas se mantengan en fila en el móvil */
-    @media (max-width: 640px) {
-        [data-testid="stHorizontalBlock"] {
-            display: flex !important;
-            flex-direction: row !important; /* ESTO ES LA CLAVE */
-            flex-wrap: nowrap !important;
-            overflow-x: hidden !important;
-            align-items: center !important;
-            gap: 2px !important;
-        }
-
-        /* Ajustar el ancho de las columnas para que quepan */
-        [data-testid="column"] {
-            min-width: 0px !important;
-            flex: 1 1 auto !important;
-            padding: 0 !important;
-        }
-
-        /* Texto más grande y legible en móvil */
-        .stMarkdown p {
-            font-size: 13px !important; /* Aumentado de 11 a 13px */
-            line-height: 1.2 !important;
-            white-space: nowrap !important; /* No permitir saltos de línea */
-            overflow: hidden !important;
-            text-overflow: ellipsis !important; /* Puntos suspensivos si no cabe */
-        }
-        
-        /* Ocultar elementos menos importantes si es necesario */
-        /* .hide-mobile { display: none !important; } */
-    }
-
-    /* =========================================
-       1. ESTILOS DE BOTONES Y ACCIONES
-       ========================================= */
-    
-    .contenedor-acciones-tabla {
-        display: flex !important;
-        flex-direction: row !important;
-        justify-content: flex-end !important;
-        align-items: center !important;
-        gap: 2px !important;
-        width: 100% !important;
-    }
-    
-    /* Botones más grandes para dedos */
-    .contenedor-acciones-tabla button {
-        width: 28px !important;
-        height: 28px !important;
-        padding: 0px !important;
-        min-height: 28px !important;
-        border-radius: 4px !important;
-        border: 1px solid #e0e0e0 !important;
-        font-size: 12px !important;
-    }
-
-    /* =========================================
-       2. FORMULARIO Y GENERAL
-       ========================================= */
-    [data-testid="stForm"] div[data-testid="stVerticalBlock"] { gap: 0.5rem !important; }
+    /* 1. ESTILOS GENERALES DE TEXTO */
     h1, h2, h3 { color: #31333F; }
-    
-    /* Input alignment fix */
-    .st-emotion-cache-1permvm { align-items: center; }
 
-    /* Login Box */
+    /* 2. SIDEBAR Y AVATAR */
+    .sidebar-user-container { 
+        display: flex; 
+        flex-direction: column; 
+        align-items: center; 
+        justify-content: center; 
+        text-align: center; 
+        padding: 10px 0 20px 0; 
+    }
+    .avatar-circle { 
+        width: 80px; 
+        height: 80px; 
+        border-radius: 50%; 
+        display: flex; 
+        align-items: center; 
+        justify-content: center; 
+        color: white; 
+        font-weight: bold; 
+        font-size: 28px; 
+        margin-bottom: 10px; 
+        border: 2px solid #636EFA; 
+        object-fit: cover; 
+    }
+
+    /* 3. BOTONES SIDEBAR */
+    .stSidebar div.stButton > button { 
+        width: 100%; 
+        border-radius: 10px; 
+        border: 1px solid rgba(128, 128, 128, 0.2); 
+        background-color: transparent; 
+        transition: all 0.3s ease; 
+        text-align: left; 
+        padding: 10px 15px; 
+    }
+    .stSidebar div.stButton > button:hover { 
+        border-color: #636EFA; 
+        background-color: rgba(99, 110, 250, 0.1); 
+    }
+    
+    /* 4. BOTONES PEQUEÑOS EN TABLAS (Necesario para los iconos) */
+    div[data-testid="column"] button {
+        padding: 2px 10px !important;
+        height: auto !important;
+        min-height: 0px !important;
+        font-size: 14px !important;
+    }
+
+    /* 5. PARCHES */
     .st-emotion-cache-1ne20ew { background-color: #fff; }
+    .st-emotion-cache-1permvm { align-items: center; }
     </style>
     """
