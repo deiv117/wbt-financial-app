@@ -177,11 +177,42 @@ def render_dashboard(df_all, current_cats, user_id):
             c_b.metric("Balance", f"{balance:.2f}€", delta=f"{balance:.2f}€", delta_color="normal" if balance >= 0 else "inverse")
             
             st.divider()
+            st.subheader("Progreso por Categoría (Semáforo)")
             gcm = df_m[df_m['type'] == 'Gasto'].groupby('category_id')['quantity'].sum().reset_index()
+            
             for _, r in pd.merge(pd.DataFrame(cat_g), gcm, left_on='id', right_on='category_id', how='left').fillna(0).iterrows():
-                p = r['quantity'] / r['budget'] if r['budget'] > 0 else 0
-                st.write(f"**{r.get('emoji','📁')} {r['name']}** ({r['quantity']:.2f} / {r['budget']:.2f}€)")
-                st.progress(min(p, 1.0))
+                gastado = r['quantity']
+                presupuesto = r['budget']
+                
+                if presupuesto > 0:
+                    pct = gastado / presupuesto
+                    pct_clamp = min(pct, 1.0)
+                    
+                    # Lógica del semáforo
+                    if pct <= 0.75: color_bar = "#00CC96" # Verde
+                    elif pct <= 1.0: color_bar = "#FFC107" # Naranja/Amarillo
+                    else: color_bar = "#EF553B" # Rojo
+                    
+                    # Cálculo de exceso o restante
+                    restante = presupuesto - gastado
+                    if restante >= 0:
+                        txt_restante = f"<span style='color: gray; font-size: 0.9em;'>Quedan {restante:.2f}€</span>"
+                    else:
+                        txt_restante = f"<span style='color: #EF553B; font-weight: bold; font-size: 0.9em;'>Exceso de {abs(restante):.2f}€</span>"
+                    
+                    # HTML de la barra de progreso personalizada
+                    html_bar = f"""
+                    <div style="margin-bottom: 15px;">
+                        <div style="display: flex; justify-content: space-between; margin-bottom: 5px; font-family: sans-serif;">
+                            <span><strong>{r.get('emoji','📁')} {r['name']}</strong> ({gastado:.2f}€ / {presupuesto:.2f}€)</span>
+                            {txt_restante}
+                        </div>
+                        <div style="width: 100%; background-color: #f0f2f6; border-radius: 5px; height: 12px;">
+                            <div style="width: {pct_clamp * 100}%; background-color: {color_bar}; height: 12px; border-radius: 5px; transition: width 0.5s ease;"></div>
+                        </div>
+                    </div>
+                    """
+                    st.markdown(html_bar, unsafe_allow_html=True)
 
     with t5:
         st.subheader("Análisis Anual")
@@ -203,30 +234,56 @@ def render_dashboard(df_all, current_cats, user_id):
             for t in ['Ingreso', 'Gasto']: 
                 if t not in rm.columns: rm[t] = 0
             
-            # --- NUEVO: CÁLCULO DE LA LÍNEA DE AHORRO ---
+            # Línea de Ahorro
             rm['Ahorro'] = rm['Ingreso'] - rm['Gasto']
             
             fig = go.Figure()
             fig.add_trace(go.Bar(x=ml, y=rm['Ingreso'], name='Ingreso', marker_color='#00CC96'))
             fig.add_trace(go.Bar(x=ml, y=rm['Gasto'], name='Gasto', marker_color='#EF553B'))
-            # --- NUEVO: AÑADIMOS LA LÍNEA DE AHORRO AL GRÁFICO ---
             fig.add_trace(go.Scatter(x=ml, y=rm['Ahorro'], name='Ahorro', mode='lines+markers', line=dict(color='#636EFA', width=3), marker=dict(size=8)))
             
             fig.update_layout(barmode='group', margin=dict(l=20, r=20, t=20, b=20), legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1))
             st.plotly_chart(fig, use_container_width=True)
 
-            # --- NUEVO: CÁLCULO ANUAL DE GASTOS POR CATEGORÍA ---
             st.divider()
-            st.subheader("Presupuesto Anual por Categoría")
+            st.subheader("Progreso Anual por Categoría")
             st.caption("_(Presupuesto mensual configurado multiplicado por 12)_")
             
             gcm_anual = df_an[df_an['type'] == 'Gasto'].groupby('category_id')['quantity'].sum().reset_index()
-            # Unimos los gastos anuales con la tabla de categorías
+            
             for _, r in pd.merge(pd.DataFrame(cat_g), gcm_anual, left_on='id', right_on='category_id', how='left').fillna(0).iterrows():
-                presupuesto_anual = r['budget'] * 12 # Multiplicamos la estimación por 12
-                p = r['quantity'] / presupuesto_anual if presupuesto_anual > 0 else 0
-                st.write(f"**{r.get('emoji','📁')} {r['name']}** ({r['quantity']:.2f} / {presupuesto_anual:.2f}€)")
-                st.progress(min(p, 1.0))
+                gastado = r['quantity']
+                presupuesto_anual = r['budget'] * 12 # Objetivo anual
+                
+                if presupuesto_anual > 0:
+                    pct = gastado / presupuesto_anual
+                    pct_clamp = min(pct, 1.0)
+                    
+                    # Lógica del semáforo
+                    if pct <= 0.75: color_bar = "#00CC96" # Verde
+                    elif pct <= 1.0: color_bar = "#FFC107" # Naranja/Amarillo
+                    else: color_bar = "#EF553B" # Rojo
+                    
+                    # Cálculo de exceso o restante
+                    restante = presupuesto_anual - gastado
+                    if restante >= 0:
+                        txt_restante = f"<span style='color: gray; font-size: 0.9em;'>Quedan {restante:.2f}€</span>"
+                    else:
+                        txt_restante = f"<span style='color: #EF553B; font-weight: bold; font-size: 0.9em;'>Exceso de {abs(restante):.2f}€</span>"
+                    
+                    # HTML de la barra de progreso
+                    html_bar = f"""
+                    <div style="margin-bottom: 15px;">
+                        <div style="display: flex; justify-content: space-between; margin-bottom: 5px; font-family: sans-serif;">
+                            <span><strong>{r.get('emoji','📁')} {r['name']}</strong> ({gastado:.2f}€ / {presupuesto_anual:.2f}€)</span>
+                            {txt_restante}
+                        </div>
+                        <div style="width: 100%; background-color: #f0f2f6; border-radius: 5px; height: 12px;">
+                            <div style="width: {pct_clamp * 100}%; background-color: {color_bar}; height: 12px; border-radius: 5px; transition: width 0.5s ease;"></div>
+                        </div>
+                    </div>
+                    """
+                    st.markdown(html_bar, unsafe_allow_html=True)
 
 def render_categories(current_cats):
     st.title("📂 Gestión de Categorías")
