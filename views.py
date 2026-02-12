@@ -6,20 +6,20 @@ from database import save_input, delete_input, get_categories, delete_category, 
 from components import editar_movimiento_dialog, editar_categoria_dialog, crear_categoria_dialog
 
 def render_dashboard(df_all, current_cats, user_id):
-    # El CSS ya está cargado en main.py
+    # El CSS ya está cargado en main.py desde styles.py
 
     t1, t2, t3, t4, t5 = st.tabs(["💸 Nueva entrada", "🗄️ Historial", "🔮 Previsión", "📊 Mensual", "📅 Anual"])
     cat_g = [c for c in current_cats if c.get('type') == 'Gasto']
     ml = ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"]
 
+    # --- PESTAÑA 1: NUEVA ENTRADA ---
     with t1:
         st.subheader("Nuevo Movimiento")
         
-        # --- FORMULARIO OPTIMIZADO PARA MÓVIL Y ESCRITORIO ---
-        # clear_on_submit=True es lo que limpia los campos automáticamente al guardar
+        # Formulario con auto-limpieza (clear_on_submit=True)
         with st.form("nuevo_mov_form", clear_on_submit=True):
             
-            # FILA 1: Cantidad y Tipo (En móvil se verán uno al lado del otro o apilados muy compactos)
+            # FILA 1: Cantidad y Tipo
             c1, c2 = st.columns(2)
             qty = c1.number_input("Cantidad (€)", min_value=0.0, step=0.01, key="f_qty")
             t_type = c2.selectbox("Tipo", ["Gasto", "Ingreso"], key="f_type")
@@ -27,18 +27,23 @@ def render_dashboard(df_all, current_cats, user_id):
             # FILA 2: Fecha y Categoría
             c3, c4 = st.columns(2)
             f_mov = c3.date_input("Fecha", datetime.now(), key="f_date")
-            f_cs = [c for c in current_cats if c.get('type') == t_type]
-            sel = c4.selectbox("Categoría", ["Selecciona..."] + [f"{c.get('emoji', '📁')} {c['name']}" for c in f_cs], key="f_cat")
             
-            # FILA 3: Concepto (Ancho completo)
+            # Filtramos categorías según el tipo seleccionado
+            f_cs = [c for c in current_cats if c.get('type') == t_type]
+            opciones_cat = ["Selecciona..."] + [f"{c.get('emoji', '📁')} {c['name']}" for c in f_cs]
+            sel = c4.selectbox("Categoría", opciones_cat, key="f_cat")
+            
+            # FILA 3: Concepto
             concepto = st.text_input("Concepto (Opcional)", key="f_note")
             
-            # BOTÓN DE GUARDADO
+            # BOTÓN DE GUARDAR
             submitted = st.form_submit_button("💾 Guardar Movimiento", use_container_width=True)
             
             if submitted:
                 if sel != "Selecciona..." and qty > 0:
+                    # Buscamos el ID de la categoría seleccionada
                     cat_sel = next(c for c in f_cs if f"{c.get('emoji', '📁')} {c['name']}" == sel)
+                    
                     save_input({
                         "user_id": user_id, 
                         "quantity": qty, 
@@ -47,7 +52,8 @@ def render_dashboard(df_all, current_cats, user_id):
                         "date": str(f_mov), 
                         "notes": concepto
                     })
-                    st.toast("✅ ¡Movimiento guardado correctamente!", icon="🎉") # Notificación flotante
+                    # Usamos st.success en lugar de toast por compatibilidad si usas versiones antiguas
+                    st.success("✅ ¡Movimiento guardado correctamente!")
                     st.rerun()
                 else:
                     st.error("⚠️ Faltan datos: revisa cantidad y categoría.")
@@ -57,7 +63,7 @@ def render_dashboard(df_all, current_cats, user_id):
         df_rec = df_all.sort_values('date', ascending=False).head(10) if not df_all.empty else pd.DataFrame()
         
         for _, i in df_rec.iterrows():
-            # Distribución de columnas optimizada (pesos ajustados)
+            # Distribución de columnas optimizada
             cl1, cl2, cl3, cl4, cl5 = st.columns([1.2, 2.5, 1.3, 0.5, 1.2])
             
             cl1.write(f"{i['date'].strftime('%d/%m')}")
@@ -67,10 +73,14 @@ def render_dashboard(df_all, current_cats, user_id):
             
             with cl5:
                 st.markdown('<div class="contenedor-acciones-tabla">', unsafe_allow_html=True)
-                if st.button("✏️", key=f"e_dash_{i['id']}"): editar_movimiento_dialog(i, current_cats)
-                if st.button("🗑️", key=f"d_dash_{i['id']}"): delete_input(i['id']); st.rerun()
+                if st.button("✏️", key=f"e_dash_{i['id']}"):
+                    editar_movimiento_dialog(i, current_cats)
+                if st.button("🗑️", key=f"d_dash_{i['id']}"):
+                    delete_input(i['id'])
+                    st.rerun()
                 st.markdown('</div>', unsafe_allow_html=True)
 
+    # --- PESTAÑA 2: HISTORIAL ---
     with t2:
         st.subheader("Historial de Movimientos")
         h1, h2 = st.columns(2)
@@ -88,12 +98,16 @@ def render_dashboard(df_all, current_cats, user_id):
                     cl4.write("📉" if i['type'] == "Gasto" else "📈")
                     with cl5:
                         st.markdown('<div class="contenedor-acciones-tabla">', unsafe_allow_html=True)
-                        if st.button("✏️", key=f"e_hist_{i['id']}"): editar_movimiento_dialog(i, current_cats)
-                        if st.button("🗑️", key=f"d_hist_{i['id']}"): delete_input(i['id']); st.rerun()
+                        if st.button("✏️", key=f"e_hist_{i['id']}"):
+                            editar_movimiento_dialog(i, current_cats)
+                        if st.button("🗑️", key=f"d_hist_{i['id']}"):
+                            delete_input(i['id'])
+                            st.rerun()
                         st.markdown('</div>', unsafe_allow_html=True)
             else:
                 st.info("No hay movimientos en este rango.")
 
+    # --- PESTAÑA 3: PREVISIÓN ---
     with t3:
         st.subheader("🔮 Previsión y Comparativa")
         if not df_all.empty:
@@ -113,6 +127,7 @@ def render_dashboard(df_all, current_cats, user_id):
         m2.metric("Ingresos Medios", f"{mi:.2f}€")
         m3.metric("Ahorro Potencial", f"{(mi - tp):.2f}€")
 
+    # --- PESTAÑA 4: MENSUAL ---
     with t4:
         st.subheader("Análisis Mensual")
         c_fil1, c_fil2 = st.columns(2)
@@ -137,6 +152,7 @@ def render_dashboard(df_all, current_cats, user_id):
                 st.write(f"**{r.get('emoji','📁')} {r['name']}** ({r['quantity']:.2f} / {r['budget']:.2f}€)")
                 st.progress(min(p, 1.0))
 
+    # --- PESTAÑA 5: ANUAL ---
     with t5:
         st.subheader("Análisis Anual")
         san = st.selectbox("Seleccionar Año", range(2024, 2031), index=datetime.now().year-2024, key="año_anual")
@@ -178,7 +194,9 @@ def render_categories(current_cats):
                     if t == "Gasto": k1.caption(f"Meta: {c['budget']:.2f}€")
                     with k2:
                         if st.button("✏️", key=f"cat_e_{c['id']}"): editar_categoria_dialog(c)
-                        if st.button("🗑️", key=f"cat_d_{c['id']}"): delete_category(c['id']); st.rerun()
+                        if st.button("🗑️", key=f"cat_d_{c['id']}"):
+                            delete_category(c['id'])
+                            st.rerun()
 
 def render_profile(user_id, p_data):
     st.title("⚙️ Mi Perfil")
@@ -245,4 +263,16 @@ def render_import(current_cats, user_id):
                             raw_qty = str(r[sel_qty]).replace('€','').replace(',','.')
                             save_input({
                                 "user_id": user_id, 
-                                "quantity": float(raw_qty
+                                "quantity": float(raw_qty),
+                                "type": "Ingreso" if "ING" in str(r[sel_tipo]).upper() else "Gasto",
+                                "category_id": cat_lookup[name_clean],
+                                "date": str(pd.to_datetime(r[sel_date]).date()),
+                                "notes": str(r[sel_note]) if pd.notna(r[sel_note]) else ""
+                            })
+                            count += 1
+                    except:
+                        continue
+                st.success(f"✅ Se han importado {count} movimientos.")
+                st.rerun()
+        except Exception as e:
+            st.error(f"Error al leer el archivo: {e}")
