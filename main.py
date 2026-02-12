@@ -31,15 +31,17 @@ if not st.session_state.user:
         }
         
         /* 2. TRANSFORMACIÓN DEL CONTENEDOR 'border=True' EN TARJETA */
-        /* Buscamos el contenedor con borde solo en esta pantalla */
         div[data-testid="stVerticalBlockBorderWrapper"] {
-            background-color: rgba(255, 255, 255, 0.92) !important; /* Blanco casi sólido */
+        /* AQUÍ AÑADES EL COLOR: */
+        background-color: rgba(255, 255, 255, 0.95) !important; /* El 0.95 es la opacidad */
+    
+        /* El resto se mantiene igual */
             backdrop-filter: blur(15px);
             border: 1px solid rgba(255, 255, 255, 0.5) !important;
             border-radius: 20px !important;
             box-shadow: 0 10px 40px rgba(0,0,0,0.4);
             padding: 30px;
-        }
+            }
 
         /* 3. AJUSTES DE TEXTO PARA QUE SE LEAN SOBRE BLANCO */
         h1 { color: #1f1f1f !important; text-align: center; margin-bottom: 0px; }
