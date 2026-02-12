@@ -134,37 +134,62 @@ def render_profile(user_id, p_data):
 
 def render_import(current_cats, user_id):
     st.title("📥 Importar Datos")
+    
+    # --- BLOQUE DE PLANTILLA ---
     st.info("Sube un CSV o Excel. Podrás mapear las columnas a: Tipo, Cantidad, Categoría, Fecha y Concepto.")
     
+    df_ejemplo = pd.DataFrame({
+        "Tipo": ["Gasto", "Ingreso"],
+        "Cantidad": [15.50, 1200.00],
+        "Categoría": ["Comida", "Nómina"],
+        "Fecha": [datetime.now().strftime("%Y-%m-%d"), datetime.now().strftime("%Y-%m-%d")],
+        "Concepto": ["Compra semanal", "Sueldo mes"]
+    })
+    
+    csv_plantilla = df_ejemplo.to_csv(index=False).encode('utf-8')
+    
+    st.download_button(
+        label="📥 Descargar Plantilla CSV de ejemplo",
+        data=csv_plantilla,
+        file_name="plantilla_finanzas.csv",
+        mime="text/csv",
+    )
+    st.divider()
+
     up = st.file_uploader("Seleccionar archivo", type=["csv", "xlsx"])
     
     if up:
         try:
-            df = pd.read_csv(up) if up.name.endswith('.csv') else pd.read_excel(up)
+            if up.name.endswith('.csv'):
+                df = pd.read_csv(up)
+            else:
+                df = pd.read_excel(up)
+                
+            st.write("### Vista previa del archivo")
             st.dataframe(df.head(3), use_container_width=True)
             
             cols = df.columns.tolist()
-            st.divider()
+            
+            def find_idx(name):
+                try: return cols.index(name)
+                except: return 0
+
+            st.subheader("Mapeo de columnas")
             c1, c2 = st.columns(2)
+            sel_tipo = c1.selectbox("Tipo (Ingreso/Gasto)", cols, index=find_idx("Tipo"))
+            sel_qty = c1.selectbox("Cantidad", cols, index=find_idx("Cantidad"))
+            sel_cat = c1.selectbox("Categoría", cols, index=find_idx("Categoría"))
+            sel_date = c2.selectbox("Fecha", cols, index=find_idx("Fecha"))
+            sel_note = c2.selectbox("Concepto", cols, index=find_idx("Concepto"))
             
-            # Selectores para mapeo manual
-            sel_tipo = c1.selectbox("Columna de Tipo (Ingreso/Gasto)", cols)
-            sel_qty = c1.selectbox("Columna de Cantidad", cols)
-            sel_cat = c1.selectbox("Columna de Categoría", cols)
-            sel_date = c2.selectbox("Columna de Fecha", cols)
-            sel_note = c2.selectbox("Columna de Concepto", cols)
-            
-            if st.button("🚀 Procesar Importación"):
+            if st.button("🚀 Procesar e Importar", use_container_width=True):
                 cat_map = {c['name'].upper(): (c['id'], c['type']) for c in current_cats}
                 success, errors = 0, 0
                 
                 for _, r in df.iterrows():
                     try:
-                        # Limpieza de valores
-                        cat_nombre = str(r[sel_cat]).upper()
+                        cat_nombre = str(r[sel_cat]).upper().strip()
                         if cat_nombre in cat_map:
-                            # Detectar tipo (si el CSV dice "Ingreso" pero la cat es de "Gasto", priorizamos la cat o viceversa)
-                            # Aquí usamos el tipo definido en la columna del CSV para mayor flexibilidad
                             val_tipo = "Ingreso" if "ING" in str(r[sel_tipo]).upper() else "Gasto"
                             
                             save_input({
@@ -181,9 +206,9 @@ def render_import(current_cats, user_id):
                     except:
                         errors += 1
                 
-                if success > 0: st.success(f"Se han importado {success} registros.")
-                if errors > 0: st.warning(f"Se saltaron {errors} registros (categoría no encontrada o formato erróneo).")
+                if success > 0: st.success(f"✅ Importados {success} registros correctamente.")
+                if errors > 0: st.warning(f"⚠️ {errors} registros fallaron (Categoría no reconocida o error de formato).")
                 st.rerun()
                 
         except Exception as e:
-            st.error(f"Error al leer el archivo: {e}")
+            st.error(f"Error: {e}")
