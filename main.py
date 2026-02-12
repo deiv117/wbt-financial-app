@@ -84,7 +84,7 @@ else:
         if st.button("⚙️ Configuración Perfil"): st.session_state.menu_actual = "⚙️ Perfil"; st.rerun()
         if st.button("📥 Importar Movimientos"): st.session_state.menu_actual = "📥 Importar"; st.rerun()
 
-    # --- FUNCIONES DIALOG ---
+    # --- FUNCIONES DIALOG (CREAR Y EDITAR) ---
     @st.dialog("➕ Nueva Categoría")
     def crear_categoria_dialog():
         c1, c2 = st.columns([1, 3])
@@ -94,7 +94,6 @@ else:
         budget = st.number_input("Presupuesto Mensual (€)", min_value=0.0) if c_type == "Gasto" else 0.0
         if st.button("Guardar"):
             if name:
-                # Ahora guardamos también el emoji
                 supabase.table("user_categories").insert({
                     "user_id": st.session_state.user.id, 
                     "name": name, 
@@ -102,6 +101,28 @@ else:
                     "budget": budget,
                     "emoji": emoji
                 }).execute()
+                st.rerun()
+
+    # --- NUEVA FUNCIÓN DE EDICIÓN ---
+    @st.dialog("✏️ Editar Categoría")
+    def editar_categoria_dialog(cat_data):
+        c1, c2 = st.columns([1, 3])
+        new_emoji = c1.text_input("Emoji", value=cat_data.get('emoji', '📁'))
+        new_name = c2.text_input("Nombre", value=cat_data['name'])
+        
+        # El tipo no lo permitimos cambiar para evitar errores de integridad con los gastos ya creados
+        # Pero sí el presupuesto si es gasto
+        new_budget = 0.0
+        if cat_data['type'] == 'Gasto':
+            new_budget = st.number_input("Presupuesto Mensual (€)", value=float(cat_data['budget']), min_value=0.0)
+            
+        if st.button("Actualizar Datos"):
+            if new_name:
+                supabase.table("user_categories").update({
+                    "name": new_name,
+                    "emoji": new_emoji,
+                    "budget": new_budget
+                }).eq("id", cat_data['id']).execute()
                 st.rerun()
 
     # --- LÓGICA DE PÁGINAS ---
@@ -124,7 +145,6 @@ else:
         col_i1, col_i2 = st.columns(2)
         with col_i1:
             st.info("Descarga la plantilla y rellénala con tus datos.")
-            # Actualizada la plantilla para sugerir concepto (opcional, aunque CSV simple suele ser básico)
             st.download_button("📄 Descargar Plantilla .CSV", "fecha,cantidad,categoria,concepto\n2026-02-12,15.50,Alimentacion,Compra Semanal", "plantilla.csv")
         with col_i2:
             up = st.file_uploader("Sube tu archivo CSV", type=["csv"])
@@ -132,13 +152,11 @@ else:
                 try:
                     df_imp = pd.read_csv(up)
                     res_c = supabase.table("user_categories").select("*").execute()
-                    # Mapeamos nombre -> id, tipo
                     cat_map = {c['name'].upper(): (c['id'], c['type']) for c in res_c.data}
                     
                     rows = []
                     for _, r in df_imp.iterrows():
                         if str(r['categoria']).upper() in cat_map:
-                            # Intentamos leer concepto si existe, si no vacío
                             nota = str(r['concepto']) if 'concepto' in df_imp.columns else ''
                             rows.append({
                                 "user_id": st.session_state.user.id, 
@@ -156,45 +174,36 @@ else:
         st.title("📊 Cuadro de Mando")
         tab_mov, tab_hist, tab_cat, tab_prev, tab_mes, tab_anual = st.tabs(["💸 Movimientos", "🗄️ Historial", "⚙️ Categorías", "🔮 Previsión", "📊 Mensual", "📅 Anual"])
 
-        # Recuperamos categorías CON EMOJI
         res_cats = supabase.table("user_categories").select("*").execute()
         current_cats = sorted(res_cats.data, key=lambda x: x['name'].lower()) if res_cats.data else []
         
-        # Recuperamos movimientos + info de categoría (nombre y emoji)
         res_all = supabase.table("user_imputs").select("*, user_categories(name, emoji)").execute()
         df_all = pd.DataFrame(res_all.data) if res_all.data else pd.DataFrame()
         
         if not df_all.empty: 
             df_all['date'] = pd.to_datetime(df_all['date'])
-            # Creamos una columna visual "Emoji + Nombre" para los gráficos
             df_all['cat_display'] = df_all['user_categories'].apply(lambda x: f"{x.get('emoji', '📁')} {x.get('name', 'S/C')}" if x else "📁 S/C")
-            df_all['notes'] = df_all['notes'].fillna('') # Rellenar nulos
+            df_all['notes'] = df_all['notes'].fillna('') 
         
         cat_g = [c for c in current_cats if c.get('type') == 'Gasto']
 
         with tab_mov:
             st.subheader("Nuevo Registro")
-            # Fila 1: Datos numéricos y fecha
             c1, c2, c3 = st.columns(3)
             qty = c1.number_input("Cantidad (€)", min_value=0.0, step=0.01)
             t_type = c2.selectbox("Tipo", ["Gasto", "Ingreso"])
             f_mov = c3.date_input("Fecha", datetime.now())
             
-            # Fila 2: Categoría y Concepto
             c4, c5 = st.columns([1, 2])
             f_cs = [c for c in current_cats if c.get('type') == t_type]
             
             if f_cs:
-                # Mostramos el emoji en el selector
                 opciones = ["Selecciona..."] + [f"{c.get('emoji', '📁')} {c['name']}" for c in f_cs]
                 sel = c4.selectbox("Categoría", opciones)
                 concepto = c5.text_input("Concepto / Notas", placeholder="Ej: Cena con amigos, Nómina...")
 
                 if st.button("Guardar") and sel != "Selecciona...":
-                    # Recuperar ID buscando por nombre (quitamos el emoji del string para buscar)
-                    # Truco: Buscamos qué categoría de la lista coincide con la selección
                     cat_seleccionada = next(c for c in f_cs if f"{c.get('emoji', '📁')} {c['name']}" == sel)
-                    
                     supabase.table("user_imputs").insert({
                         "user_id": st.session_state.user.id, 
                         "quantity": qty, 
@@ -206,7 +215,6 @@ else:
                     st.rerun()
             
             st.divider()
-            # Listado últimos movimientos con NOTAS y EMOJIS
             res_rec = supabase.table("user_imputs").select("*, user_categories(name, emoji)").order("date", desc=True).limit(10).execute()
             for i in (res_rec.data if res_rec.data else []):
                 cat_obj = i['user_categories'] if i['user_categories'] else {}
@@ -229,7 +237,6 @@ else:
                 df_h = df_all[(df_all['date'].dt.date >= f_i) & (df_all['date'].dt.date <= f_f)]
                 if f_t != "Todos": df_h = df_h[df_h['type'] == f_t]
                 
-                # Tabla más bonita con columnas renombradas
                 st.dataframe(
                     df_h[['date', 'cat_display', 'notes', 'quantity', 'type']].rename(columns={
                         'date': 'Fecha', 'cat_display': 'Categoría', 'notes': 'Concepto', 'quantity': 'Cantidad (€)', 'type': 'Tipo'
@@ -246,10 +253,20 @@ else:
                     st.subheader(f"{t}s")
                     for c in [cat for cat in current_cats if cat.get('type') == t]:
                         with st.container(border=True):
-                            # Mostramos Emoji + Nombre
-                            st.write(f"**{c.get('emoji', '📁')} {c['name']}**")
-                            if t == "Gasto": st.caption(f"Meta: {c['budget']:.2f}€")
-                            if st.button("Borrar", key=f"b_{c['id']}"): supabase.table("user_categories").delete().eq("id", c['id']).execute(); st.rerun()
+                            # Layout de la tarjeta de categoría con columnas para los botones
+                            k1, k2, k3 = st.columns([4, 1, 1])
+                            with k1:
+                                st.write(f"**{c.get('emoji', '📁')} {c['name']}**")
+                                if t == "Gasto": st.caption(f"Meta: {c['budget']:.2f}€")
+                            with k2:
+                                # BOTÓN EDITAR
+                                if st.button("✏️", key=f"ed_{c['id']}"):
+                                    editar_categoria_dialog(c)
+                            with k3:
+                                # BOTÓN BORRAR
+                                if st.button("🗑️", key=f"b_{c['id']}"): 
+                                    supabase.table("user_categories").delete().eq("id", c['id']).execute()
+                                    st.rerun()
 
         with tab_prev:
             st.subheader("🔮 Previsión Teórica")
@@ -263,7 +280,6 @@ else:
             st.divider()
             if cat_g:
                 col_g1, col_g2 = st.columns(2)
-                # Preparamos datos con emojis para el gráfico
                 df_pie = pd.DataFrame(cat_g)
                 df_pie['display'] = df_pie.apply(lambda x: f"{x.get('emoji','📁')} {x['name']}", axis=1)
                 
@@ -288,7 +304,6 @@ else:
                     gcm = df_m[df_m['type'] == 'Gasto'].groupby('category_id')['quantity'].sum().reset_index()
                     for _, r in pd.merge(pd.DataFrame(cat_g), gcm, left_on='id', right_on='category_id', how='left').fillna(0).iterrows():
                         p = r['quantity'] / r['budget'] if r['budget'] > 0 else 0
-                        # Emoji en barra de progreso
                         label = f"{r.get('emoji','📁')} {r['name']}"
                         st.write(f"{'🟢' if p < 0.8 else '🟡' if p <= 1 else '🔴'} **{label}**: {r['quantity']:.2f}€ / {r['budget']:.2f}€")
                         st.progress(min(p, 1.0))
