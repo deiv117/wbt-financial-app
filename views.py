@@ -44,26 +44,37 @@ def render_dashboard(df_all, current_cats, user_id):
 
     with t1:
         st.subheader("Nuevo Movimiento")
-        c1, c2, c3 = st.columns(3)
-        qty = c1.number_input("Cantidad (€)", min_value=0.0)
-        t_type = c2.selectbox("Tipo", ["Gasto", "Ingreso"])
-        f_mov = c3.date_input("Fecha", datetime.now())
         
-        f_cs = [c for c in current_cats if c.get('type') == t_type]
-        if f_cs:
-            sel = st.selectbox("Categoría", ["Selecciona..."] + [f"{c.get('emoji', '📁')} {c['name']}" for c in f_cs])
-            concepto = st.text_input("Concepto")
-            if st.button("Guardar Movimiento", use_container_width=True) and sel != "Selecciona...":
-                cat_sel = next(c for c in f_cs if f"{c.get('emoji', '📁')} {c['name']}" == sel)
-                save_input({
-                    "user_id": user_id, 
-                    "quantity": qty, 
-                    "type": t_type, 
-                    "category_id": cat_sel['id'], 
-                    "date": str(f_mov), 
-                    "notes": concepto
-                })
-                st.rerun()
+        # Creamos un contenedor de formulario que se limpia al enviar
+        with st.form("form_nuevo_movimiento", clear_on_submit=True):
+            c1, c2, c3 = st.columns(3)
+            qty = c1.number_input("Cantidad (€)", min_value=0.0, step=0.01, key="input_qty")
+            t_type = c2.selectbox("Tipo", ["Gasto", "Ingreso"], key="input_type")
+            f_mov = c3.date_input("Fecha", datetime.now(), key="input_date")
+            
+            f_cs = [c for c in current_cats if c.get('type') == t_type]
+            
+            # Ajuste de categoría y concepto dentro del formulario
+            sel = st.selectbox("Categoría", ["Selecciona..."] + [f"{c.get('emoji', '📁')} {c['name']}" for c in f_cs], key="input_cat")
+            concepto = st.text_input("Concepto", key="input_notes")
+            
+            submit = st.form_submit_button("Guardar Movimiento", use_container_width=True)
+            
+            if submit:
+                if sel != "Selecciona..." and qty > 0:
+                    cat_sel = next(c for c in f_cs if f"{c.get('emoji', '📁')} {c['name']}" == sel)
+                    save_input({
+                        "user_id": user_id, 
+                        "quantity": qty, 
+                        "type": t_type, 
+                        "category_id": cat_sel['id'], 
+                        "date": str(f_mov), 
+                        "notes": concepto
+                    })
+                    st.success("¡Movimiento guardado!")
+                    st.rerun()
+                else:
+                    st.error("Por favor, introduce una cantidad y selecciona una categoría.")
         
         st.divider()
         st.subheader("Últimos movimientos")
