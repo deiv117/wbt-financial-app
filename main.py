@@ -4,7 +4,7 @@ import pandas as pd
 from datetime import datetime, timedelta
 import plotly.express as px
 import plotly.graph_objects as go
-from styles import get_custom_css  # Importamos la personalización externa
+from styles import get_custom_css
 
 # 1. CONEXIÓN SEGURA CON SUPABASE
 url = st.secrets["SUPABASE_URL"]
@@ -13,7 +13,7 @@ supabase: Client = create_client(url, key)
 
 st.set_page_config(page_title="Mis Gastos", page_icon="💰", layout="wide")
 
-# --- APLICAMOS ESTILOS DESDE EL OTRO ARCHIVO ---
+# --- APLICAMOS ESTILOS ---
 st.markdown(get_custom_css(), unsafe_allow_html=True)
 
 # --- CONTROL DE SESIÓN ---
@@ -53,7 +53,6 @@ if not st.session_state.user:
                 except Exception as e:
                     st.error("Acceso denegado. Revisa tus credenciales.")
 else:
-    # Quitar fondo de imagen dentro de la app para legibilidad
     st.markdown("<style>.stApp { background-image: none !important; }</style>", unsafe_allow_html=True)
 
     # --- SIDEBAR NAVEGACIÓN ---
@@ -88,12 +87,21 @@ else:
     # --- FUNCIONES DIALOG ---
     @st.dialog("➕ Nueva Categoría")
     def crear_categoria_dialog():
-        name = st.text_input("Nombre")
+        c1, c2 = st.columns([1, 3])
+        emoji = c1.text_input("Emoji", value="📁")
+        name = c2.text_input("Nombre")
         c_type = st.selectbox("Tipo", ["Gasto", "Ingreso"])
         budget = st.number_input("Presupuesto Mensual (€)", min_value=0.0) if c_type == "Gasto" else 0.0
         if st.button("Guardar"):
             if name:
-                supabase.table("user_categories").insert({"user_id": st.session_state.user.id, "name": name, "type": c_type, "budget": budget}).execute()
+                # Ahora guardamos también el emoji
+                supabase.table("user_categories").insert({
+                    "user_id": st.session_state.user.id, 
+                    "name": name, 
+                    "type": c_type, 
+                    "budget": budget,
+                    "emoji": emoji
+                }).execute()
                 st.rerun()
 
     # --- LÓGICA DE PÁGINAS ---
@@ -116,60 +124,119 @@ else:
         col_i1, col_i2 = st.columns(2)
         with col_i1:
             st.info("Descarga la plantilla y rellénala con tus datos.")
-            st.download_button("📄 Descargar Plantilla .CSV", "fecha,cantidad,categoria\n2026-02-12,15.50,Alimentacion", "plantilla.csv")
+            # Actualizada la plantilla para sugerir concepto (opcional, aunque CSV simple suele ser básico)
+            st.download_button("📄 Descargar Plantilla .CSV", "fecha,cantidad,categoria,concepto\n2026-02-12,15.50,Alimentacion,Compra Semanal", "plantilla.csv")
         with col_i2:
             up = st.file_uploader("Sube tu archivo CSV", type=["csv"])
             if up and st.button("🚀 Iniciar Importación"):
                 try:
                     df_imp = pd.read_csv(up)
                     res_c = supabase.table("user_categories").select("*").execute()
+                    # Mapeamos nombre -> id, tipo
                     cat_map = {c['name'].upper(): (c['id'], c['type']) for c in res_c.data}
-                    rows = [{"user_id": st.session_state.user.id, "quantity": float(r['cantidad']), "type": cat_map[str(r['categoria']).upper()][1], "category_id": cat_map[str(r['categoria']).upper()][0], "date": str(r['fecha'])} for _, r in df_imp.iterrows() if str(r['categoria']).upper() in cat_map]
+                    
+                    rows = []
+                    for _, r in df_imp.iterrows():
+                        if str(r['categoria']).upper() in cat_map:
+                            # Intentamos leer concepto si existe, si no vacío
+                            nota = str(r['concepto']) if 'concepto' in df_imp.columns else ''
+                            rows.append({
+                                "user_id": st.session_state.user.id, 
+                                "quantity": float(r['cantidad']), 
+                                "type": cat_map[str(r['categoria']).upper()][1], 
+                                "category_id": cat_map[str(r['categoria']).upper()][0], 
+                                "date": str(r['fecha']),
+                                "notes": nota
+                            })
                     if rows: supabase.table("user_imputs").insert(rows).execute(); st.success(f"{len(rows)} movimientos importados!")
-                except: st.error("Error al procesar el archivo.")
+                except: st.error("Error al procesar el archivo. Revisa que tenga las columnas: fecha, cantidad, categoria, concepto")
 
     else:
-        # --- PANEL PRINCIPAL (TABS COMPLETOS) ---
+        # --- PANEL PRINCIPAL ---
         st.title("📊 Cuadro de Mando")
         tab_mov, tab_hist, tab_cat, tab_prev, tab_mes, tab_anual = st.tabs(["💸 Movimientos", "🗄️ Historial", "⚙️ Categorías", "🔮 Previsión", "📊 Mensual", "📅 Anual"])
 
+        # Recuperamos categorías CON EMOJI
         res_cats = supabase.table("user_categories").select("*").execute()
         current_cats = sorted(res_cats.data, key=lambda x: x['name'].lower()) if res_cats.data else []
-        res_all = supabase.table("user_imputs").select("*, user_categories(name)").execute()
+        
+        # Recuperamos movimientos + info de categoría (nombre y emoji)
+        res_all = supabase.table("user_imputs").select("*, user_categories(name, emoji)").execute()
         df_all = pd.DataFrame(res_all.data) if res_all.data else pd.DataFrame()
-        if not df_all.empty: df_all['date'] = pd.to_datetime(df_all['date'])
+        
+        if not df_all.empty: 
+            df_all['date'] = pd.to_datetime(df_all['date'])
+            # Creamos una columna visual "Emoji + Nombre" para los gráficos
+            df_all['cat_display'] = df_all['user_categories'].apply(lambda x: f"{x.get('emoji', '📁')} {x.get('name', 'S/C')}" if x else "📁 S/C")
+            df_all['notes'] = df_all['notes'].fillna('') # Rellenar nulos
+        
         cat_g = [c for c in current_cats if c.get('type') == 'Gasto']
 
         with tab_mov:
             st.subheader("Nuevo Registro")
+            # Fila 1: Datos numéricos y fecha
             c1, c2, c3 = st.columns(3)
             qty = c1.number_input("Cantidad (€)", min_value=0.0, step=0.01)
             t_type = c2.selectbox("Tipo", ["Gasto", "Ingreso"])
             f_mov = c3.date_input("Fecha", datetime.now())
+            
+            # Fila 2: Categoría y Concepto
+            c4, c5 = st.columns([1, 2])
             f_cs = [c for c in current_cats if c.get('type') == t_type]
+            
             if f_cs:
-                sel = st.selectbox("Categoría", ["Selecciona..."] + [c['name'] for c in f_cs])
+                # Mostramos el emoji en el selector
+                opciones = ["Selecciona..."] + [f"{c.get('emoji', '📁')} {c['name']}" for c in f_cs]
+                sel = c4.selectbox("Categoría", opciones)
+                concepto = c5.text_input("Concepto / Notas", placeholder="Ej: Cena con amigos, Nómina...")
+
                 if st.button("Guardar") and sel != "Selecciona...":
-                    cid = next(c['id'] for c in f_cs if c['name'] == sel)
-                    supabase.table("user_imputs").insert({"user_id": st.session_state.user.id, "quantity": qty, "type": t_type, "category_id": cid, "date": str(f_mov)}).execute(); st.rerun()
+                    # Recuperar ID buscando por nombre (quitamos el emoji del string para buscar)
+                    # Truco: Buscamos qué categoría de la lista coincide con la selección
+                    cat_seleccionada = next(c for c in f_cs if f"{c.get('emoji', '📁')} {c['name']}" == sel)
+                    
+                    supabase.table("user_imputs").insert({
+                        "user_id": st.session_state.user.id, 
+                        "quantity": qty, 
+                        "type": t_type, 
+                        "category_id": cat_seleccionada['id'], 
+                        "date": str(f_mov),
+                        "notes": concepto
+                    }).execute()
+                    st.rerun()
+            
             st.divider()
-            res_rec = supabase.table("user_imputs").select("*, user_categories(name)").order("date", desc=True).limit(10).execute()
+            # Listado últimos movimientos con NOTAS y EMOJIS
+            res_rec = supabase.table("user_imputs").select("*, user_categories(name, emoji)").order("date", desc=True).limit(10).execute()
             for i in (res_rec.data if res_rec.data else []):
-                cl1, cl2, cl3, cl4 = st.columns([2, 1, 1, 1])
-                cl1.write(f"**{i['date']}** | {i['user_categories']['name'] if i['user_categories'] else 'S/C'}")
+                cat_obj = i['user_categories'] if i['user_categories'] else {}
+                cat_str = f"{cat_obj.get('emoji', '📁')} {cat_obj.get('name', 'S/C')}"
+                notas = f" - *{i['notes']}*" if i.get('notes') else ""
+                
+                cl1, cl2, cl3, cl4 = st.columns([3, 1, 1, 0.5])
+                cl1.markdown(f"**{i['date']}** | {cat_str}{notas}")
                 cl2.write(f"{i['quantity']:.2f}€")
                 cl3.write("📉" if i['type'] == "Gasto" else "📈")
                 if cl4.button("🗑️", key=f"d_{i['id']}"): supabase.table("user_imputs").delete().eq("id", i['id']).execute(); st.rerun()
 
         with tab_hist:
-            st.subheader("🗄️ Historial")
+            st.subheader("🗄️ Historial Detallado")
             h1, h2, h3 = st.columns(3)
             f_i, f_f = h1.date_input("Desde", datetime.now()-timedelta(days=30)), h2.date_input("Hasta", datetime.now())
             f_t = h3.selectbox("Filtrar por tipo", ["Todos", "Gasto", "Ingreso"])
+            
             if not df_all.empty:
                 df_h = df_all[(df_all['date'].dt.date >= f_i) & (df_all['date'].dt.date <= f_f)]
                 if f_t != "Todos": df_h = df_h[df_h['type'] == f_t]
-                st.dataframe(df_h[['date', 'quantity', 'type']].sort_values('date', ascending=False), use_container_width=True, hide_index=True)
+                
+                # Tabla más bonita con columnas renombradas
+                st.dataframe(
+                    df_h[['date', 'cat_display', 'notes', 'quantity', 'type']].rename(columns={
+                        'date': 'Fecha', 'cat_display': 'Categoría', 'notes': 'Concepto', 'quantity': 'Cantidad (€)', 'type': 'Tipo'
+                    }).sort_values('Fecha', ascending=False), 
+                    use_container_width=True, 
+                    hide_index=True
+                )
 
         with tab_cat:
             if st.button("➕ Añadir Categoría"): crear_categoria_dialog()
@@ -179,7 +246,8 @@ else:
                     st.subheader(f"{t}s")
                     for c in [cat for cat in current_cats if cat.get('type') == t]:
                         with st.container(border=True):
-                            st.write(f"**{c['name']}**")
+                            # Mostramos Emoji + Nombre
+                            st.write(f"**{c.get('emoji', '📁')} {c['name']}**")
                             if t == "Gasto": st.caption(f"Meta: {c['budget']:.2f}€")
                             if st.button("Borrar", key=f"b_{c['id']}"): supabase.table("user_categories").delete().eq("id", c['id']).execute(); st.rerun()
 
@@ -195,8 +263,12 @@ else:
             st.divider()
             if cat_g:
                 col_g1, col_g2 = st.columns(2)
-                with col_g1: st.plotly_chart(px.pie(pd.DataFrame(cat_g), values='budget', names='name', hole=0.4), use_container_width=True)
-                with col_g2: st.dataframe(pd.DataFrame(cat_g)[['name', 'budget']].rename(columns={'name':'Categoría','budget':'Presupuesto'}), hide_index=True, use_container_width=True)
+                # Preparamos datos con emojis para el gráfico
+                df_pie = pd.DataFrame(cat_g)
+                df_pie['display'] = df_pie.apply(lambda x: f"{x.get('emoji','📁')} {x['name']}", axis=1)
+                
+                with col_g1: st.plotly_chart(px.pie(df_pie, values='budget', names='display', hole=0.4), use_container_width=True)
+                with col_g2: st.dataframe(df_pie[['display', 'budget']].rename(columns={'display':'Categoría','budget':'Presupuesto'}), hide_index=True, use_container_width=True)
 
         with tab_mes:
             st.subheader("Resumen Mensual")
@@ -216,7 +288,9 @@ else:
                     gcm = df_m[df_m['type'] == 'Gasto'].groupby('category_id')['quantity'].sum().reset_index()
                     for _, r in pd.merge(pd.DataFrame(cat_g), gcm, left_on='id', right_on='category_id', how='left').fillna(0).iterrows():
                         p = r['quantity'] / r['budget'] if r['budget'] > 0 else 0
-                        st.write(f"{'🟢' if p < 0.8 else '🟡' if p <= 1 else '🔴'} **{r['name']}**: {r['quantity']:.2f}€ / {r['budget']:.2f}€")
+                        # Emoji en barra de progreso
+                        label = f"{r.get('emoji','📁')} {r['name']}"
+                        st.write(f"{'🟢' if p < 0.8 else '🟡' if p <= 1 else '🔴'} **{label}**: {r['quantity']:.2f}€ / {r['budget']:.2f}€")
                         st.progress(min(p, 1.0))
 
         with tab_anual:
@@ -247,5 +321,6 @@ else:
                     gca = df_an[df_an['type'] == 'Gasto'].groupby('category_id')['quantity'].sum().reset_index()
                     for _, r in pd.merge(pd.DataFrame(cat_g), gca, left_on='id', right_on='category_id', how='left').fillna(0).iterrows():
                         b12, p12 = r['budget']*12, r['quantity']/(r['budget']*12) if r['budget']>0 else 0
-                        st.write(f"{'🟢' if p12 < 0.8 else '🟡' if p12 <= 1 else '🔴'} **{r['name']}**: {r['quantity']:.2f}€ / {b12:.2f}€")
+                        label = f"{r.get('emoji','📁')} {r['name']}"
+                        st.write(f"{'🟢' if p12 < 0.8 else '🟡' if p12 <= 1 else '🔴'} **{label}**: {r['quantity']:.2f}€ / {b12:.2f}€")
                         st.progress(min(p12, 1.0))
