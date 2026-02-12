@@ -88,23 +88,23 @@ def editar_movimiento_dialog(mov_data, categorias_disponibles):
         }).eq("id", mov_data['id']).execute()
         st.rerun()
 
-# --- LÓGICA DE LOGIN ---
+# --- LÓGICA DE LOGIN (CORREGIDA PARA EVITAR DOBLE CLIC) ---
 if not st.session_state.user:
     _, col_login, _ = st.columns([1, 1.5, 1])
     with col_login:
         st.write("#")
-        with st.form("login_form"):
-            st.markdown("<h1 class='login-title'>💰 Finanzas App</h1>", unsafe_allow_html=True)
-            email = st.text_input("Email")
-            password = st.text_input("Contraseña", type="password")
-            if st.form_submit_button("Entrar", use_container_width=True):
-                try:
-                    res = supabase.auth.sign_in_with_password({"email": email, "password": password})
-                    if res.user:
-                        st.session_state.user = res.user
-                        st.rerun()  # Reinicio inmediato para evitar el doble clic
-                except: 
-                    st.error("Acceso denegado. Revisa tus credenciales.")
+        st.markdown("<h1 class='login-title'>💰 Finanzas App</h1>", unsafe_allow_html=True)
+        email = st.text_input("Email", key="login_email")
+        password = st.text_input("Contraseña", type="password", key="login_pass")
+        
+        if st.button("Entrar", use_container_width=True):
+            try:
+                res = supabase.auth.sign_in_with_password({"email": email, "password": password})
+                if res.user:
+                    st.session_state.user = res.user
+                    st.rerun() # Reinicio forzado fuera de un form
+            except Exception as e:
+                st.error("Acceso denegado. Revisa tus credenciales.")
 else:
     # --- ARREGLO DEL FONDO ---
     st.markdown("<style>.stApp { background-image: none !important; }</style>", unsafe_allow_html=True)
