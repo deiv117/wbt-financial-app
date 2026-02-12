@@ -73,23 +73,45 @@ def render_dashboard(df_all, current_cats, user_id):
         
         st.divider()
         st.subheader("Últimos movimientos")
-        df_rec = df_all.sort_values('date', ascending=False).head(10) if not df_all.empty else pd.DataFrame()
+        df_rec = df_all.sort_values('date', ascending=False).head(6) if not df_all.empty else pd.DataFrame()
         
-        for _, i in df_rec.iterrows():
-            cl1, cl2, cl3, cl4, cl5, cl6 = st.columns([1.5, 1.5, 2, 1, 0.4, 0.8])
-            cl1.write(f"**{i['date'].date()}**")
-            cl2.write(f"{i['cat_display']}")
-            cl3.write(f"_{i['notes']}_")
-            cl4.write(f"**{i['quantity']:.2f}€**")
-            cl5.write("📉" if i['type'] == "Gasto" else "📈")
-            with cl6:
-                st.markdown('<div class="contenedor-acciones-tabla">', unsafe_allow_html=True)
-                col_e, col_d = st.columns(2)
-                with col_e:
-                    if st.button("✏️", key=f"e_dash_{i['id']}"): editar_movimiento_dialog(i, current_cats)
-                with col_d:
-                    if st.button("🗑️", key=f"d_dash_{i['id']}"): delete_input(i['id']); st.rerun()
-                st.markdown('</div>', unsafe_allow_html=True)
+        if not df_rec.empty:
+            # Creamos columnas para el grid (3 columnas en PC, en móvil se ajustarán)
+            cols = st.columns(3)
+            
+            for idx, row in df_rec.iterrows():
+                # Usamos el operador módulo para asignar cada tarjeta a una columna rotativa
+                with cols[idx % 3]:
+                    # Definimos color según tipo
+                    color_class = "gasto-color" if row['type'] == 'Gasto' else "ingreso-color"
+                    signo = "-" if row['type'] == 'Gasto' else "+"
+                    
+                    # Contenedor visual de la tarjeta
+                    with st.container(border=True):
+                        # Cabecera: Icono+Cat y Fecha
+                        c_head1, c_head2 = st.columns([2, 1])
+                        c_head1.write(f"**{row['cat_display']}**")
+                        c_head2.caption(f"{row['date'].strftime('%d/%m')}")
+                        
+                        # Cuerpo: Cantidad grande
+                        st.markdown(f"<div class='card-amount {color_class}'>{signo} {row['quantity']:.2f}€</div>", unsafe_allow_html=True)
+                        
+                        # Nota (si existe)
+                        if row['notes']:
+                            st.caption(f"_{row['notes']}_")
+                        else:
+                            st.caption("_Sin notas_")
+                        
+                        # Botones de acción
+                        c_act1, c_act2 = st.columns(2)
+                        if c_act1.button("✏️", key=f"e_card_{row['id']}", use_container_width=True):
+                            editar_movimiento_dialog(row, current_cats)
+                        
+                        if c_act2.button("🗑️", key=f"d_card_{row['id']}", use_container_width=True):
+                            delete_input(row['id'])
+                            st.rerun()
+        else:
+            st.info("Aún no tienes movimientos registrados.")
 
     with t2:
         st.subheader("Historial de Movimientos")
