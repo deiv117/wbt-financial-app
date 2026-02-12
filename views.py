@@ -74,24 +74,32 @@ def render_dashboard(df_all, current_cats, user_id):
         st.subheader("Últimos movimientos")
         df_rec = df_all.sort_values('date', ascending=False).head(10) if not df_all.empty else pd.DataFrame()
         
+        # --- RENDERIZADO EN TARJETAS (NUEVO) ---
         for _, i in df_rec.iterrows():
-            cl1, cl2, cl3, cl4, cl5, cl6 = st.columns([1.5, 1.5, 2, 1, 0.4, 0.8])
-            cl1.write(f"**{i['date'].strftime('%d/%m/%Y')}**")
-            cl2.write(f"{i['cat_display']}")
-            cl3.write(f"_{i['notes']}_")
-            cl4.write(f"**{i['quantity']:.2f}€**")
-            cl5.write("📉" if i['type'] == "Gasto" else "📈")
-            with cl6:
-                st.markdown('<div class="contenedor-acciones-tabla">', unsafe_allow_html=True)
-                col_e, col_d = st.columns(2)
-                with col_e:
-                    if st.button("✏️", key=f"e_dash_{i['id']}"): 
-                        editar_movimiento_dialog(i, current_cats)
-                with col_d:
-                    if st.button("🗑️", key=f"d_dash_{i['id']}"): 
-                        delete_input(i['id'])
-                        st.rerun()
-                st.markdown('</div>', unsafe_allow_html=True)
+            with st.container(border=True): # Esto crea la "Tarjeta"
+                col_info, col_btn = st.columns([4, 1])
+                
+                with col_info:
+                    color_q = "red" if i['type'] == 'Gasto' else "green"
+                    signo = "-" if i['type'] == 'Gasto' else "+"
+                    # Primera línea de la tarjeta (Categoría y Precio)
+                    st.markdown(f"**{i['cat_display']}** &nbsp;|&nbsp; :{color_q}[**{signo}{i['quantity']:.2f}€**]")
+                    # Segunda línea de la tarjeta (Fecha y Notas)
+                    notas_txt = i['notes'] if i['notes'] else 'Sin concepto'
+                    st.caption(f"📅 {i['date'].strftime('%d/%m/%Y')} &nbsp;|&nbsp; 📝 _{notas_txt}_")
+                
+                with col_btn:
+                    # Los botones se alinearán a la derecha en PC, y abajo en móvil
+                    st.markdown('<div class="contenedor-acciones-tabla">', unsafe_allow_html=True)
+                    cb_e, cb_d = st.columns(2)
+                    with cb_e:
+                        if st.button("✏️", key=f"e_dash_{i['id']}"): 
+                            editar_movimiento_dialog(i, current_cats)
+                    with cb_d:
+                        if st.button("🗑️", key=f"d_dash_{i['id']}"): 
+                            delete_input(i['id'])
+                            st.rerun()
+                    st.markdown('</div>', unsafe_allow_html=True)
 
     with t2:
         st.subheader("Historial de Movimientos")
@@ -111,46 +119,41 @@ def render_dashboard(df_all, current_cats, user_id):
                 total_items = len(df_h)
                 
                 col_pag1, col_pag2, col_pag3 = st.columns([1, 1, 2])
-                # Selector de número de registros
                 rows_per_page = col_pag1.selectbox("Registros por página:", [10, 25, 50, 100], index=2)
-                
-                # Calcular páginas totales
                 total_pages = math.ceil(total_items / rows_per_page)
-                
-                # Selector de página
                 current_page = col_pag2.number_input(f"Página (de {total_pages})", min_value=1, max_value=total_pages, value=1)
                 
-                # Calcular índices
                 start_idx = (current_page - 1) * rows_per_page
                 end_idx = min(start_idx + rows_per_page, total_items)
                 
-                # Info de paginación
                 col_pag3.caption(f"<br>Viendo registros **{start_idx + 1}** a **{end_idx}** de un total de **{total_items}**", unsafe_allow_html=True)
                 
                 st.markdown("---")
-                
-                # Cortar el DataFrame para mostrar solo la página actual
                 df_page = df_h.iloc[start_idx:end_idx]
                 
-                # --- RENDERIZAR FILAS ---
+                # --- RENDERIZADO EN TARJETAS (NUEVO) ---
                 for _, i in df_page.iterrows():
-                    cl1, cl2, cl3, cl4, cl5, cl6 = st.columns([1.5, 1.5, 2, 1, 0.4, 0.8])
-                    cl1.write(f"{i['date'].strftime('%d/%m/%Y')}")
-                    cl2.write(f"{i['cat_display']}")
-                    cl3.write(f"{i['notes']}")
-                    cl4.write(f"**{i['quantity']:.2f}€**")
-                    cl5.write("📉" if i['type'] == "Gasto" else "📈")
-                    with cl6:
-                        st.markdown('<div class="contenedor-acciones-tabla">', unsafe_allow_html=True)
-                        cb1, cb2 = st.columns(2)
-                        with cb1:
-                            if st.button("✏️", key=f"e_hist_{i['id']}"): 
-                                editar_movimiento_dialog(i, current_cats)
-                        with cb2:
-                            if st.button("🗑️", key=f"d_hist_{i['id']}"): 
-                                delete_input(i['id'])
-                                st.rerun()
-                        st.markdown('</div>', unsafe_allow_html=True)
+                    with st.container(border=True):
+                        col_info, col_btn = st.columns([4, 1])
+                        
+                        with col_info:
+                            color_q = "red" if i['type'] == 'Gasto' else "green"
+                            signo = "-" if i['type'] == 'Gasto' else "+"
+                            st.markdown(f"**{i['cat_display']}** &nbsp;|&nbsp; :{color_q}[**{signo}{i['quantity']:.2f}€**]")
+                            notas_txt = i['notes'] if i['notes'] else 'Sin concepto'
+                            st.caption(f"📅 {i['date'].strftime('%d/%m/%Y')} &nbsp;|&nbsp; 📝 _{notas_txt}_")
+                        
+                        with col_btn:
+                            st.markdown('<div class="contenedor-acciones-tabla">', unsafe_allow_html=True)
+                            cb1, cb2 = st.columns(2)
+                            with cb1:
+                                if st.button("✏️", key=f"e_hist_{i['id']}"): 
+                                    editar_movimiento_dialog(i, current_cats)
+                            with cb2:
+                                if st.button("🗑️", key=f"d_hist_{i['id']}"): 
+                                    delete_input(i['id'])
+                                    st.rerun()
+                            st.markdown('</div>', unsafe_allow_html=True)
 
     with t3:
         st.subheader("🔮 Previsión y Comparativa")
