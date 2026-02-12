@@ -1,8 +1,7 @@
-# database.py
+# database.py completo y corregido
 import streamlit as st
 from supabase import create_client, Client
 
-# Conexión única
 url = st.secrets["SUPABASE_URL"]
 key = st.secrets["SUPABASE_KEY"]
 supabase: Client = create_client(url, key)
@@ -27,3 +26,15 @@ def update_input(input_id, data):
 def get_profile(user_id):
     res = supabase.table("profiles").select("*").eq("id", user_id).maybe_single().execute()
     return res.data if (hasattr(res, 'data') and res.data) else {}
+
+def upsert_profile(data):
+    return supabase.table("profiles").upsert(data).execute()
+
+def delete_category(cat_id):
+    return supabase.table("user_categories").delete().eq("id", cat_id).execute()
+
+def save_category(data):
+    return supabase.table("user_categories").insert(data).execute()
+
+def update_category(cat_id, data):
+    return supabase.table("user_categories").update(data).eq("id", cat_id).execute()
