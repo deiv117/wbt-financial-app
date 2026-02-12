@@ -6,70 +6,48 @@ from database import save_input, delete_input, get_categories, delete_category, 
 from components import editar_movimiento_dialog, editar_categoria_dialog, crear_categoria_dialog
 
 def render_dashboard(df_all, current_cats, user_id):
-    # --- CSS RESPONSIVE ADJUSTADO (SIN SCROLL) ---
+    # --- CSS RESPONSIVE TOTAL ---
     st.markdown("""
         <style>
-        /* 1. Ajustes globales para evitar desbordamiento */
-        .block-container {
-            padding-left: 0.5rem !important;
-            padding-right: 0.5rem !important;
-            max-width: 100% !important;
+        /* 1. Forzar que las columnas NO se apilen nunca en horizontal */
+        [data-testid="column"] {
+            width: calc(100% / 5) !important; /* Aproximado para 5 columnas */
+            flex: 1 1 0% !important;
+            min-width: 0px !important;
         }
 
-        /* 2. Forzar fila y permitir que los elementos se encojan */
+        /* 2. Forzar el contenedor padre a mantener el layout de fila */
         [data-testid="stHorizontalBlock"] {
             display: flex !important;
             flex-direction: row !important;
             flex-wrap: nowrap !important;
             align-items: center !important;
-            width: 100% !important;
-            gap: 2px !important; /* Gap mínimo para que no sume ancho extra */
         }
 
-        /* 3. Columnas flexibles que NO empujan el ancho */
-        [data-testid="column"] {
-            flex: 1 1 auto !important;
-            min-width: 0px !important; /* Crucial: permite que la columna sea más pequeña que su contenido */
-            padding: 0px !important;
-            overflow: hidden !important; /* Corta lo que sobresalga */
-        }
-
-        /* 4. Estilos específicos para móvil */
+        /* 3. Ajustar márgenes y fuentes en móvil para que quepa todo */
         @media (max-width: 640px) {
-            /* Texto más pequeño y truncado */
+            [data-testid="stHorizontalBlock"] {
+                gap: 5px !important;
+            }
             .stMarkdown div p {
                 font-size: 11px !important;
-                white-space: nowrap !important;
-                overflow: hidden !important;
-                text-overflow: ellipsis !important; /* Pone '...' si no cabe */
-                line-height: 1.2 !important;
+                white-space: nowrap;
+                overflow: hidden;
+                text-overflow: ellipsis;
             }
-            
-            /* Ajuste de métricas para que no ocupen tanto */
-            [data-testid="stMetricValue"] {
-                font-size: 18px !important;
-            }
-            
-            /* Botones ultra compactos */
+            /* Botones más compactos para que quepan en la misma línea */
             .contenedor-acciones-tabla button {
-                width: 24px !important;
-                height: 24px !important;
-                font-size: 10px !important;
-            }
-            
-            /* Ocultar flechas de padding extrañas */
-            div[data-testid="stVerticalBlock"] > div {
-                gap: 0.2rem !important;
+                width: 28px !important;
+                height: 28px !important;
             }
         }
 
-        /* Contenedor de acciones alineado a la derecha */
+        /* Contenedor de acciones */
         .contenedor-acciones-tabla {
             display: flex !important;
             flex-direction: row !important;
-            gap: 2px !important;
+            gap: 4px !important;
             justify-content: flex-end !important;
-            padding-right: 2px !important;
         }
         </style>
     """, unsafe_allow_html=True)
@@ -79,6 +57,7 @@ def render_dashboard(df_all, current_cats, user_id):
     ml = ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"]
 
     with t1:
+        # Formulario de entrada (ahora con keys para asegurar limpieza)
         st.subheader("Nuevo Movimiento")
         with st.form("nuevo_mov_form", clear_on_submit=True):
             c1, c2, c3 = st.columns(3)
@@ -87,19 +66,15 @@ def render_dashboard(df_all, current_cats, user_id):
             f_mov = c3.date_input("Fecha", datetime.now(), key="f_date")
             
             f_cs = [c for c in current_cats if c.get('type') == t_type]
-            sel = st.selectbox("Categoría", ["Selecciona..."] + [f"{c.get('emoji', '📁')} {c['name']}" for c in f_cs], key="f_cat")
+            sel = st.selectbox("Categoría", ["Selecciona..."] + [f"{c.get('emoji', '📁')} {c['name']}" for f_cs], key="f_cat")
             concepto = st.text_input("Concepto", key="f_note")
             
             if st.form_submit_button("Guardar Movimiento", use_container_width=True):
                 if sel != "Selecciona..." and qty > 0:
                     cat_sel = next(c for c in f_cs if f"{c.get('emoji', '📁')} {c['name']}" == sel)
                     save_input({
-                        "user_id": user_id, 
-                        "quantity": qty, 
-                        "type": t_type, 
-                        "category_id": cat_sel['id'], 
-                        "date": str(f_mov), 
-                        "notes": concepto
+                        "user_id": user_id, "quantity": qty, "type": t_type, 
+                        "category_id": cat_sel['id'], "date": str(f_mov), "notes": concepto
                     })
                     st.rerun()
 
@@ -108,17 +83,16 @@ def render_dashboard(df_all, current_cats, user_id):
         df_rec = df_all.sort_values('date', ascending=False).head(10) if not df_all.empty else pd.DataFrame()
         
         for _, i in df_rec.iterrows():
-            # Pesos ajustados: Fecha(1.2), Cat(2.5), Cant(1.3), Icono(0.5), Acciones(1.2)
-            # El total suma aprox 6.7, Streamlit distribuirá el espacio proporcionalmente
-            cl1, cl2, cl3, cl4, cl5 = st.columns([1.2, 2.5, 1.3, 0.5, 1.2])
-            
+            # Reducimos a 5 columnas para maximizar el espacio
+            cl1, cl2, cl3, cl4, cl5 = st.columns([1, 2, 1.2, 0.4, 1.2])
             cl1.write(f"{i['date'].strftime('%d/%m')}")
             cl2.write(f"{i['cat_display']}")
-            cl3.write(f"**{i['quantity']:.0f}**") # Sin decimales si es entero, o redondeado visualmente para ahorrar espacio
+            cl3.write(f"**{i['quantity']:.1f}€**") # Un solo decimal para ahorrar espacio en móvil
             cl4.write("📉" if i['type'] == "Gasto" else "📈")
             
             with cl5:
                 st.markdown('<div class="contenedor-acciones-tabla">', unsafe_allow_html=True)
+                # Botones sin columnas internas para evitar el salto de línea de Streamlit
                 if st.button("✏️", key=f"e_dash_{i['id']}"): editar_movimiento_dialog(i, current_cats)
                 if st.button("🗑️", key=f"d_dash_{i['id']}"): delete_input(i['id']); st.rerun()
                 st.markdown('</div>', unsafe_allow_html=True)
@@ -133,11 +107,10 @@ def render_dashboard(df_all, current_cats, user_id):
             df_h = df_all[(df_all['date'].dt.date >= f_i) & (df_all['date'].dt.date <= f_f)].sort_values('date', ascending=False)
             if not df_h.empty:
                 for _, i in df_h.iterrows():
-                    # Mismos pesos que arriba para consistencia
-                    cl1, cl2, cl3, cl4, cl5 = st.columns([1.2, 2.5, 1.3, 0.5, 1.2])
+                    cl1, cl2, cl3, cl4, cl5 = st.columns([1, 2, 1.2, 0.4, 1.2])
                     cl1.write(f"{i['date'].strftime('%d/%m')}")
                     cl2.write(f"{i['cat_display']}")
-                    cl3.write(f"**{i['quantity']:.0f}€**")
+                    cl3.write(f"**{i['quantity']:.1f}€**")
                     cl4.write("📉" if i['type'] == "Gasto" else "📈")
                     with cl5:
                         st.markdown('<div class="contenedor-acciones-tabla">', unsafe_allow_html=True)
