@@ -200,14 +200,14 @@ def render_dashboard(df_all, current_cats, user_id):
                     else:
                         txt_restante = f"<span style='color: #EF553B; font-weight: bold; font-size: 0.9em;'>Exceso de {abs(restante):.2f}€</span>"
                     
-                    # HTML de la barra de progreso personalizada
+                    # HTML de la barra de progreso (Fondo transparente para que se adapte al dark mode)
                     html_bar = f"""
                     <div style="margin-bottom: 15px;">
                         <div style="display: flex; justify-content: space-between; margin-bottom: 5px; font-family: sans-serif;">
                             <span><strong>{r.get('emoji','📁')} {r['name']}</strong> ({gastado:.2f}€ / {presupuesto:.2f}€)</span>
                             {txt_restante}
                         </div>
-                        <div style="width: 100%; background-color: #f0f2f6; border-radius: 5px; height: 12px;">
+                        <div style="width: 100%; background-color: rgba(128, 128, 128, 0.2); border-radius: 5px; height: 12px;">
                             <div style="width: {pct_clamp * 100}%; background-color: {color_bar}; height: 12px; border-radius: 5px; transition: width 0.5s ease;"></div>
                         </div>
                     </div>
@@ -271,14 +271,14 @@ def render_dashboard(df_all, current_cats, user_id):
                     else:
                         txt_restante = f"<span style='color: #EF553B; font-weight: bold; font-size: 0.9em;'>Exceso de {abs(restante):.2f}€</span>"
                     
-                    # HTML de la barra de progreso
+                    # HTML de la barra de progreso (Fondo transparente para que se adapte al dark mode)
                     html_bar = f"""
                     <div style="margin-bottom: 15px;">
                         <div style="display: flex; justify-content: space-between; margin-bottom: 5px; font-family: sans-serif;">
                             <span><strong>{r.get('emoji','📁')} {r['name']}</strong> ({gastado:.2f}€ / {presupuesto_anual:.2f}€)</span>
                             {txt_restante}
                         </div>
-                        <div style="width: 100%; background-color: #f0f2f6; border-radius: 5px; height: 12px;">
+                        <div style="width: 100%; background-color: rgba(128, 128, 128, 0.2); border-radius: 5px; height: 12px;">
                             <div style="width: {pct_clamp * 100}%; background-color: {color_bar}; height: 12px; border-radius: 5px; transition: width 0.5s ease;"></div>
                         </div>
                     </div>
