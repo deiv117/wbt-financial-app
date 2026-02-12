@@ -16,6 +16,18 @@ st.set_page_config(page_title="Mis Gastos", page_icon="💰", layout="wide")
 # --- APLICAMOS ESTILOS ---
 st.markdown(get_custom_css(), unsafe_allow_html=True)
 
+# Estilo adicional para reducir el tamaño de los botones de acción en la tabla
+st.markdown("""
+    <style>
+    div[data-testid="column"] button {
+        padding: 2px 10px !important;
+        height: auto !important;
+        min-height: 0px !important;
+        font-size: 14px !important;
+    }
+    </style>
+""", unsafe_allow_html=True)
+
 # --- CONTROL DE SESIÓN ---
 if 'user' not in st.session_state:
     try:
@@ -88,7 +100,7 @@ def editar_movimiento_dialog(mov_data, categorias_disponibles):
         }).eq("id", mov_data['id']).execute()
         st.rerun()
 
-# --- LÓGICA DE LOGIN (CORREGIDA PARA EVITAR DOBLE CLIC) ---
+# --- LÓGICA DE LOGIN ---
 if not st.session_state.user:
     _, col_login, _ = st.columns([1, 1.5, 1])
     with col_login:
@@ -102,7 +114,7 @@ if not st.session_state.user:
                 res = supabase.auth.sign_in_with_password({"email": email, "password": password})
                 if res.user:
                     st.session_state.user = res.user
-                    st.rerun() # Reinicio forzado fuera de un form
+                    st.rerun()
             except Exception as e:
                 st.error("Acceso denegado. Revisa tus credenciales.")
 else:
@@ -185,7 +197,8 @@ else:
     else:
         # --- PANEL PRINCIPAL ---
         st.title("📊 Cuadro de Mando")
-        t1, t2, t3, t4, t5 = st.tabs(["💸 Registro", "🗄️ Historial", "🔮 Previsión", "📊 Mensual", "📅 Anual"])
+        # Cambio de nombre de pestaña: Registro -> Nueva entrada
+        t1, t2, t3, t4, t5 = st.tabs(["💸 Nueva entrada", "🗄️ Historial", "🔮 Previsión", "📊 Mensual", "📅 Anual"])
 
         with t1:
             st.subheader("Nuevo Movimiento")
@@ -205,12 +218,14 @@ else:
             res_rec = supabase.table("user_imputs").select("*, user_categories(id, name, emoji)").order("date", desc=True).limit(10).execute()
             for i in (res_rec.data or []):
                 cat_obj = i.get('user_categories') or {}
-                cl1, cl2, cl3, cl4, cl5, cl6 = st.columns([1.5, 1.5, 1.5, 1, 0.4, 0.4])
+                # Ajuste de columnas para que los botones queden juntos y en la misma línea
+                cl1, cl2, cl3, cl4, cl5, cl6 = st.columns([1.5, 1.5, 2, 1, 0.4, 0.4])
                 cl1.write(f"**{i['date']}**")
                 cl2.write(f"{cat_obj.get('emoji','📁')} {cat_obj.get('name','S/C')}")
                 cl3.write(f"_{str(i.get('notes') or '')}_")
                 cl4.write(f"**{i['quantity']:.2f}€**")
                 cl5.write("📉" if i['type'] == "Gasto" else "📈")
+                # Botones reducidos vía CSS (clase global definida arriba)
                 if cl6.button("✏️", key=f"e_{i['id']}"): editar_movimiento_dialog(i, current_cats)
                 if cl6.button("🗑️", key=f"d_{i['id']}"): supabase.table("user_imputs").delete().eq("id", i['id']).execute(); st.rerun()
 
