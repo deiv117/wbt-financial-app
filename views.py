@@ -6,7 +6,7 @@ from database import save_input, delete_input, get_categories, delete_category, 
 from components import editar_movimiento_dialog, editar_categoria_dialog, crear_categoria_dialog
 
 def render_dashboard(df_all, current_cats, user_id):
-    # Ya no hay CSS aquí, se carga desde styles.py en main.py
+    # El CSS ya está cargado en main.py
 
     t1, t2, t3, t4, t5 = st.tabs(["💸 Nueva entrada", "🗄️ Historial", "🔮 Previsión", "📊 Mensual", "📅 Anual"])
     cat_g = [c for c in current_cats if c.get('type') == 'Gasto']
@@ -14,18 +14,29 @@ def render_dashboard(df_all, current_cats, user_id):
 
     with t1:
         st.subheader("Nuevo Movimiento")
-        # Formulario con auto-limpieza
+        
+        # --- FORMULARIO OPTIMIZADO PARA MÓVIL Y ESCRITORIO ---
+        # clear_on_submit=True es lo que limpia los campos automáticamente al guardar
         with st.form("nuevo_mov_form", clear_on_submit=True):
-            c1, c2, c3 = st.columns(3)
+            
+            # FILA 1: Cantidad y Tipo (En móvil se verán uno al lado del otro o apilados muy compactos)
+            c1, c2 = st.columns(2)
             qty = c1.number_input("Cantidad (€)", min_value=0.0, step=0.01, key="f_qty")
             t_type = c2.selectbox("Tipo", ["Gasto", "Ingreso"], key="f_type")
+            
+            # FILA 2: Fecha y Categoría
+            c3, c4 = st.columns(2)
             f_mov = c3.date_input("Fecha", datetime.now(), key="f_date")
-            
             f_cs = [c for c in current_cats if c.get('type') == t_type]
-            sel = st.selectbox("Categoría", ["Selecciona..."] + [f"{c.get('emoji', '📁')} {c['name']}" for c in f_cs], key="f_cat")
-            concepto = st.text_input("Concepto", key="f_note")
+            sel = c4.selectbox("Categoría", ["Selecciona..."] + [f"{c.get('emoji', '📁')} {c['name']}" for c in f_cs], key="f_cat")
             
-            if st.form_submit_button("Guardar Movimiento", use_container_width=True):
+            # FILA 3: Concepto (Ancho completo)
+            concepto = st.text_input("Concepto (Opcional)", key="f_note")
+            
+            # BOTÓN DE GUARDADO
+            submitted = st.form_submit_button("💾 Guardar Movimiento", use_container_width=True)
+            
+            if submitted:
                 if sel != "Selecciona..." and qty > 0:
                     cat_sel = next(c for c in f_cs if f"{c.get('emoji', '📁')} {c['name']}" == sel)
                     save_input({
@@ -36,19 +47,22 @@ def render_dashboard(df_all, current_cats, user_id):
                         "date": str(f_mov), 
                         "notes": concepto
                     })
+                    st.toast("✅ ¡Movimiento guardado correctamente!", icon="🎉") # Notificación flotante
                     st.rerun()
+                else:
+                    st.error("⚠️ Faltan datos: revisa cantidad y categoría.")
 
         st.divider()
         st.subheader("Últimos movimientos")
         df_rec = df_all.sort_values('date', ascending=False).head(10) if not df_all.empty else pd.DataFrame()
         
         for _, i in df_rec.iterrows():
-            # Distribución de columnas optimizada para móvil
+            # Distribución de columnas optimizada (pesos ajustados)
             cl1, cl2, cl3, cl4, cl5 = st.columns([1.2, 2.5, 1.3, 0.5, 1.2])
             
             cl1.write(f"{i['date'].strftime('%d/%m')}")
             cl2.write(f"{i['cat_display']}")
-            cl3.write(f"**{i['quantity']:.0f}**") # Sin decimales visuales para ahorrar espacio
+            cl3.write(f"**{i['quantity']:.0f}**") 
             cl4.write("📉" if i['type'] == "Gasto" else "📈")
             
             with cl5:
@@ -231,14 +245,4 @@ def render_import(current_cats, user_id):
                             raw_qty = str(r[sel_qty]).replace('€','').replace(',','.')
                             save_input({
                                 "user_id": user_id, 
-                                "quantity": float(raw_qty),
-                                "type": "Ingreso" if "ING" in str(r[sel_tipo]).upper() else "Gasto",
-                                "category_id": cat_lookup[name_clean],
-                                "date": str(pd.to_datetime(r[sel_date]).date()),
-                                "notes": str(r[sel_note]) if pd.notna(r[sel_note]) else ""
-                            })
-                            count += 1
-                    except: continue
-                st.success(f"✅ Se han importado {count} movimientos."); st.rerun()
-        except Exception as e:
-            st.error(f"Error al leer el archivo: {e}")
+                                "quantity": float(raw_qty
