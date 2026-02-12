@@ -133,14 +133,57 @@ def render_profile(user_id, p_data):
             st.rerun()
 
 def render_import(current_cats, user_id):
-    st.title("📥 Importar CSV")
-    up = st.file_uploader("Archivo", type=["csv"])
-    if up and st.button("Procesar"):
+    st.title("📥 Importar Datos")
+    st.info("Sube un CSV o Excel. Podrás mapear las columnas a: Tipo, Cantidad, Categoría, Fecha y Concepto.")
+    
+    up = st.file_uploader("Seleccionar archivo", type=["csv", "xlsx"])
+    
+    if up:
         try:
-            df_imp = pd.read_csv(up)
-            cat_map = {c['name'].upper(): (c['id'], c['type']) for c in current_cats}
-            rows = [{"user_id": user_id, "quantity": float(r['cantidad']), "type": cat_map[str(r['categoria']).upper()][1], "category_id": cat_map[str(r['categoria']).upper()][0], "date": str(r['fecha']), "notes": str(r.get('concepto', ''))} for _, r in df_imp.iterrows() if str(r['categoria']).upper() in cat_map]
-            if rows: 
-                for r in rows: save_input(r)
-                st.success("Listo"); st.rerun()
-        except: st.error("Error en formato")
+            df = pd.read_csv(up) if up.name.endswith('.csv') else pd.read_excel(up)
+            st.dataframe(df.head(3), use_container_width=True)
+            
+            cols = df.columns.tolist()
+            st.divider()
+            c1, c2 = st.columns(2)
+            
+            # Selectores para mapeo manual
+            sel_tipo = c1.selectbox("Columna de Tipo (Ingreso/Gasto)", cols)
+            sel_qty = c1.selectbox("Columna de Cantidad", cols)
+            sel_cat = c1.selectbox("Columna de Categoría", cols)
+            sel_date = c2.selectbox("Columna de Fecha", cols)
+            sel_note = c2.selectbox("Columna de Concepto", cols)
+            
+            if st.button("🚀 Procesar Importación"):
+                cat_map = {c['name'].upper(): (c['id'], c['type']) for c in current_cats}
+                success, errors = 0, 0
+                
+                for _, r in df.iterrows():
+                    try:
+                        # Limpieza de valores
+                        cat_nombre = str(r[sel_cat]).upper()
+                        if cat_nombre in cat_map:
+                            # Detectar tipo (si el CSV dice "Ingreso" pero la cat es de "Gasto", priorizamos la cat o viceversa)
+                            # Aquí usamos el tipo definido en la columna del CSV para mayor flexibilidad
+                            val_tipo = "Ingreso" if "ING" in str(r[sel_tipo]).upper() else "Gasto"
+                            
+                            save_input({
+                                "user_id": user_id,
+                                "quantity": float(str(r[sel_qty]).replace(',', '.')),
+                                "type": val_tipo,
+                                "category_id": cat_map[cat_nombre][0],
+                                "date": str(pd.to_datetime(r[sel_date]).date()),
+                                "notes": str(r[sel_note]) if pd.notna(r[sel_note]) else ""
+                            })
+                            success += 1
+                        else:
+                            errors += 1
+                    except:
+                        errors += 1
+                
+                if success > 0: st.success(f"Se han importado {success} registros.")
+                if errors > 0: st.warning(f"Se saltaron {errors} registros (categoría no encontrada o formato erróneo).")
+                st.rerun()
+                
+        except Exception as e:
+            st.error(f"Error al leer el archivo: {e}")
