@@ -1,31 +1,12 @@
+# styles.py
 def get_custom_css():
     """Retorna todo el CSS personalizado de la aplicación"""
     return """
     <style>
-    /* 1. CAJA DE LOGIN */
-    .login-box {
-        background-color: white;
-        padding: 40px;
-        border-radius: 20px;
-        border: 1px solid rgba(0, 0, 0, 0.1);
-        box-shadow: 0 10px 25px rgba(0,0,0,0.2);
-        margin-top: 20px;
-    }
-    
-    /* Forzar visibilidad de textos en login */
-    .login-box label, .login-box p, .login-box h1 {
-        color: #31333F !important;
-    }
+    /* 1. ESTILOS GENERALES DE TEXTO */
+    h1, h2, h3 { color: #31333F; }
 
-    /* 2. TEXTO TITULO */
-    .login-title { 
-        text-align: center; 
-        font-weight: 800; 
-        margin-bottom: 25px;
-        font-size: 2.5rem;
-    }
-
-    /* 3. SIDEBAR Y AVATAR */
+    /* 2. SIDEBAR Y AVATAR (Se mantiene igual) */
     .sidebar-user-container { 
         display: flex; 
         flex-direction: column; 
@@ -49,7 +30,7 @@ def get_custom_css():
         object-fit: cover; 
     }
 
-    /* 4. BOTONES DE NAVEGACIÓN (SIDEBAR) */
+    /* 3. BOTONES */
     .stSidebar div.stButton > button { 
         width: 100%; 
         border-radius: 10px; 
@@ -64,7 +45,7 @@ def get_custom_css():
         background-color: rgba(99, 110, 250, 0.1); 
     }
     
-    /* Botones de acción pequeños en tablas */
+    /* Botones pequeños para las tablas */
     div[data-testid="column"] button {
         padding: 2px 10px !important;
         height: auto !important;
