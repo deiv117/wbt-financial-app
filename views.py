@@ -1,4 +1,4 @@
-# Cabecera de views.py (Mantenemos todos tus imports intactos)
+# Cabecera de views.py
 import streamlit as st
 import pandas as pd
 import plotly.graph_objects as go
@@ -6,7 +6,6 @@ from datetime import datetime, timedelta
 from database import save_input, delete_input, get_categories, delete_category, upsert_profile, save_category, update_input
 from components import editar_movimiento_dialog, editar_categoria_dialog, crear_categoria_dialog
 
-# --- MANTENEMOS RENDER_DASHBOARD COMPLETO (T1 A T5) ---
 def render_dashboard(df_all, current_cats, user_id):
     t1, t2, t3, t4, t5 = st.tabs(["💸 Nueva entrada", "🗄️ Historial", "🔮 Previsión", "📊 Mensual", "📅 Anual"])
     cat_g = [c for c in current_cats if c.get('type') == 'Gasto']
@@ -36,17 +35,38 @@ def render_dashboard(df_all, current_cats, user_id):
             cl3.write(f"_{i['notes']}_")
             cl4.write(f"**{i['quantity']:.2f}€**")
             cl5.write("📉" if i['type'] == "Gasto" else "📈")
-            if cl6.button("✏️", key=f"e_{i['id']}"): editar_movimiento_dialog(i, current_cats)
-            if cl6.button("🗑️", key=f"d_{i['id']}"): delete_input(i['id']); st.rerun()
+            if cl6.button("✏️", key=f"e_dash_{i['id']}"): editar_movimiento_dialog(i, current_cats)
+            if cl6.button("🗑️", key=f"d_dash_{i['id']}"): delete_input(i['id']); st.rerun()
 
     with t2:
-        st.subheader("Historial")
+        st.subheader("Historial de Movimientos")
         h1, h2 = st.columns(2)
         f_i, f_f = h1.date_input("Desde", datetime.now()-timedelta(days=30), key="hi"), h2.date_input("Hasta", datetime.now(), key="hf")
+        
         if not df_all.empty:
-            df_h = df_all[(df_all['date'].dt.date >= f_i) & (df_all['date'].dt.date <= f_f)]
-            df_h_display = df_h[['date', 'cat_display', 'notes', 'quantity', 'type']].rename(columns={'notes': 'Concepto', 'date': 'Fecha', 'cat_display': 'Categoría', 'quantity': 'Cantidad', 'type': 'Tipo'})
-            st.dataframe(df_h_display.sort_values('Fecha', ascending=False), use_container_width=True, hide_index=True)
+            df_h = df_all[(df_all['date'].dt.date >= f_i) & (df_all['date'].dt.date <= f_f)].sort_values('date', ascending=False)
+            
+            if df_h.empty:
+                st.info("No hay movimientos en este rango de fechas.")
+            else:
+                st.divider()
+                # Cabecera de la lista
+                hc1, hc2, hc3, hc4, hc5, hc6 = st.columns([1.5, 1.5, 2, 1, 0.4, 0.4])
+                hc1.caption("FECHA")
+                hc2.caption("CATEGORÍA")
+                hc3.caption("CONCEPTO")
+                hc4.caption("CANTIDAD")
+                
+                for _, i in df_h.iterrows():
+                    cl1, cl2, cl3, cl4, cl5, cl6 = st.columns([1.5, 1.5, 2, 1, 0.4, 0.4])
+                    cl1.write(f"{i['date'].date()}")
+                    cl2.write(f"{i['cat_display']}")
+                    cl3.write(f"{i['notes']}")
+                    cl4.write(f"**{i['quantity']:.2f}€**")
+                    cl5.write("📉" if i['type'] == "Gasto" else "📈")
+                    # Usamos prefijo 'h_' en el key para que no colisionen con los del Dashboard
+                    if cl6.button("✏️", key=f"e_hist_{i['id']}"): editar_movimiento_dialog(i, current_cats)
+                    if cl6.button("🗑️", key=f"d_hist_{i['id']}"): delete_input(i['id']); st.rerun()
 
     with t3:
         st.subheader("🔮 Previsión y Comparativa")
@@ -96,137 +116,4 @@ def render_dashboard(df_all, current_cats, user_id):
             a_i.metric(f"Total Ingresos {san}", f"{ia:.2f}€")
             a_g.metric(f"Total Gastos {san}", f"{ga:.2f}€")
             a_b.metric(f"Ahorro Acumulado {san}", f"{ba:.2f}€", delta=f"{ba:.2f}€", delta_color="normal" if ba >= 0 else "inverse")
-            dfe = df_an.copy(); dfe['mes_num'] = dfe['date'].dt.month
-            rm = dfe.pivot_table(index='mes_num', columns='type', values='quantity', aggfunc='sum').fillna(0).reindex(range(1,13), fill_value=0)
-            for t in ['Ingreso', 'Gasto']: 
-                if t not in rm.columns: rm[t] = 0
-            fig = go.Figure()
-            fig.add_trace(go.Bar(x=ml, y=rm['Ingreso'], name='Ingreso', marker_color='#00CC96'))
-            fig.add_trace(go.Bar(x=ml, y=rm['Gasto'], name='Gasto', marker_color='#EF553B'))
-            st.plotly_chart(fig, use_container_width=True)
-
-# --- MANTENEMOS RENDER_CATEGORIES Y RENDER_PROFILE ---
-def render_categories(current_cats):
-    st.title("📂 Gestión de Categorías")
-    if st.button("➕ Nueva Categoría"): crear_categoria_dialog(st.session_state.user.id)
-    ci, cg = st.columns(2)
-    for col, t in zip([ci, cg], ["Ingreso", "Gasto"]):
-        with col:
-            st.subheader(f"{t}s")
-            for c in [cat for cat in current_cats if cat.get('type') == t]:
-                with st.container(border=True):
-                    k1, k2, k3 = st.columns([4, 1, 1])
-                    k1.write(f"**{c.get('emoji', '📁')} {c['name']}**")
-                    if t == "Gasto": k1.caption(f"Meta: {c['budget']:.2f}€")
-                    if k2.button("✏️", key=f"cat_e_{c['id']}"): editar_categoria_dialog(c)
-                    if k3.button("🗑️", key=f"cat_d_{c['id']}"): delete_category(c['id']); st.rerun()
-
-def render_profile(user_id, p_data):
-    st.title("⚙️ Mi Perfil")
-    with st.form("p_form"):
-        c1, c2 = st.columns(2)
-        n_name = c1.text_input("Nombre", value=p_data.get('name',''))
-        n_last = c1.text_input("Apellido", value=p_data.get('lastname',''))
-        n_color = c1.color_picker("Color", value=p_data.get('profile_color','#636EFA'))
-        n_avatar = c2.text_input("URL Foto", value=p_data.get('avatar_url',''))
-        if st.form_submit_button("Guardar"):
-            upsert_profile({"id": user_id, "name": n_name, "lastname": n_last, "avatar_url": n_avatar, "profile_color": n_color})
-            st.rerun()
-
-# --- NUEVA RENDER_IMPORT ENRIQUECIDA ---
-def render_import(current_cats, user_id):
-    st.title("📥 Importar Datos")
-    
-    # 1. Guía de Formato
-    with st.expander("📖 Guía de formato y requisitos", expanded=True):
-        st.markdown("""
-        Para que la importación funcione correctamente, tu archivo debe cumplir:
-        * **Formato de archivo:** CSV (delimitado por comas o punto y coma) o Excel (.xlsx).
-        * **Formato de Fecha:** Preferiblemente `AAAA-MM-DD` (Ej: 2026-02-12).
-        * **Formato de Cantidad:** Números sin símbolo de moneda (Ej: 1250.50). Se aceptan comas para decimales.
-        * **Categorías:** Los nombres deben coincidir con tus categorías creadas.
-        """)
-        
-        # Tabla informativa
-        info_data = {
-            "Columna": ["Tipo", "Cantidad", "Categoría", "Fecha", "Concepto"],
-            "Descripción": ["Ingreso o Gasto", "Valor numérico", "Nombre de la categoría", "Fecha del movimiento", "Descripción breve"],
-            "Ejemplo": ["Gasto", "15.50", "Comida", "2026-02-12", "Cena restaurante"]
-        }
-        st.table(info_data)
-
-    # 2. Descarga de Plantilla
-    ej_cat = current_cats[0]['name'] if current_cats else "Varios"
-    df_template = pd.DataFrame([{
-        "Tipo": "Gasto", "Cantidad": 50.00, "Categoría": ej_cat, 
-        "Fecha": datetime.now().strftime("%Y-%m-%d"), "Concepto": "Ejemplo compra"
-    }])
-    
-    st.download_button(
-        label="📥 Descargar Plantilla Oficial",
-        data=df_template.to_csv(index=False, sep=",").encode('utf-8'),
-        file_name="plantilla_finanzas.csv",
-        mime="text/csv",
-        use_container_width=True
-    )
-    
-    st.divider()
-
-    # 3. Subida y Mapeo
-    up = st.file_uploader("Sube tu archivo aquí", type=["csv", "xlsx"])
-    
-    if up:
-        try:
-            # Detectar automáticamente el separador si es CSV
-            if up.name.endswith('.csv'):
-                # Probamos primero con coma, si solo hay una columna, probamos con punto y coma
-                df = pd.read_csv(up, sep=None, engine='python')
-            else:
-                df = pd.read_excel(up)
-                
-            st.write("### Vista previa")
-            st.dataframe(df.head(3), use_container_width=True)
-            
-            cols = df.columns.tolist()
-            def auto_match(name): return cols.index(name) if name in cols else 0
-
-            st.subheader("Configuración de Columnas")
-            c1, c2 = st.columns(2)
-            sel_tipo = c1.selectbox("¿Qué columna es el Tipo?", cols, index=auto_match("Tipo"))
-            sel_qty = c1.selectbox("¿Qué columna es la Cantidad?", cols, index=auto_match("Cantidad"))
-            sel_cat = c1.selectbox("¿Qué columna es la Categoría?", cols, index=auto_match("Categoría"))
-            sel_date = c2.selectbox("¿Qué columna es la Fecha?", cols, index=auto_match("Fecha"))
-            sel_note = c2.selectbox("¿Qué columna es el Concepto?", cols, index=auto_match("Concepto"))
-            
-            if st.button("🚀 Procesar e Importar", use_container_width=True):
-                cat_lookup = {c['name'].upper().strip(): (c['id'], c['type']) for c in current_cats}
-                success, errors = 0, 0
-                
-                for _, r in df.iterrows():
-                    try:
-                        nombre_cat = str(r[sel_cat]).upper().strip()
-                        if nombre_cat in cat_lookup:
-                            # Limpieza robusta de cantidad
-                            val_qty = str(r[sel_qty]).replace('€', '').replace(' ', '').replace(',', '.')
-                            # Lógica de tipo
-                            txt_tipo = str(r[sel_tipo]).upper()
-                            val_tipo = "Ingreso" if "ING" in txt_tipo else "Gasto"
-                            
-                            save_input({
-                                "user_id": user_id,
-                                "quantity": float(val_qty),
-                                "type": val_tipo,
-                                "category_id": cat_lookup[nombre_cat][0],
-                                "date": str(pd.to_datetime(r[sel_date]).date()),
-                                "notes": str(r[sel_note]) if pd.notna(r[sel_note]) else ""
-                            })
-                            success += 1
-                        else: errors += 1
-                    except: errors += 1
-                
-                if success > 0: st.success(f"✅ ¡Hecho! {success} movimientos añadidos.")
-                if errors > 0: st.warning(f"⚠️ {errors} filas ignoradas (Categoría no encontrada o error de datos).")
-                st.rerun()
-
-        except Exception as e:
-            st.error(f"Error al leer el archivo: {e}. Asegúrate de que el formato sea correcto.")
+            dfe = df_an
