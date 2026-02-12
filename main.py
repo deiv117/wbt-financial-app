@@ -98,7 +98,6 @@ if not st.session_state.user:
             st.markdown("<p class='login-subtitle'>Identifícate para gestionar tus ahorros</p>", unsafe_allow_html=True)
             email = st.text_input("Email")
             password = st.text_input("Contraseña", type="password")
-            recordarme = st.checkbox("Mantener sesión iniciada (1h)", value=True)
             submit = st.form_submit_button("Entrar", use_container_width=True)
             if submit:
                 try:
@@ -115,8 +114,13 @@ else:
     with st.sidebar:
         res_p = supabase.table("profiles").select("*").eq("id", st.session_state.user.id).maybe_single().execute()
         p_data = res_p.data if (hasattr(res_p, 'data') and res_p.data) else {}
-        nombre, apellido = p_data.get('name', ''), p_data.get('lastname', '')
-        avatar_url, bg_color = p_data.get('profile_color', "#636EFA")
+        
+        # CORRECCIÓN DEL ERROR VALUEERROR AQUÍ:
+        nombre = p_data.get('name', '')
+        apellido = p_data.get('lastname', '')
+        avatar_url = p_data.get('avatar_url', "")
+        bg_color = p_data.get('profile_color', "#636EFA")
+        
         iniciales = ((nombre[0] if nombre else "") + (apellido[0] if apellido else "")).upper()
         if not iniciales: iniciales = st.session_state.user.email[0].upper()
 
@@ -134,12 +138,16 @@ else:
         st.markdown('</div>', unsafe_allow_html=True)
         
         st.divider()
-        if st.button("📊 Panel de Control"): st.session_state.menu_actual = "📊 Panel"; st.rerun()
-        if st.button("📂 Configurar Categorías"): st.session_state.menu_actual = "📂 Categorías"; st.rerun()
-        if st.button("⚙️ Configuración Perfil"): st.session_state.menu_actual = "⚙️ Perfil"; st.rerun()
-        if st.button("📥 Importar Movimientos"): st.session_state.menu_actual = "📥 Importar"; st.rerun()
+        if st.button("📊 Panel de Control"): 
+            st.session_state.menu_actual = "📊 Panel"; st.rerun()
+        if st.button("📂 Configurar Categorías"): 
+            st.session_state.menu_actual = "📂 Categorías"; st.rerun()
+        if st.button("⚙️ Configuración Perfil"): 
+            st.session_state.menu_actual = "⚙️ Perfil"; st.rerun()
+        if st.button("📥 Importar Movimientos"): 
+            st.session_state.menu_actual = "📥 Importar"; st.rerun()
 
-    # --- CARGA DE DATOS (Común para todas las páginas) ---
+    # --- CARGA DE DATOS ---
     res_cats = supabase.table("user_categories").select("*").execute()
     current_cats = sorted(res_cats.data, key=lambda x: x['name'].lower()) if res_cats.data else []
     res_all = supabase.table("user_imputs").select("*, user_categories(id, name, emoji)").execute()
@@ -152,7 +160,7 @@ else:
 
     cat_g = [c for c in current_cats if c.get('type') == 'Gasto']
 
-    # --- LÓGICA DE PÁGINAS ---
+    # --- CONTENIDO SEGÚN NAVEGACIÓN ---
     if st.session_state.menu_actual == "📂 Categorías":
         st.title("📂 Gestión de Categorías")
         if st.button("➕ Añadir Nueva Categoría"): crear_categoria_dialog()
@@ -165,17 +173,18 @@ else:
                         k1, k2, k3 = st.columns([4, 1, 1])
                         k1.write(f"**{c.get('emoji', '📁')} {c['name']}**")
                         if t == "Gasto": k1.caption(f"Meta: {c['budget']:.2f}€")
-                        if k2.button("✏️", key=f"sidebar_edc_{c['id']}"): editar_categoria_dialog(c)
-                        if k3.button("🗑️", key=f"sidebar_bc_{c['id']}"): supabase.table("user_categories").delete().eq("id", c['id']).execute(); st.rerun()
+                        if k2.button("✏️", key=f"btn_edc_{c['id']}"): editar_categoria_dialog(c)
+                        if k3.button("🗑️", key=f"btn_bc_{c['id']}"): 
+                            supabase.table("user_categories").delete().eq("id", c['id']).execute(); st.rerun()
 
     elif st.session_state.menu_actual == "⚙️ Perfil":
         st.title("⚙️ Mi Perfil")
         with st.form("perfil_form"):
             c1, c2 = st.columns(2)
-            n_name = c1.text_input("Nombre", value=p_data.get('name', ""))
-            n_last = c1.text_input("Apellido", value=p_data.get('lastname', ""))
-            n_color = c1.color_picker("Color de Avatar", value=p_data.get('profile_color', "#636EFA"))
-            n_avatar = c2.text_input("URL Foto de Perfil", value=p_data.get('avatar_url', ""))
+            n_name = c1.text_input("Nombre", value=nombre)
+            n_last = c1.text_input("Apellido", value=apellido)
+            n_color = c1.color_picker("Color de Avatar", value=bg_color)
+            n_avatar = c2.text_input("URL Foto de Perfil", value=avatar_url)
             n_social = c2.toggle("Modo Social (Grupos)", value=p_data.get('social_active', False))
             if st.form_submit_button("Guardar Cambios"):
                 payload = {"id": st.session_state.user.id, "name": n_name, "lastname": n_last, "avatar_url": n_avatar, "profile_color": n_color, "social_active": n_social, "updated_at": str(datetime.now())}
@@ -184,24 +193,18 @@ else:
 
     elif st.session_state.menu_actual == "📥 Importar":
         st.title("📥 Importación")
-        col_i1, col_i2 = st.columns(2)
-        with col_i1:
-            st.info("Usa la plantilla CSV.")
-            st.download_button("📄 Plantilla", "fecha,cantidad,categoria,concepto\n2026-02-12,15.50,Alimentacion,Compra", "plantilla.csv")
-        with col_i2:
-            up = st.file_uploader("CSV", type=["csv"])
-            if up and st.button("🚀 Importar"):
-                try:
-                    df_imp = pd.read_csv(up)
-                    cat_map = {c['name'].upper(): (c['id'], c['type']) for c in current_cats}
-                    rows = [{"user_id": st.session_state.user.id, "quantity": float(r['cantidad']), "type": cat_map[str(r['categoria']).upper()][1], "category_id": cat_map[str(r['categoria']).upper()][0], "date": str(r['fecha']), "notes": str(r.get('concepto', ''))} for _, r in df_imp.iterrows() if str(r['categoria']).upper() in cat_map]
-                    if rows: supabase.table("user_imputs").insert(rows).execute(); st.success("¡Importado!"); st.rerun()
-                except: st.error("Error en CSV")
+        up = st.file_uploader("CSV", type=["csv"])
+        if up and st.button("🚀 Importar"):
+            try:
+                df_imp = pd.read_csv(up)
+                cat_map = {c['name'].upper(): (c['id'], c['type']) for c in current_cats}
+                rows = [{"user_id": st.session_state.user.id, "quantity": float(r['cantidad']), "type": cat_map[str(r['categoria']).upper()][1], "category_id": cat_map[str(r['categoria']).upper()][0], "date": str(r['fecha']), "notes": str(r.get('concepto', ''))} for _, r in df_imp.iterrows() if str(r['categoria']).upper() in cat_map]
+                if rows: supabase.table("user_imputs").insert(rows).execute(); st.success("¡Importado!"); st.rerun()
+            except: st.error("Error en CSV")
 
     else:
-        # --- PÁGINA: 📊 PANEL DE CONTROL ---
+        # --- PANEL PRINCIPAL ---
         st.title("📊 Cuadro de Mando")
-        # He quitado 'tab_cat' de aquí
         tab_mov, tab_hist, tab_prev, tab_mes, tab_anual = st.tabs(["💸 Movimientos", "🗄️ Historial", "🔮 Previsión", "📊 Mensual", "📅 Anual"])
 
         with tab_mov:
@@ -223,18 +226,16 @@ else:
             st.divider()
             st.subheader("Últimos 10 movimientos")
             res_rec = supabase.table("user_imputs").select("*, user_categories(id, name, emoji)").order("date", desc=True).limit(10).execute()
-            
             for i in (res_rec.data if res_rec.data else []):
-                cat_obj = i.get('user_categories') if i.get('user_categories') else {}
+                cat_obj = i.get('user_categories') or {}
                 cat_str = f"{cat_obj.get('emoji', '📁')} {cat_obj.get('name', 'S/C')}"
-                nota_texto = str(i.get('notes') or "") 
-                resumen_nota = f" - *{nota_texto[:20]}...*" if nota_texto else ""
+                resumen_nota = f" - *{str(i.get('notes') or '')[:20]}...*" if i.get('notes') else ""
                 cl1, cl2, cl3, cl4, cl5 = st.columns([2.5, 1, 0.8, 0.4, 0.4])
                 cl1.markdown(f"**{i['date']}** | {cat_str}{resumen_nota}")
                 cl2.write(f"{i['quantity']:.2f}€")
                 cl3.write("📉" if i['type'] == "Gasto" else "📈")
-                if cl4.button("✏️", key=f"emov_{i['id']}"): editar_movimiento_dialog(i, current_cats)
-                if cl5.button("🗑️", key=f"dmov_{i['id']}"): supabase.table("user_imputs").delete().eq("id", i['id']).execute(); st.rerun()
+                if cl4.button("✏️", key=f"ed_mov_{i['id']}"): editar_movimiento_dialog(i, current_cats)
+                if cl5.button("🗑️", key=f"del_mov_{i['id']}"): supabase.table("user_imputs").delete().eq("id", i['id']).execute(); st.rerun()
 
         with tab_hist:
             st.subheader("🗄️ Historial")
