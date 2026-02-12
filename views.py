@@ -7,34 +7,28 @@ from database import save_input, delete_input, get_categories, delete_category, 
 from components import editar_movimiento_dialog, editar_categoria_dialog, crear_categoria_dialog
 
 def render_dashboard(df_all, current_cats, user_id):
-    # --- CSS DEFINITIVO Y SEGURO ---
+    # --- CSS MÁGICO PARA TARJETAS MÓVILES ---
     st.markdown("""
         <style>
-        /* Contenedor horizontal exclusivo para los botones de la tabla */
-        .contenedor-acciones-tabla {
-            display: flex !important;
-            flex-direction: row !important;
-            gap: 10px !important;
-            justify-content: flex-start !important;
-            align-items: center !important;
-            width: 100% !important;
-        }
-        
-        /* Estilo de los botones de icono en las tablas */
-        .contenedor-acciones-tabla button {
-            height: 30px !important;
-            width: 34px !important;
-            padding: 0px !important;
-            margin: 0px !important;
-            min-height: 30px !important;
-            border-radius: 6px !important;
-            font-size: 14px !important;
-            border: 1px solid #f0f2f6 !important;
-        }
-
-        /* Restaurar comportamiento normal de columnas para que las categorías respiren */
+        /* 1. Comportamiento fluido normal de las columnas */
         [data-testid="column"] {
             flex: 1 1 auto !important;
+        }
+
+        /* 2. RESPONSIVE MÓVIL: Botones 50/50 exactos dentro de las tarjetas */
+        @media (max-width: 640px) {
+            /* Forzamos que la sub-columna de botones se mantenga en horizontal */
+            [data-testid="stVerticalBlockBorderWrapper"] [data-testid="stHorizontalBlock"] [data-testid="stHorizontalBlock"] {
+                flex-direction: row !important;
+                gap: 8px !important;
+                margin-top: 5px !important;
+            }
+            /* Le damos el 50% del ancho a cada botón */
+            [data-testid="stVerticalBlockBorderWrapper"] [data-testid="stHorizontalBlock"] [data-testid="stHorizontalBlock"] > [data-testid="column"] {
+                width: 50% !important;
+                flex: 1 1 50% !important;
+                min-width: 0 !important;
+            }
         }
         </style>
     """, unsafe_allow_html=True)
@@ -74,32 +68,27 @@ def render_dashboard(df_all, current_cats, user_id):
         st.subheader("Últimos movimientos")
         df_rec = df_all.sort_values('date', ascending=False).head(10) if not df_all.empty else pd.DataFrame()
         
-        # --- RENDERIZADO EN TARJETAS (NUEVO) ---
         for _, i in df_rec.iterrows():
-            with st.container(border=True): # Esto crea la "Tarjeta"
+            with st.container(border=True): # Tarjeta
                 col_info, col_btn = st.columns([4, 1])
                 
                 with col_info:
                     color_q = "red" if i['type'] == 'Gasto' else "green"
                     signo = "-" if i['type'] == 'Gasto' else "+"
-                    # Primera línea de la tarjeta (Categoría y Precio)
                     st.markdown(f"**{i['cat_display']}** &nbsp;|&nbsp; :{color_q}[**{signo}{i['quantity']:.2f}€**]")
-                    # Segunda línea de la tarjeta (Fecha y Notas)
                     notas_txt = i['notes'] if i['notes'] else 'Sin concepto'
                     st.caption(f"📅 {i['date'].strftime('%d/%m/%Y')} &nbsp;|&nbsp; 📝 _{notas_txt}_")
                 
                 with col_btn:
-                    # Los botones se alinearán a la derecha en PC, y abajo en móvil
-                    st.markdown('<div class="contenedor-acciones-tabla">', unsafe_allow_html=True)
+                    # Botones side-by-side que se expanden (50/50 en móvil)
                     cb_e, cb_d = st.columns(2)
                     with cb_e:
-                        if st.button("✏️", key=f"e_dash_{i['id']}"): 
+                        if st.button("✏️", key=f"e_dash_{i['id']}", use_container_width=True): 
                             editar_movimiento_dialog(i, current_cats)
                     with cb_d:
-                        if st.button("🗑️", key=f"d_dash_{i['id']}"): 
+                        if st.button("🗑️", key=f"d_dash_{i['id']}", use_container_width=True): 
                             delete_input(i['id'])
                             st.rerun()
-                    st.markdown('</div>', unsafe_allow_html=True)
 
     with t2:
         st.subheader("Historial de Movimientos")
@@ -115,9 +104,8 @@ def render_dashboard(df_all, current_cats, user_id):
             else:
                 st.divider()
                 
-                # --- LÓGICA DE PAGINACIÓN ---
+                # --- PAGINACIÓN ---
                 total_items = len(df_h)
-                
                 col_pag1, col_pag2, col_pag3 = st.columns([1, 1, 2])
                 rows_per_page = col_pag1.selectbox("Registros por página:", [10, 25, 50, 100], index=2)
                 total_pages = math.ceil(total_items / rows_per_page)
@@ -125,13 +113,12 @@ def render_dashboard(df_all, current_cats, user_id):
                 
                 start_idx = (current_page - 1) * rows_per_page
                 end_idx = min(start_idx + rows_per_page, total_items)
-                
                 col_pag3.caption(f"<br>Viendo registros **{start_idx + 1}** a **{end_idx}** de un total de **{total_items}**", unsafe_allow_html=True)
                 
                 st.markdown("---")
                 df_page = df_h.iloc[start_idx:end_idx]
                 
-                # --- RENDERIZADO EN TARJETAS (NUEVO) ---
+                # --- TARJETAS HISTORIAL ---
                 for _, i in df_page.iterrows():
                     with st.container(border=True):
                         col_info, col_btn = st.columns([4, 1])
@@ -144,16 +131,14 @@ def render_dashboard(df_all, current_cats, user_id):
                             st.caption(f"📅 {i['date'].strftime('%d/%m/%Y')} &nbsp;|&nbsp; 📝 _{notas_txt}_")
                         
                         with col_btn:
-                            st.markdown('<div class="contenedor-acciones-tabla">', unsafe_allow_html=True)
                             cb1, cb2 = st.columns(2)
                             with cb1:
-                                if st.button("✏️", key=f"e_hist_{i['id']}"): 
+                                if st.button("✏️", key=f"e_hist_{i['id']}", use_container_width=True): 
                                     editar_movimiento_dialog(i, current_cats)
                             with cb2:
-                                if st.button("🗑️", key=f"d_hist_{i['id']}"): 
+                                if st.button("🗑️", key=f"d_hist_{i['id']}", use_container_width=True): 
                                     delete_input(i['id'])
                                     st.rerun()
-                            st.markdown('</div>', unsafe_allow_html=True)
 
     with t3:
         st.subheader("🔮 Previsión y Comparativa")
@@ -235,17 +220,20 @@ def render_categories(current_cats):
             st.subheader(f"{t}s")
             for c in [cat for cat in current_cats if cat.get('type') == t]:
                 with st.container(border=True):
-                    # Aquí usamos columnas normales sin el wrapper horizontal
                     k1, k2 = st.columns([4, 1])
                     k1.write(f"**{c.get('emoji', '📁')} {c['name']}**")
                     if t == "Gasto": 
                         k1.caption(f"Meta: {c['budget']:.2f}€")
                     with k2:
-                        if st.button("✏️", key=f"cat_e_{c['id']}"): 
-                            editar_categoria_dialog(c)
-                        if st.button("🗑️", key=f"cat_d_{c['id']}"): 
-                            delete_category(c['id'])
-                            st.rerun()
+                        # Botones 50/50 aplicados a las categorías también
+                        kb1, kb2 = st.columns(2)
+                        with kb1:
+                            if st.button("✏️", key=f"cat_e_{c['id']}", use_container_width=True): 
+                                editar_categoria_dialog(c)
+                        with kb2:
+                            if st.button("🗑️", key=f"cat_d_{c['id']}", use_container_width=True): 
+                                delete_category(c['id'])
+                                st.rerun()
 
 def render_profile(user_id, p_data):
     st.title("⚙️ Mi Perfil")
