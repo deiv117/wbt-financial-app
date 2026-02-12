@@ -7,16 +7,22 @@ from database import save_input, delete_input, get_categories, delete_category, 
 from components import editar_movimiento_dialog, editar_categoria_dialog, crear_categoria_dialog
 
 def render_dashboard(df_all, current_cats, user_id):
-    # --- CSS PARA ICONOS PEQUEÑOS ---
+    # --- CSS MEJORADO PARA ALINEACIÓN EN LÍNEA ---
     st.markdown("""
         <style>
-        /* Estilo para los botones de edición y borrado */
+        /* Ajuste general de botones de acción */
         .stButton > button {
-            border-radius: 8px !important;
-            padding: 2px 10px !important;
-            height: auto !important;
-            min-height: 28px !important;
+            border-radius: 6px !important;
+            padding: 2px 8px !important;
+            height: 28px !important;
+            width: 32px !important;
             font-size: 14px !important;
+            margin: 0px !important;
+        }
+        /* Contenedor para que los botones fluyan en horizontal */
+        [data-testid="stHorizontalBlock"] [data-testid="column"]:last-child div[data-testid="stVerticalBlock"] {
+            flex-direction: row !important;
+            gap: 5px !important;
         }
         </style>
     """, unsafe_allow_html=True)
@@ -43,15 +49,18 @@ def render_dashboard(df_all, current_cats, user_id):
         st.subheader("Últimos movimientos")
         df_rec = df_all.sort_values('date', ascending=False).head(10) if not df_all.empty else pd.DataFrame()
         for _, i in df_rec.iterrows():
-            cl1, cl2, cl3, cl4, cl5, cl6 = st.columns([1.5, 1.5, 2, 1, 0.4, 0.4])
+            # Ajustamos el ancho de la última columna para que quepan ambos botones (0.8 en lugar de 0.4)
+            cl1, cl2, cl3, cl4, cl5, cl6 = st.columns([1.5, 1.5, 2, 1, 0.4, 0.8])
             cl1.write(f"**{i['date'].date()}**")
             cl2.write(f"{i['cat_display']}")
             cl3.write(f"_{i['notes']}_")
             cl4.write(f"**{i['quantity']:.2f}€**")
             cl5.write("📉" if i['type'] == "Gasto" else "📈")
-            # Botones con keys únicas
-            if cl6.button("✏️", key=f"e_dash_{i['id']}"): editar_movimiento_dialog(i, current_cats)
-            if cl6.button("🗑️", key=f"d_dash_{i['id']}"): delete_input(i['id']); st.rerun()
+            
+            # Los dos botones en la misma columna cl6
+            with cl6:
+                if st.button("✏️", key=f"e_dash_{i['id']}"): editar_movimiento_dialog(i, current_cats)
+                if st.button("🗑️", key=f"d_dash_{i['id']}"): delete_input(i['id']); st.rerun()
 
     with t2:
         st.subheader("Historial de Movimientos")
@@ -65,21 +74,23 @@ def render_dashboard(df_all, current_cats, user_id):
                 st.info("No hay movimientos en este rango de fechas.")
             else:
                 st.divider()
-                hc1, hc2, hc3, hc4, hc5, hc6 = st.columns([1.5, 1.5, 2, 1, 0.4, 0.4])
+                # Cabecera
+                hc1, hc2, hc3, hc4, hc5, hc6 = st.columns([1.5, 1.5, 2, 1, 0.4, 0.8])
                 hc1.caption("FECHA")
                 hc2.caption("CATEGORÍA")
                 hc3.caption("CONCEPTO")
                 hc4.caption("CANTIDAD")
                 
                 for _, i in df_h.iterrows():
-                    cl1, cl2, cl3, cl4, cl5, cl6 = st.columns([1.5, 1.5, 2, 1, 0.4, 0.4])
+                    cl1, cl2, cl3, cl4, cl5, cl6 = st.columns([1.5, 1.5, 2, 1, 0.4, 0.8])
                     cl1.write(f"{i['date'].date()}")
                     cl2.write(f"{i['cat_display']}")
                     cl3.write(f"{i['notes']}")
                     cl4.write(f"**{i['quantity']:.2f}€**")
                     cl5.write("📉" if i['type'] == "Gasto" else "📈")
-                    if cl6.button("✏️", key=f"e_hist_{i['id']}"): editar_movimiento_dialog(i, current_cats)
-                    if cl6.button("🗑️", key=f"d_hist_{i['id']}"): delete_input(i['id']); st.rerun()
+                    with cl6:
+                        if st.button("✏️", key=f"e_hist_{i['id']}"): editar_movimiento_dialog(i, current_cats)
+                        if st.button("🗑️", key=f"d_hist_{i['id']}"): delete_input(i['id']); st.rerun()
 
     with t3:
         st.subheader("🔮 Previsión y Comparativa")
@@ -147,11 +158,12 @@ def render_categories(current_cats):
             st.subheader(f"{t}s")
             for c in [cat for cat in current_cats if cat.get('type') == t]:
                 with st.container(border=True):
-                    k1, k2, k3 = st.columns([4, 1, 1])
+                    k1, k2, k3 = st.columns([4, 1.5])
                     k1.write(f"**{c.get('emoji', '📁')} {c['name']}**")
                     if t == "Gasto": k1.caption(f"Meta: {c['budget']:.2f}€")
-                    if k2.button("✏️", key=f"cat_e_{c['id']}"): editar_categoria_dialog(c)
-                    if k3.button("🗑️", key=f"cat_d_{c['id']}"): delete_category(c['id']); st.rerun()
+                    with k2:
+                        if st.button("✏️", key=f"cat_e_{c['id']}"): editar_categoria_dialog(c)
+                        if st.button("🗑️", key=f"cat_d_{c['id']}"): delete_category(c['id']); st.rerun()
 
 def render_profile(user_id, p_data):
     st.title("⚙️ Mi Perfil")
