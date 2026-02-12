@@ -124,31 +124,21 @@ else:
         c1, c2 = st.columns(2)
         n_qty = c1.number_input("Cantidad (€)", value=float(mov_data['quantity']), min_value=0.0, step=0.01)
         n_date = c2.date_input("Fecha", value=pd.to_datetime(mov_data['date']).date())
-        
         n_type = st.selectbox("Tipo", ["Gasto", "Ingreso"], index=0 if mov_data['type'] == 'Gasto' else 1)
-        
-        # Filtrar categorías por el tipo seleccionado
         f_cs = [c for c in categorias_disponibles if c['type'] == n_type]
         opciones = [f"{c.get('emoji', '📁')} {c['name']}" for c in f_cs]
-        
-        # Intentar preseleccionar la categoría actual
         try:
             cat_actual_str = f"{mov_data['user_categories']['emoji']} {mov_data['user_categories']['name']}"
             idx_cat = opciones.index(cat_actual_str)
         except:
             idx_cat = 0
-            
         n_sel_cat = st.selectbox("Categoría", opciones, index=idx_cat)
-        n_notes = st.text_input("Concepto / Notas", value=mov_data.get('notes', ''))
-        
+        n_notes = st.text_input("Concepto / Notas", value=str(mov_data.get('notes') or ''))
         if st.button("Guardar Cambios"):
             cat_obj = next(c for c in f_cs if f"{c.get('emoji', '📁')} {c['name']}" == n_sel_cat)
             supabase.table("user_imputs").update({
-                "quantity": n_qty,
-                "date": str(n_date),
-                "type": n_type,
-                "category_id": cat_obj['id'],
-                "notes": n_notes
+                "quantity": n_qty, "date": str(n_date), "type": n_type,
+                "category_id": cat_obj['id'], "notes": n_notes
             }).eq("id", mov_data['id']).execute()
             st.rerun()
 
@@ -197,7 +187,8 @@ else:
         if not df_all.empty: 
             df_all['date'] = pd.to_datetime(df_all['date'])
             df_all['cat_display'] = df_all['user_categories'].apply(lambda x: f"{x.get('emoji', '📁')} {x.get('name', 'S/C')}" if x else "📁 S/C")
-        
+            df_all['notes'] = df_all['notes'].fillna('') 
+
         cat_g = [c for c in current_cats if c.get('type') == 'Gasto']
 
         with tab_mov:
@@ -219,11 +210,17 @@ else:
             st.divider()
             st.subheader("Últimos 10 movimientos")
             res_rec = supabase.table("user_imputs").select("*, user_categories(id, name, emoji)").order("date", desc=True).limit(10).execute()
+            
             for i in (res_rec.data if res_rec.data else []):
-                cat_obj = i['user_categories'] if i['user_categories'] else {}
+                cat_obj = i.get('user_categories') if i.get('user_categories') else {}
                 cat_str = f"{cat_obj.get('emoji', '📁')} {cat_obj.get('name', 'S/C')}"
+                
+                # Corrección del error TypeError
+                nota_texto = str(i.get('notes') or "") 
+                resumen_nota = f" - *{nota_texto[:20]}...*" if nota_texto else ""
+                
                 cl1, cl2, cl3, cl4, cl5 = st.columns([2.5, 1, 0.8, 0.4, 0.4])
-                cl1.markdown(f"**{i['date']}** | {cat_str} - *{i.get('notes','')[:20]}*")
+                cl1.markdown(f"**{i['date']}** | {cat_str}{resumen_nota}")
                 cl2.write(f"{i['quantity']:.2f}€")
                 cl3.write("📉" if i['type'] == "Gasto" else "📈")
                 if cl4.button("✏️", key=f"emov_{i['id']}"): editar_movimiento_dialog(i, current_cats)
