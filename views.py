@@ -66,15 +66,20 @@ def render_dashboard(df_all, current_cats, user_id):
             f_mov = c3.date_input("Fecha", datetime.now(), key="f_date")
             
             f_cs = [c for c in current_cats if c.get('type') == t_type]
-            sel = st.selectbox("Categoría", ["Selecciona..."] + [f"{c.get('emoji', '📁')} {c['name']}" for f_cs], key="f_cat")
+            # CORRECCIÓN AQUÍ: Se ha corregido el bucle 'for c in f_cs'
+            sel = st.selectbox("Categoría", ["Selecciona..."] + [f"{c.get('emoji', '📁')} {c['name']}" for c in f_cs], key="f_cat")
             concepto = st.text_input("Concepto", key="f_note")
             
             if st.form_submit_button("Guardar Movimiento", use_container_width=True):
                 if sel != "Selecciona..." and qty > 0:
                     cat_sel = next(c for c in f_cs if f"{c.get('emoji', '📁')} {c['name']}" == sel)
                     save_input({
-                        "user_id": user_id, "quantity": qty, "type": t_type, 
-                        "category_id": cat_sel['id'], "date": str(f_mov), "notes": concepto
+                        "user_id": user_id, 
+                        "quantity": qty, 
+                        "type": t_type, 
+                        "category_id": cat_sel['id'], 
+                        "date": str(f_mov), 
+                        "notes": concepto
                     })
                     st.rerun()
 
