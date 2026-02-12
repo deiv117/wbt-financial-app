@@ -1,9 +1,9 @@
+# Cabecera de views.py
 import streamlit as st
 import pandas as pd
 import plotly.graph_objects as go
 from datetime import datetime, timedelta
-from database import (save_input, delete_input, get_categories, delete_category, 
-                      upsert_profile, save_category)
+from database import save_input, delete_input, get_categories, delete_category, upsert_profile, save_category, update_input
 from components import editar_movimiento_dialog, editar_categoria_dialog, crear_categoria_dialog
 
 def render_dashboard(df_all, current_cats, user_id):
