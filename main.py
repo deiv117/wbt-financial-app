@@ -22,34 +22,34 @@ if 'menu_actual' not in st.session_state:
 
 # --- LOGIN ---
 if not st.session_state.user:
-    # Aquí se mantiene tu CSS personalizado que pone la imagen de fondo
-    _, col_login, _ = st.columns([1, 1.5, 1])
+    # Aplicamos la clase de fondo solo aquí
+    st.markdown('<div class="bg-login">', unsafe_allow_html=True) 
+    
+    _, col_login, _ = st.columns([1, 1.8, 1]) # Un poco más ancha la columna
     with col_login:
         st.write("#")
-        # Envolvemos el login en un contenedor con clase para recuperar el fondo blanco/oscuro adaptativo
+        # Abrimos el contenedor de la caja
         st.markdown('<div class="login-box">', unsafe_allow_html=True)
         st.markdown("<h1 class='login-title'>💰 Finanzas App</h1>", unsafe_allow_html=True)
+        
         email = st.text_input("Email", key="login_email")
         password = st.text_input("Contraseña", type="password", key="login_pass")
+        
         if st.button("Entrar", use_container_width=True):
             try:
                 res = supabase.auth.sign_in_with_password({"email": email, "password": password})
                 if res.user:
                     st.session_state.user = res.user
                     st.rerun()
-            except: st.error("Credenciales incorrectas.")
-        st.markdown('</div>', unsafe_allow_html=True)
+            except: 
+                st.error("Credenciales incorrectas.")
+        
+        st.markdown('</div>', unsafe_allow_html=True) # Cerramos login-box
+    st.markdown('</div>', unsafe_allow_html=True) # Cerramos bg-login
 else:
-    # --- ESTO ES LO NUEVO: Forzamos a que el fondo sea el de defecto del tema ---
-    st.markdown("""
-        <style>
-        .stApp {
-            background-image: none !important;
-            background-color: transparent !important;
-        }
-        </style>
-    """, unsafe_allow_html=True)
-
+    # Cuando ya está logueado, forzamos que el fondo de .stApp sea nulo
+    st.markdown("<style>.stApp { background-image: none !important; }</style>", unsafe_allow_html=True)
+    
     # Sidebar y Navegación
     p_data = get_profile(st.session_state.user.id)
     with st.sidebar:
