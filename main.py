@@ -30,6 +30,64 @@ if 'user' not in st.session_state:
 if 'menu_actual' not in st.session_state:
     st.session_state.menu_actual = "📊 Panel"
 
+# --- FUNCIONES DIALOG (CATEGORÍAS Y MOVIMIENTOS) ---
+@st.dialog("➕ Nueva Categoría")
+def crear_categoria_dialog():
+    lista_emojis = ["📁", "💰", "🍔", "🏠", "🚗", "🛒", "🔌", "🎬", "🏥", "✈️", "👔", "🎓", "🎁", "🏋️", "🍹", "📱", "🐾", "💡", "🛠️", "🍕"]
+    c1, c2 = st.columns([1, 2])
+    emoji_sel = c1.selectbox("Emoji", lista_emojis)
+    emoji_custom = c1.text_input("U otro...", value="")
+    emoji_final = emoji_custom if emoji_custom else emoji_sel
+    name = c2.text_input("Nombre")
+    c_type = st.selectbox("Tipo", ["Gasto", "Ingreso"])
+    budget = st.number_input("Presupuesto Mensual (€)", min_value=0.0) if c_type == "Gasto" else 0.0
+    if st.button("Guardar"):
+        if name:
+            supabase.table("user_categories").insert({"user_id": st.session_state.user.id, "name": name, "type": c_type, "budget": budget, "emoji": emoji_final}).execute()
+            st.rerun()
+
+@st.dialog("✏️ Editar Categoría")
+def editar_categoria_dialog(cat_data):
+    lista_emojis = ["📁", "💰", "🍔", "🏠", "🚗", "🛒", "🔌", "🎬", "🏥", "✈️", "👔", "🎓", "🎁", "🏋️", "🍹", "📱", "🐾", "💡", "🛠️", "🍕"]
+    c1, c2 = st.columns([1, 2])
+    try: idx = lista_emojis.index(cat_data.get('emoji', '📁'))
+    except: idx = 0
+    emoji_sel = c1.selectbox("Emoji", lista_emojis, index=idx)
+    emoji_custom = c1.text_input("U otro...", value="")
+    emoji_final = emoji_custom if emoji_custom else emoji_sel
+    new_name = c2.text_input("Nombre", value=cat_data['name'])
+    new_budget = 0.0
+    if cat_data['type'] == 'Gasto':
+        new_budget = st.number_input("Presupuesto Mensual (€)", value=float(cat_data['budget']), min_value=0.0)
+    if st.button("Actualizar Categoría"):
+        if new_name:
+            supabase.table("user_categories").update({"name": new_name, "emoji": emoji_final, "budget": new_budget}).eq("id", cat_data['id']).execute()
+            st.rerun()
+
+@st.dialog("✏️ Editar Movimiento")
+def editar_movimiento_dialog(mov_data, categorias_disponibles):
+    st.subheader("Modificar Registro")
+    c1, c2 = st.columns(2)
+    n_qty = c1.number_input("Cantidad (€)", value=float(mov_data['quantity']), min_value=0.0, step=0.01)
+    n_date = c2.date_input("Fecha", value=pd.to_datetime(mov_data['date']).date())
+    n_type = st.selectbox("Tipo", ["Gasto", "Ingreso"], index=0 if mov_data['type'] == 'Gasto' else 1)
+    f_cs = [c for c in categorias_disponibles if c['type'] == n_type]
+    opciones = [f"{c.get('emoji', '📁')} {c['name']}" for c in f_cs]
+    try:
+        cat_actual_str = f"{mov_data['user_categories']['emoji']} {mov_data['user_categories']['name']}"
+        idx_cat = opciones.index(cat_actual_str)
+    except:
+        idx_cat = 0
+    n_sel_cat = st.selectbox("Categoría", opciones, index=idx_cat)
+    n_notes = st.text_input("Concepto / Notas", value=str(mov_data.get('notes') or ''))
+    if st.button("Guardar Cambios"):
+        cat_obj = next(c for c in f_cs if f"{c.get('emoji', '📁')} {c['name']}" == n_sel_cat)
+        supabase.table("user_imputs").update({
+            "quantity": n_qty, "date": str(n_date), "type": n_type,
+            "category_id": cat_obj['id'], "notes": n_notes
+        }).eq("id", mov_data['id']).execute()
+        st.rerun()
+
 # --- LÓGICA DE LOGIN O CONTENIDO ---
 if not st.session_state.user:
     _, col_login, _ = st.columns([1, 1.5, 1])
@@ -41,9 +99,7 @@ if not st.session_state.user:
             email = st.text_input("Email")
             password = st.text_input("Contraseña", type="password")
             recordarme = st.checkbox("Mantener sesión iniciada (1h)", value=True)
-            
             submit = st.form_submit_button("Entrar", use_container_width=True)
-            
             if submit:
                 try:
                     res = supabase.auth.sign_in_with_password({"email": email, "password": password})
@@ -59,10 +115,8 @@ else:
     with st.sidebar:
         res_p = supabase.table("profiles").select("*").eq("id", st.session_state.user.id).maybe_single().execute()
         p_data = res_p.data if (hasattr(res_p, 'data') and res_p.data) else {}
-        
         nombre, apellido = p_data.get('name', ''), p_data.get('lastname', '')
-        avatar_url, bg_color = p_data.get('avatar_url', ""), p_data.get('profile_color', "#636EFA")
-        
+        avatar_url, bg_color = p_data.get('profile_color', "#636EFA")
         iniciales = ((nombre[0] if nombre else "") + (apellido[0] if apellido else "")).upper()
         if not iniciales: iniciales = st.session_state.user.email[0].upper()
 
@@ -81,69 +135,40 @@ else:
         
         st.divider()
         if st.button("📊 Panel de Control"): st.session_state.menu_actual = "📊 Panel"; st.rerun()
+        if st.button("📂 Configurar Categorías"): st.session_state.menu_actual = "📂 Categorías"; st.rerun()
         if st.button("⚙️ Configuración Perfil"): st.session_state.menu_actual = "⚙️ Perfil"; st.rerun()
         if st.button("📥 Importar Movimientos"): st.session_state.menu_actual = "📥 Importar"; st.rerun()
 
-    # --- FUNCIONES DIALOG (CATEGORÍAS Y MOVIMIENTOS) ---
-    @st.dialog("➕ Nueva Categoría")
-    def crear_categoria_dialog():
-        lista_emojis = ["📁", "💰", "🍔", "🏠", "🚗", "🛒", "🔌", "🎬", "🏥", "✈️", "👔", "🎓", "🎁", "🏋️", "🍹", "📱", "🐾", "💡", "🛠️", "🍕"]
-        c1, c2 = st.columns([1, 2])
-        emoji_sel = c1.selectbox("Emoji", lista_emojis)
-        emoji_custom = c1.text_input("U otro...", value="")
-        emoji_final = emoji_custom if emoji_custom else emoji_sel
-        name = c2.text_input("Nombre")
-        c_type = st.selectbox("Tipo", ["Gasto", "Ingreso"])
-        budget = st.number_input("Presupuesto Mensual (€)", min_value=0.0) if c_type == "Gasto" else 0.0
-        if st.button("Guardar"):
-            if name:
-                supabase.table("user_categories").insert({"user_id": st.session_state.user.id, "name": name, "type": c_type, "budget": budget, "emoji": emoji_final}).execute()
-                st.rerun()
+    # --- CARGA DE DATOS (Común para todas las páginas) ---
+    res_cats = supabase.table("user_categories").select("*").execute()
+    current_cats = sorted(res_cats.data, key=lambda x: x['name'].lower()) if res_cats.data else []
+    res_all = supabase.table("user_imputs").select("*, user_categories(id, name, emoji)").execute()
+    df_all = pd.DataFrame(res_all.data) if res_all.data else pd.DataFrame()
+    
+    if not df_all.empty: 
+        df_all['date'] = pd.to_datetime(df_all['date'])
+        df_all['cat_display'] = df_all['user_categories'].apply(lambda x: f"{x.get('emoji', '📁')} {x.get('name', 'S/C')}" if x else "📁 S/C")
+        df_all['notes'] = df_all['notes'].fillna('') 
 
-    @st.dialog("✏️ Editar Categoría")
-    def editar_categoria_dialog(cat_data):
-        lista_emojis = ["📁", "💰", "🍔", "🏠", "🚗", "🛒", "🔌", "🎬", "🏥", "✈️", "👔", "🎓", "🎁", "🏋️", "🍹", "📱", "🐾", "💡", "🛠️", "🍕"]
-        c1, c2 = st.columns([1, 2])
-        try: idx = lista_emojis.index(cat_data.get('emoji', '📁'))
-        except: idx = 0
-        emoji_sel = c1.selectbox("Emoji", lista_emojis, index=idx)
-        emoji_custom = c1.text_input("U otro...", value="")
-        emoji_final = emoji_custom if emoji_custom else emoji_sel
-        new_name = c2.text_input("Nombre", value=cat_data['name'])
-        new_budget = 0.0
-        if cat_data['type'] == 'Gasto':
-            new_budget = st.number_input("Presupuesto Mensual (€)", value=float(cat_data['budget']), min_value=0.0)
-        if st.button("Actualizar Categoría"):
-            if new_name:
-                supabase.table("user_categories").update({"name": new_name, "emoji": emoji_final, "budget": new_budget}).eq("id", cat_data['id']).execute()
-                st.rerun()
-
-    @st.dialog("✏️ Editar Movimiento")
-    def editar_movimiento_dialog(mov_data, categorias_disponibles):
-        st.subheader("Modificar Registro")
-        c1, c2 = st.columns(2)
-        n_qty = c1.number_input("Cantidad (€)", value=float(mov_data['quantity']), min_value=0.0, step=0.01)
-        n_date = c2.date_input("Fecha", value=pd.to_datetime(mov_data['date']).date())
-        n_type = st.selectbox("Tipo", ["Gasto", "Ingreso"], index=0 if mov_data['type'] == 'Gasto' else 1)
-        f_cs = [c for c in categorias_disponibles if c['type'] == n_type]
-        opciones = [f"{c.get('emoji', '📁')} {c['name']}" for c in f_cs]
-        try:
-            cat_actual_str = f"{mov_data['user_categories']['emoji']} {mov_data['user_categories']['name']}"
-            idx_cat = opciones.index(cat_actual_str)
-        except:
-            idx_cat = 0
-        n_sel_cat = st.selectbox("Categoría", opciones, index=idx_cat)
-        n_notes = st.text_input("Concepto / Notas", value=str(mov_data.get('notes') or ''))
-        if st.button("Guardar Cambios"):
-            cat_obj = next(c for c in f_cs if f"{c.get('emoji', '📁')} {c['name']}" == n_sel_cat)
-            supabase.table("user_imputs").update({
-                "quantity": n_qty, "date": str(n_date), "type": n_type,
-                "category_id": cat_obj['id'], "notes": n_notes
-            }).eq("id", mov_data['id']).execute()
-            st.rerun()
+    cat_g = [c for c in current_cats if c.get('type') == 'Gasto']
 
     # --- LÓGICA DE PÁGINAS ---
-    if st.session_state.menu_actual == "⚙️ Perfil":
+    if st.session_state.menu_actual == "📂 Categorías":
+        st.title("📂 Gestión de Categorías")
+        if st.button("➕ Añadir Nueva Categoría"): crear_categoria_dialog()
+        ci, cg = st.columns(2)
+        for col, t in zip([ci, cg], ["Ingreso", "Gasto"]):
+            with col:
+                st.subheader(f"{t}s")
+                for c in [cat for cat in current_cats if cat.get('type') == t]:
+                    with st.container(border=True):
+                        k1, k2, k3 = st.columns([4, 1, 1])
+                        k1.write(f"**{c.get('emoji', '📁')} {c['name']}**")
+                        if t == "Gasto": k1.caption(f"Meta: {c['budget']:.2f}€")
+                        if k2.button("✏️", key=f"sidebar_edc_{c['id']}"): editar_categoria_dialog(c)
+                        if k3.button("🗑️", key=f"sidebar_bc_{c['id']}"): supabase.table("user_categories").delete().eq("id", c['id']).execute(); st.rerun()
+
+    elif st.session_state.menu_actual == "⚙️ Perfil":
         st.title("⚙️ Mi Perfil")
         with st.form("perfil_form"):
             c1, c2 = st.columns(2)
@@ -168,28 +193,16 @@ else:
             if up and st.button("🚀 Importar"):
                 try:
                     df_imp = pd.read_csv(up)
-                    res_c = supabase.table("user_categories").select("*").execute()
-                    cat_map = {c['name'].upper(): (c['id'], c['type']) for c in res_c.data}
+                    cat_map = {c['name'].upper(): (c['id'], c['type']) for c in current_cats}
                     rows = [{"user_id": st.session_state.user.id, "quantity": float(r['cantidad']), "type": cat_map[str(r['categoria']).upper()][1], "category_id": cat_map[str(r['categoria']).upper()][0], "date": str(r['fecha']), "notes": str(r.get('concepto', ''))} for _, r in df_imp.iterrows() if str(r['categoria']).upper() in cat_map]
                     if rows: supabase.table("user_imputs").insert(rows).execute(); st.success("¡Importado!"); st.rerun()
                 except: st.error("Error en CSV")
 
     else:
-        # --- PANEL PRINCIPAL ---
+        # --- PÁGINA: 📊 PANEL DE CONTROL ---
         st.title("📊 Cuadro de Mando")
-        tab_mov, tab_hist, tab_cat, tab_prev, tab_mes, tab_anual = st.tabs(["💸 Movimientos", "🗄️ Historial", "⚙️ Categorías", "🔮 Previsión", "📊 Mensual", "📅 Anual"])
-
-        res_cats = supabase.table("user_categories").select("*").execute()
-        current_cats = sorted(res_cats.data, key=lambda x: x['name'].lower()) if res_cats.data else []
-        res_all = supabase.table("user_imputs").select("*, user_categories(id, name, emoji)").execute()
-        df_all = pd.DataFrame(res_all.data) if res_all.data else pd.DataFrame()
-        
-        if not df_all.empty: 
-            df_all['date'] = pd.to_datetime(df_all['date'])
-            df_all['cat_display'] = df_all['user_categories'].apply(lambda x: f"{x.get('emoji', '📁')} {x.get('name', 'S/C')}" if x else "📁 S/C")
-            df_all['notes'] = df_all['notes'].fillna('') 
-
-        cat_g = [c for c in current_cats if c.get('type') == 'Gasto']
+        # He quitado 'tab_cat' de aquí
+        tab_mov, tab_hist, tab_prev, tab_mes, tab_anual = st.tabs(["💸 Movimientos", "🗄️ Historial", "🔮 Previsión", "📊 Mensual", "📅 Anual"])
 
         with tab_mov:
             st.subheader("Nuevo Registro")
@@ -214,11 +227,8 @@ else:
             for i in (res_rec.data if res_rec.data else []):
                 cat_obj = i.get('user_categories') if i.get('user_categories') else {}
                 cat_str = f"{cat_obj.get('emoji', '📁')} {cat_obj.get('name', 'S/C')}"
-                
-                # Corrección del error TypeError
                 nota_texto = str(i.get('notes') or "") 
                 resumen_nota = f" - *{nota_texto[:20]}...*" if nota_texto else ""
-                
                 cl1, cl2, cl3, cl4, cl5 = st.columns([2.5, 1, 0.8, 0.4, 0.4])
                 cl1.markdown(f"**{i['date']}** | {cat_str}{resumen_nota}")
                 cl2.write(f"{i['quantity']:.2f}€")
@@ -235,20 +245,6 @@ else:
                 df_h = df_all[(df_all['date'].dt.date >= f_i) & (df_all['date'].dt.date <= f_f)]
                 if f_t != "Todos": df_h = df_h[df_h['type'] == f_t]
                 st.dataframe(df_h[['date', 'cat_display', 'notes', 'quantity', 'type']].sort_values('date', ascending=False), use_container_width=True, hide_index=True)
-
-        with tab_cat:
-            if st.button("➕ Añadir Categoría"): crear_categoria_dialog()
-            ci, cg = st.columns(2)
-            for col, t in zip([ci, cg], ["Ingreso", "Gasto"]):
-                with col:
-                    st.subheader(f"{t}s")
-                    for c in [cat for cat in current_cats if cat.get('type') == t]:
-                        with st.container(border=True):
-                            k1, k2, k3 = st.columns([4, 1, 1])
-                            k1.write(f"**{c.get('emoji', '📁')} {c['name']}**")
-                            if t == "Gasto": k1.caption(f"Meta: {c['budget']:.2f}€")
-                            if k2.button("✏️", key=f"edc_{c['id']}"): editar_categoria_dialog(c)
-                            if k3.button("🗑️", key=f"bc_{c['id']}"): supabase.table("user_categories").delete().eq("id", c['id']).execute(); st.rerun()
 
         with tab_prev:
             st.subheader("🔮 Previsión")
