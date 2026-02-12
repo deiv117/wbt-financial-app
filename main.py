@@ -4,6 +4,7 @@ import pandas as pd
 from datetime import datetime, timedelta
 import plotly.express as px
 import plotly.graph_objects as go
+from styles import get_custom_css  # Importamos la personalización externa
 
 # 1. CONEXIÓN SEGURA CON SUPABASE
 url = st.secrets["SUPABASE_URL"]
@@ -12,37 +13,12 @@ supabase: Client = create_client(url, key)
 
 st.set_page_config(page_title="Mis Gastos", page_icon="💰", layout="wide")
 
-# --- ESTILOS CSS ADAPTATIVOS ---
-st.markdown("""
-    <style>
-    .stApp {
-        background-image: url("https://images.unsplash.com/photo-1554224155-6726b3ff858f?q=80&w=2022&auto=format&fit=crop");
-        background-size: cover;
-        background-position: center;
-        background-attachment: fixed;
-    }
-    [data-testid="stForm"] {
-        background-color: rgba(255, 255, 255, 0.05);
-        backdrop-filter: blur(15px);
-        -webkit-backdrop-filter: blur(15px);
-        padding: 40px;
-        border-radius: 20px;
-        border: 1px solid rgba(255, 255, 255, 0.2);
-        box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.37);
-    }
-    .login-title { text-align: center; font-weight: 800; color: white !important; text-shadow: 2px 2px 4px rgba(0,0,0,0.5); }
-    .login-subtitle { text-align: center; color: #f0f2f6 !important; text-shadow: 1px 1px 2px rgba(0,0,0,0.5); }
-    .sidebar-user-container { display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; padding: 10px 0 20px 0; }
-    .avatar-circle { width: 80px; height: 80px; border-radius: 50%; display: flex; align-items: center; justify-content: center; color: white; font-weight: bold; font-size: 28px; margin-bottom: 10px; border: 2px solid #636EFA; object-fit: cover; }
-    div.stButton > button { width: 100%; border-radius: 10px; border: 1px solid rgba(128, 128, 128, 0.2); background-color: transparent; transition: all 0.3s ease; text-align: left; padding: 10px 15px; }
-    div.stButton > button:hover { border-color: #636EFA; background-color: rgba(99, 110, 250, 0.1); }
-    </style>
-    """, unsafe_allow_html=True)
+# --- APLICAMOS ESTILOS DESDE EL OTRO ARCHIVO ---
+st.markdown(get_custom_css(), unsafe_allow_html=True)
 
-# --- CONTROL DE SESIÓN CORREGIDO ---
+# --- CONTROL DE SESIÓN ---
 if 'user' not in st.session_state:
     try:
-        # Intentamos recuperar sesión persistente
         res_session = supabase.auth.get_session()
         if res_session and res_session.user:
             st.session_state.user = res_session.user
@@ -70,20 +46,18 @@ if not st.session_state.user:
             
             if submit:
                 try:
-                    # Al hacer el login, actualizamos directamente el session_state
                     res = supabase.auth.sign_in_with_password({"email": email, "password": password})
                     if res.user:
                         st.session_state.user = res.user
-                        st.rerun() # ESTE RERUN ES CLAVE: Recarga la página ya con el usuario detectado
+                        st.rerun()
                 except Exception as e:
                     st.error("Acceso denegado. Revisa tus credenciales.")
 else:
-    # Quitar fondo de imagen dentro de la app
+    # Quitar fondo de imagen dentro de la app para legibilidad
     st.markdown("<style>.stApp { background-image: none !important; }</style>", unsafe_allow_html=True)
 
     # --- SIDEBAR NAVEGACIÓN ---
     with st.sidebar:
-        # Recuperamos datos del perfil
         res_p = supabase.table("profiles").select("*").eq("id", st.session_state.user.id).maybe_single().execute()
         p_data = res_p.data if (hasattr(res_p, 'data') and res_p.data) else {}
         
@@ -155,7 +129,7 @@ else:
                 except: st.error("Error al procesar el archivo.")
 
     else:
-        # --- PANEL PRINCIPAL ---
+        # --- PANEL PRINCIPAL (TABS COMPLETOS) ---
         st.title("📊 Cuadro de Mando")
         tab_mov, tab_hist, tab_cat, tab_prev, tab_mes, tab_anual = st.tabs(["💸 Movimientos", "🗄️ Historial", "⚙️ Categorías", "🔮 Previsión", "📊 Mensual", "📅 Anual"])
 
