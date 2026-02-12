@@ -202,11 +202,10 @@ else:
             res_rec = supabase.table("user_imputs").select("*, user_categories(id, name, emoji)").order("date", desc=True).limit(10).execute()
             for i in (res_rec.data or []):
                 cat_obj = i.get('user_categories') or {}
-                # Se añade cl6 para el concepto en la visualización rápida
                 cl1, cl2, cl3, cl4, cl5, cl6 = st.columns([1.5, 1.5, 1.5, 1, 0.4, 0.4])
                 cl1.write(f"**{i['date']}**")
                 cl2.write(f"{cat_obj.get('emoji','📁')} {cat_obj.get('name','S/C')}")
-                cl3.write(f"_{str(i.get('notes') or '')}_") # Columna de Concepto
+                cl3.write(f"_{str(i.get('notes') or '')}_")
                 cl4.write(f"**{i['quantity']:.2f}€**")
                 cl5.write("📉" if i['type'] == "Gasto" else "📈")
                 if cl6.button("✏️", key=f"e_{i['id']}"): editar_movimiento_dialog(i, current_cats)
@@ -218,7 +217,6 @@ else:
             f_i, f_f = h1.date_input("Desde", datetime.now()-timedelta(days=30), key="hi"), h2.date_input("Hasta", datetime.now(), key="hf")
             if not df_all.empty:
                 df_h = df_all[(df_all['date'].dt.date >= f_i) & (df_all['date'].dt.date <= f_f)]
-                # Se renombra 'notes' a 'Concepto' en el dataframe
                 df_h_display = df_h[['date', 'cat_display', 'notes', 'quantity', 'type']].rename(columns={'notes': 'Concepto', 'date': 'Fecha', 'cat_display': 'Categoría', 'quantity': 'Cantidad', 'type': 'Tipo'})
                 st.dataframe(df_h_display.sort_values('Fecha', ascending=False), use_container_width=True, hide_index=True)
 
@@ -240,16 +238,22 @@ else:
 
         with t4:
             st.subheader("Análisis Mensual")
+            # --- FILTRO COMBINADO MES Y AÑO ---
             ml = ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"]
-            sm = st.selectbox("Mes", ml, index=datetime.now().month-1)
+            c_fil1, c_fil2 = st.columns(2)
+            sm = c_fil1.selectbox("Mes", ml, index=datetime.now().month-1)
+            sa = c_fil2.selectbox("Año", range(2024, 2031), index=datetime.now().year-2024, key="año_mensual")
+            
             if not df_all.empty:
-                df_m = df_all[(df_all['date'].dt.month == ml.index(sm)+1) & (df_all['date'].dt.year == datetime.now().year)]
+                df_m = df_all[(df_all['date'].dt.month == ml.index(sm)+1) & (df_all['date'].dt.year == sa)]
                 im, gm = df_m[df_m['type'] == 'Ingreso']['quantity'].sum(), df_m[df_m['type'] == 'Gasto']['quantity'].sum()
                 balance = im - gm
+                
                 c_i, c_g, c_b = st.columns(3)
                 c_i.metric("Ingresos", f"{im:.2f}€")
                 c_g.metric("Gastos", f"{gm:.2f}€")
                 c_b.metric("Balance", f"{balance:.2f}€", delta=f"{balance:.2f}€", delta_color="normal" if balance >= 0 else "inverse")
+                
                 st.divider()
                 gcm = df_m[df_m['type'] == 'Gasto'].groupby('category_id')['quantity'].sum().reset_index()
                 for _, r in pd.merge(pd.DataFrame(cat_g), gcm, left_on='id', right_on='category_id', how='left').fillna(0).iterrows():
@@ -259,18 +263,24 @@ else:
 
         with t5:
             st.subheader("Análisis Anual")
+            # --- FILTRO POR AÑO ---
+            san = st.selectbox("Seleccionar Año", range(2024, 2031), index=datetime.now().year-2024, key="año_anual")
+            
             if not df_all.empty:
-                df_an = df_all[df_all['date'].dt.year == datetime.now().year]
+                df_an = df_all[df_all['date'].dt.year == san]
                 ia, ga = df_an[df_an['type'] == 'Ingreso']['quantity'].sum(), df_an[df_an['type'] == 'Gasto']['quantity'].sum()
                 ba = ia - ga
+                
                 a_i, a_g, a_b = st.columns(3)
-                a_i.metric("Total Ingresos", f"{ia:.2f}€")
-                a_g.metric("Total Gastos", f"{ga:.2f}€")
-                a_b.metric("Ahorro Acumulado", f"{ba:.2f}€", delta=f"{ba:.2f}€", delta_color="normal" if ba >= 0 else "inverse")
+                a_i.metric(f"Total Ingresos {san}", f"{ia:.2f}€")
+                a_g.metric(f"Total Gastos {san}", f"{ga:.2f}€")
+                a_b.metric(f"Ahorro Acumulado {san}", f"{ba:.2f}€", delta=f"{ba:.2f}€", delta_color="normal" if ba >= 0 else "inverse")
+                
                 dfe = df_an.copy(); dfe['mes_num'] = dfe['date'].dt.month
                 rm = dfe.pivot_table(index='mes_num', columns='type', values='quantity', aggfunc='sum').fillna(0).reindex(range(1,13), fill_value=0)
                 for t in ['Ingreso', 'Gasto']: 
                     if t not in rm.columns: rm[t] = 0
+                
                 fig = go.Figure()
                 fig.add_trace(go.Bar(x=ml, y=rm['Ingreso'], name='Ingreso', marker_color='#00CC96'))
                 fig.add_trace(go.Bar(x=ml, y=rm['Gasto'], name='Gasto', marker_color='#EF553B'))
