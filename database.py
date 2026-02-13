@@ -210,20 +210,24 @@ def save_category(data):
             "name": data['name'],
             "type": data['type'],
             "emoji": data.get('emoji', '📁'),
-            "budget": data.get('budget', 0)
+            "budget": data.get('budget', 0),
+            "budget_type": data.get('budget_type', 'fixed'),
+            "budget_percent": data.get('budget_percent', 0)
         }).execute()
     except Exception as e:
-        st.error(f"Error: {e}")
+        st.error(f"Error guardando categoría: {e}")
 
 def update_category(data):
     try:
         supabase.table('user_categories').update({
             "name": data['name'],
             "emoji": data.get('emoji', '📁'),
-            "budget": data.get('budget', 0)
+            "budget": data.get('budget', 0),
+            "budget_type": data.get('budget_type', 'fixed'),
+            "budget_percent": data.get('budget_percent', 0)
         }).eq('id', data['id']).execute()
     except Exception as e:
-        st.error(f"Error: {e}")
+        st.error(f"Error actualizando categoría: {e}")
 
 def delete_category(cat_id):
     try:
