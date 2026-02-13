@@ -4,14 +4,26 @@ import pandas as pd
 from datetime import datetime
 import time
 
-# Inicializar cliente Supabase
-@st.cache_resource
-def init_connection():
-    url = st.secrets["supabase"]["url"]
-    key = st.secrets["supabase"]["key"]
-    return create_client(url, key)
+# --- MODIFICACIÓN PARA MULTIUSUARIO (SESIONES INDEPENDIENTES) ---
+def get_supabase_client() -> Client:
+    """
+    Crea o recupera el cliente de Supabase específico para la sesión actual.
+    Esto evita colisiones entre diferentes dispositivos/usuarios.
+    """
+    if 'supabase_client' not in st.session_state:
+        url = st.secrets["supabase"]["url"]
+        key = st.secrets["supabase"]["key"]
+        st.session_state.supabase_client = create_client(url, key)
+    return st.session_state.supabase_client
 
-supabase: Client = init_connection()
+# Definimos una propiedad dinámica para que el resto de tus funciones
+# sigan usando la variable 'supabase' sin tener que cambiar todo el código.
+@property
+def supabase():
+    return get_supabase_client()
+
+# Reemplazamos la inicialización estática por la llamada a la función
+supabase = get_supabase_client()
 
 def init_db():
     pass
@@ -19,16 +31,19 @@ def init_db():
 # --- AUTENTICACIÓN Y USUARIO ---
 
 def login_user(email, password):
+    # Aseguramos que usamos el cliente de la sesión actual
+    client = get_supabase_client()
     try:
-        response = supabase.auth.sign_in_with_password({"email": email, "password": password})
+        response = client.auth.sign_in_with_password({"email": email, "password": password})
         return response.user
     except Exception as e:
         print(f"Error login: {e}")
         return None
 
 def register_user(email, password, name, lastname=""):
+    client = get_supabase_client()
     try:
-        auth_response = supabase.auth.sign_up({
+        auth_response = client.auth.sign_up({
             "email": email, 
             "password": password,
             "options": {"data": {"first_name": name}}
@@ -49,7 +64,7 @@ def register_user(email, password, name, lastname=""):
             "base_salary": 0,
             "payments_per_year": 12
         }
-        supabase.table('profiles').insert(profile_data).execute()
+        client.table('profiles').insert(profile_data).execute()
         crear_categorias_default(user_uuid)
         
         return True, "Usuario creado correctamente."
@@ -58,16 +73,18 @@ def register_user(email, password, name, lastname=""):
         return False, str(e)
 
 def recover_password(email):
+    client = get_supabase_client()
     try:
-        supabase.auth.reset_password_email(email)
+        client.auth.reset_password_email(email)
         return True, "Correo de recuperación enviado."
     except Exception as e:
         return False, f"Error: {str(e)}"
 
 def change_password(new_password):
     """Cambia la contraseña del usuario logueado"""
+    client = get_supabase_client()
     try:
-        supabase.auth.update_user({"password": new_password})
+        client.auth.update_user({"password": new_password})
         return True, "Contraseña actualizada."
     except Exception as e:
         return False, str(e)
@@ -75,8 +92,9 @@ def change_password(new_password):
 # --- PERFIL Y AVATAR ---
 
 def get_user_profile(user_uuid):
+    client = get_supabase_client()
     try:
-        res = supabase.table('profiles').select('*').eq('id', user_uuid).execute()
+        res = client.table('profiles').select('*').eq('id', user_uuid).execute()
         if res.data:
             return res.data[0]
         return None
@@ -86,28 +104,22 @@ def get_user_profile(user_uuid):
 
 def upload_avatar(file, user_id):
     """Sube avatar con límite de 5MB y Cache Busting"""
+    client = get_supabase_client()
     try:
-        # 1. VALIDACIÓN DE TAMAÑO (5MB = 5 * 1024 * 1024 bytes)
         MAX_SIZE = 5 * 1024 * 1024
         if file.size > MAX_SIZE:
             st.error("⚠️ La imagen es demasiado grande. Máximo 5MB.")
             return None
 
-        file_ext = file.name.split('.')[-1]
-        # Usamos siempre el mismo nombre de archivo para no llenar el bucket de basura,
-        # pero añadimos un parámetro de versión en la URL luego.
         file_path = f"{user_id}/avatar.png" 
         
-        # Subir archivo (Upsert=True sobrescribe el anterior)
-        supabase.storage.from_("avatars").upload(
+        client.storage.from_("avatars").upload(
             path=file_path,
             file=file.getvalue(),
             file_options={"content-type": file.type, "upsert": "true"}
         )
         
-        # 2. CACHE BUSTING: Añadimos ?v=timestamp para obligar al navegador a recargarla
-        # Supabase devuelve la URL base, nosotros le pegamos el truco.
-        public_url = supabase.storage.from_("avatars").get_public_url(file_path)
+        public_url = client.storage.from_("avatars").get_public_url(file_path)
         timestamp_url = f"{public_url}?v={int(time.time())}"
         
         return timestamp_url
@@ -117,16 +129,14 @@ def upload_avatar(file, user_id):
 
 def upsert_profile(user_data):
     """Actualiza perfil y guarda historial de forma segura"""
+    client = get_supabase_client()
     try:
-        # 1. Actualizar tabla PROFILES (Usamos .get para evitar errores si falta algún dato)
         update_data = {
-            "name": user_data.get('name', ''), # <--- CORREGIDO: .get() evita el crash
+            "name": user_data.get('name', ''), 
             "lastname": user_data.get('lastname', ''),
             "avatar_url": user_data.get('avatar_url', ''),
             "profile_color": user_data.get('profile_color', '#636EFA'),
-            
             "social_active": user_data.get('social_active', False),
-            
             "initial_balance": user_data.get('initial_balance', 0),
             "base_salary": user_data.get('base_salary', 0),
             "other_fixed_income": user_data.get('other_fixed_income', 0),
@@ -135,13 +145,10 @@ def upsert_profile(user_data):
             "updated_at": datetime.now().isoformat()
         }
         
-        # Ejecutamos la actualización
-        supabase.table('profiles').update(update_data).eq('id', user_data['id']).execute()
+        client.table('profiles').update(update_data).eq('id', user_data['id']).execute()
 
-        # 2. GESTIÓN DEL HISTORIAL (Mantenemos tu lógica original)
         today = datetime.now().strftime("%Y-%m-%d")
         
-        # Insertamos el nuevo registro histórico
         history_data = {
             "user_id": user_data['id'],
             "base_salary": user_data.get('base_salary', 0),
@@ -149,7 +156,7 @@ def upsert_profile(user_data):
             "other_income_frequency": user_data.get('other_income_frequency', 1),
             "valid_from": today
         }
-        supabase.table('income_history').insert(history_data).execute()
+        client.table('income_history').insert(history_data).execute()
 
         return True
     except Exception as e:
@@ -157,10 +164,9 @@ def upsert_profile(user_data):
         return False
         
 def get_historical_income(user_id, target_date):
-    """Busca cuánto cobraba el usuario en una fecha específica"""
+    client = get_supabase_client()
     try:
-        # Buscamos el registro más reciente que sea ANTERIOR o IGUAL a la fecha target
-        res = supabase.table('income_history') \
+        res = client.table('income_history') \
             .select('*') \
             .eq('user_id', user_id) \
             .lte('valid_from', target_date) \
@@ -171,14 +177,14 @@ def get_historical_income(user_id, target_date):
         if res.data:
             return res.data[0]
         else:
-            # Si no hay historial antiguo, devolvemos el actual del perfil por defecto
             return get_user_profile(user_id)
     except Exception as e:
         return {'base_salary': 0, 'other_fixed_income': 0}
 
-# --- CATEGORÍAS (Igual que antes) ---
+# --- CATEGORÍAS ---
 
 def crear_categorias_default(user_uuid):
+    client = get_supabase_client()
     default_cats = [
         {'user_id': user_uuid, 'name': 'Nómina', 'type': 'Ingreso', 'emoji': '💰', 'budget': 0},
         {'user_id': user_uuid, 'name': 'Ahorro', 'type': 'Ingreso', 'emoji': '🐷', 'budget': 0},
@@ -190,13 +196,14 @@ def crear_categorias_default(user_uuid):
         {'user_id': user_uuid, 'name': 'Salud', 'type': 'Gasto', 'emoji': '💊', 'budget': 50}
     ]
     try:
-        supabase.table('user_categories').insert(default_cats).execute()
+        client.table('user_categories').insert(default_cats).execute()
     except Exception as e:
         print(f"Error default cats: {e}")
 
 def get_categories(user_uuid):
+    client = get_supabase_client()
     try:
-        res = supabase.table('user_categories').select('*').eq('user_id', user_uuid).execute()
+        res = client.table('user_categories').select('*').eq('user_id', user_uuid).execute()
         cats = res.data
         if not cats:
             crear_categorias_default(user_uuid)
@@ -206,8 +213,9 @@ def get_categories(user_uuid):
         return []
 
 def save_category(data):
+    client = get_supabase_client()
     try:
-        supabase.table('user_categories').insert({
+        client.table('user_categories').insert({
             "user_id": data['user_id'],
             "name": data['name'],
             "type": data['type'],
@@ -220,8 +228,9 @@ def save_category(data):
         st.error(f"Error guardando categoría: {e}")
 
 def update_category(cat_id, data):
+    client = get_supabase_client()
     try:
-        supabase.table('user_categories').update({
+        client.table('user_categories').update({
             "name": data['name'],
             "emoji": data.get('emoji', '📁'),
             "budget": data.get('budget', 0),
@@ -232,16 +241,18 @@ def update_category(cat_id, data):
         st.error(f"Error actualizando categoría: {e}")
 
 def delete_category(cat_id):
+    client = get_supabase_client()
     try:
-        supabase.table('user_categories').delete().eq('id', cat_id).execute()
+        client.table('user_categories').delete().eq('id', cat_id).execute()
     except Exception as e:
         st.error(f"Error: {e}")
 
-# --- MOVIMIENTOS (Igual que antes) ---
+# --- MOVIMIENTOS ---
 
 def save_input(data):
+    client = get_supabase_client()
     try:
-        supabase.table('user_imputs').insert({
+        client.table('user_imputs').insert({
             "user_id": data['user_id'],
             "quantity": data['quantity'],
             "type": data['type'],
@@ -254,8 +265,9 @@ def save_input(data):
         st.error(f"Error input: {e}")
 
 def update_input(data):
+    client = get_supabase_client()
     try:
-        supabase.table('user_imputs').update({
+        client.table('user_imputs').update({
             "quantity": data['quantity'],
             "type": data['type'],
             "category_id": data['category_id'],
@@ -266,14 +278,16 @@ def update_input(data):
         st.error(f"Error update input: {e}")
 
 def delete_input(mov_id):
+    client = get_supabase_client()
     try:
-        supabase.table('user_imputs').delete().eq('id', mov_id).execute()
+        client.table('user_imputs').delete().eq('id', mov_id).execute()
     except Exception as e:
         st.error(f"Error delete input: {e}")
 
 def get_transactions(user_uuid):
+    client = get_supabase_client()
     try:
-        response = supabase.table('user_imputs') \
+        response = client.table('user_imputs') \
             .select('*, user_categories(name, emoji, budget)') \
             .eq('user_id', user_uuid) \
             .execute()
@@ -300,25 +314,21 @@ def get_transactions(user_uuid):
         return pd.DataFrame()
 
 def recalculate_category_budgets(user_id, new_total_income):
-    """Recalcula el presupuesto en € de las categorías basadas en %"""
+    client = get_supabase_client()
     try:
-        # 1. Buscamos solo las categorías configuradas como 'percentage'
-        response = supabase.table('user_categories').select('*').eq('user_id', user_id).eq('budget_type', 'percentage').execute()
+        response = client.table('user_categories').select('*').eq('user_id', user_id).eq('budget_type', 'percentage').execute()
         cats = response.data
 
         count = 0
-        if cats: # Aseguramos que hay categorías
+        if cats:
             for cat in cats:
                 percent = float(cat.get('budget_percent', 0) or 0)
                 if percent > 0:
-                    # 2. Calculamos los nuevos euros
                     new_euro_budget = (new_total_income * percent) / 100
-                    
-                    # 3. Actualizamos la categoría
-                    supabase.table('user_categories').update({"budget": new_euro_budget}).eq('id', cat['id']).execute()
+                    client.table('user_categories').update({"budget": new_euro_budget}).eq('id', cat['id']).execute()
                     count += 1
         
-        return count # <--- ¡IMPORTANTE! Tiene que devolver el número
+        return count
     except Exception as e:
         print(f"Error recalculando presupuestos: {e}") 
-        return 0 # <--- ¡IMPORTANTE! Si falla, devuelve 0, no None
+        return 0
