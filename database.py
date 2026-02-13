@@ -26,7 +26,16 @@ def login_user(email, password):
     except Exception as e:
         print(f"Error login: {e}")
         return None
-
+        
+def recover_password(email):
+    """Envía un correo para restablecer la contraseña"""
+    try:
+        # Esto envía el email usando la plantilla que acabas de configurar
+        supabase.auth.reset_password_email(email)
+        return True, "Correo de recuperación enviado. Revisa tu bandeja de entrada (y spam)."
+    except Exception as e:
+        return False, f"Error: {str(e)}"
+        
 def register_user(email, password, name, lastname=""):
     """Registra usuario en Auth y crea su perfil público y categorías"""
     try:
