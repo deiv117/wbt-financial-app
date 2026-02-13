@@ -217,7 +217,7 @@ def save_category(data):
     except Exception as e:
         st.error(f"Error guardando categoría: {e}")
 
-def update_category(data):
+def update_category(cat_id, data):
     try:
         supabase.table('user_categories').update({
             "name": data['name'],
@@ -225,7 +225,7 @@ def update_category(data):
             "budget": data.get('budget', 0),
             "budget_type": data.get('budget_type', 'fixed'),
             "budget_percent": data.get('budget_percent', 0)
-        }).eq('id', data['id']).execute()
+        }).eq('id', cat_id).execute()
     except Exception as e:
         st.error(f"Error actualizando categoría: {e}")
 
