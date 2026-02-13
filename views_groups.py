@@ -31,27 +31,73 @@ def confirmar_borrar_grupo(group_id):
         if st.button("Cancelar", use_container_width=True):
             st.rerun()
 
-def render_groups(user_id):
+def render_groups(user_id, user_email):
     render_header("people", "Grupos Compartidos")
-    st.caption("Gestiona gastos compartidos con amigos, pareja o compañeros de piso.")
+    
+    # Sistema de pestañas para Invitaciones y Mis Grupos
+    tab_mis_grupos, tab_invitaciones = st.tabs(["📂 Mis Grupos", "✉️ Invitaciones"])
 
-    # --- 1. CREAR NUEVO GRUPO ---
-    with st.expander("➕ Crear Nuevo Grupo", expanded=False):
-        with st.form("new_group_form", clear_on_submit=True):
-            g_name = st.text_input("Nombre del grupo (ej: Viaje a Roma 🍕, Piso Compartido)")
-            
-            if st.form_submit_button("Crear Grupo", type="primary"):
-                if not g_name.strip():
-                    st.error("El nombre del grupo no puede estar vacío.")
-                else:
-                    ok, msg = create_group(g_name, user_id)
-                    if ok:
-                        st.success(f"¡Grupo '{g_name}' creado con éxito!")
-                        st.rerun()
-                    else:
-                        st.error(msg)
+    with tab_mis_grupos:
+        # --- CREAR GRUPO ---
+        with st.expander("➕ Crear Nuevo Grupo"):
+            with st.form("new_group_v2"):
+                col1, col2 = st.columns([3, 1])
+                g_name = col1.text_input("Nombre del grupo")
+                g_emoji = col2.text_input("Emoji", value="👥")
+                g_color = st.color_picker("Color de identificación", value="#636EFA")
+                
+                if st.form_submit_button("Crear Grupo", use_container_width=True):
+                    ok, msg = create_group(g_name, g_emoji, g_color, user_id)
+                    if ok: st.rerun()
+                    else: st.error(msg)
 
-    st.divider()
+        # --- LISTADO DE GRUPOS ---
+        my_groups = get_user_groups(user_id) # Esta función debe traer ahora emoji y color
+        if not my_groups:
+            st.info("No tienes grupos.")
+        else:
+            for g in my_groups:
+                # Usamos el color del grupo para el borde o un pequeño indicador
+                with st.container(border=True):
+                    c1, c2, c3 = st.columns([0.5, 3, 2])
+                    c1.markdown(f"### {g.get('emoji', '👥')}")
+                    c2.markdown(f"**{g['name']}**")
+                    
+                    with c3:
+                        # Botón para invitar (solo si eres admin, por ejemplo)
+                        if st.button("Invitar 👤", key=f"inv_{g['id']}"):
+                            invitar_usuario_dialog(g['id'], g['name'])
+                        
+                        if st.button("Abrir ➡️", key=f"open_{g['id']}", type="primary"):
+                            st.session_state.current_group_id = g['id']
+                            st.toast(f"Entrando en {g['name']}")
+
+    with tab_invitaciones:
+        invites = get_my_invitations(user_email)
+        if not invites:
+            st.write("No tienes invitaciones pendientes.")
+        for inv in invites:
+            with st.container(border=True):
+                st.write(f"Has sido invitado al grupo: **{inv['groups']['emoji']} {inv['groups']['name']}**")
+                ca, cr = st.columns(2)
+                if ca.button("Aceptar ✅", key=f"acc_{inv['id']}"):
+                    respond_invitation(inv['id'], inv['group_id'], user_id, True)
+                    st.rerun()
+                if cr.button("Rechazar ❌", key=f"rej_{inv['id']}"):
+                    respond_invitation(inv['id'], inv['group_id'], user_id, False)
+                    st.rerun()
+
+@st.dialog("Invitar Usuario")
+def invitar_usuario_dialog(group_id, group_name):
+    st.write(f"Enviar invitación para **{group_name}**")
+    email_to_invite = st.text_input("Email del amigo")
+    if st.button("Enviar Invitación"):
+        ok, msg = send_invitation(group_id, email_to_invite)
+        if ok: 
+            st.success("¡Invitación enviada!")
+            time.sleep(1)
+            st.rerun()
+        else: st.error(msg)
 
     # --- 2. MIS GRUPOS (TARJETAS) ---
     render_subheader("collection", "Mis Grupos")
