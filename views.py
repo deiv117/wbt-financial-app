@@ -14,59 +14,67 @@ from database import (save_input, delete_input, get_categories, delete_category,
 from components import editar_movimiento_dialog, editar_categoria_dialog, crear_categoria_dialog
 
 # --- ESTILOS CSS GLOBALES Y LIBRERÍA DE ICONOS ---
-# Importamos la librería de iconos de Bootstrap para usarlos en los Títulos
 BOOTSTRAP_ICONS_LINK = '<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.5/font/bootstrap-icons.css">'
 
-# CSS Personalizado para Botones y Títulos
 CUSTOM_CSS = """
 <style>
-/* 1. IMPORTAR FUENTE DE ICONOS (Solo funciona si se inyecta en el markdown) */
+/* 1. IMPORTAR FUENTE DE ICONOS */
 @import url("https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.5/font/bootstrap-icons.css");
 
-/* 2. ESTILO DE TÍTULOS (Para que los iconos se alineen bien con el texto) */
+/* 2. ESTILO DE TÍTULOS (Alineación icono-texto) */
 h1 .bi {
-    vertical-align: -5px; /* Ajuste fino para alinear icono y texto */
+    vertical-align: -4px;
     margin-right: 10px;
-    color: #636EFA; /* Color del icono alineado con el tema */
+    color: #636EFA;
 }
 
-/* 3. BOTONES DE ACCIÓN (Editar/Borrar) - Estilo "Icon Button" */
+/* 3. BOTONES DE ACCIÓN (ICONOS MATERIAL) */
+/* Estilo base para todos los botones de acción */
 div[data-testid="stButton"] button {
-    border-radius: 8px; /* Bordes redondeados suaves */
-    font-weight: bold;
-}
-
-/* Botón EDITAR (Amarillo) */
-div[data-testid="stButton"] button:has(div p:contains('✏️')) {
-    background-color: rgba(255, 193, 7, 0.1);
-    border: 1px solid #FFC107;
-    color: #FFC107;
+    border-radius: 8px;
     transition: all 0.2s ease-in-out;
 }
-div[data-testid="stButton"] button:has(div p:contains('✏️')):hover {
-    background-color: #FFC107;
-    color: #000;
-    transform: scale(1.02); /* Pequeño efecto zoom */
+
+/* --- BOTÓN EDITAR (Amarillo) --- */
+/* Detectamos el icono "edit" de Material Symbols dentro del botón */
+div[data-testid="stButton"] button:has(span.material-symbols-rounded:contains("edit")) {
+    background-color: rgba(255, 193, 7, 0.1) !important;
+    border: 1px solid #FFC107 !important;
+    color: #FFC107 !important;
+}
+div[data-testid="stButton"] button:has(span.material-symbols-rounded:contains("edit")):hover {
+    background-color: #FFC107 !important;
+    color: #000 !important;
+    transform: scale(1.05);
+    border-color: #FFC107 !important;
+}
+/* Aseguramos que el icono interno herede el color */
+div[data-testid="stButton"] button:has(span.material-symbols-rounded:contains("edit")) span {
+    color: inherit !important;
 }
 
-/* Botón BORRAR (Rojo) */
-div[data-testid="stButton"] button:has(div p:contains('🗑️')) {
-    background-color: rgba(255, 75, 75, 0.1);
-    border: 1px solid #FF4B4B;
-    color: #FF4B4B;
-    transition: all 0.2s ease-in-out;
+/* --- BOTÓN BORRAR (Rojo) --- */
+/* Detectamos el icono "delete" de Material Symbols */
+div[data-testid="stButton"] button:has(span.material-symbols-rounded:contains("delete")) {
+    background-color: rgba(255, 75, 75, 0.1) !important;
+    border: 1px solid #FF4B4B !important;
+    color: #FF4B4B !important;
 }
-div[data-testid="stButton"] button:has(div p:contains('🗑️')):hover {
-    background-color: #FF4B4B;
-    color: #FFF;
-    transform: scale(1.02);
+div[data-testid="stButton"] button:has(span.material-symbols-rounded:contains("delete")):hover {
+    background-color: #FF4B4B !important;
+    color: #FFF !important;
+    transform: scale(1.05);
+    border-color: #FF4B4B !important;
+}
+div[data-testid="stButton"] button:has(span.material-symbols-rounded:contains("delete")) span {
+    color: inherit !important;
 }
 
-/* 4. MODO OSCURO (Ajustes de contraste para el amarillo) */
+/* 4. MODO OSCURO (Ajuste amarillo) */
 @media (prefers-color-scheme: dark) {
-    div[data-testid="stButton"] button:has(div p:contains('✏️')) {
-        color: #FFD54F;
-        border-color: #FFD54F;
+    div[data-testid="stButton"] button:has(span.material-symbols-rounded:contains("edit")) {
+        color: #FFD54F !important;
+        border-color: #FFD54F !important;
     }
 }
 
@@ -80,32 +88,26 @@ div[data-testid="stVerticalBlockBorderWrapper"]:has(div[data-testid="stMetric"])
 </style>
 """
 
-# Función auxiliar para pintar títulos con iconos Bootstrap
 def render_header(icon_name, text):
-    # Inyectamos el CSS de los iconos + el HTML del título
+    """Renderiza un título h1 con un icono de Bootstrap alineado"""
     st.markdown(f'{BOOTSTRAP_ICONS_LINK}<h1><i class="bi bi-{icon_name}"></i> {text}</h1>', unsafe_allow_html=True)
 
 
 # --- 1. RESUMEN GLOBAL (Landing Page) ---
 def render_main_dashboard(df_all, user_profile):
-    # Inyectamos estilos
     st.markdown(CUSTOM_CSS, unsafe_allow_html=True)
 
-    # TITULO: Usamos 'house' igual que en el sidebar
     render_header("house", "Resumen Global")
-    
     st.caption(f"Hola de nuevo, {user_profile.get('name', 'Usuario')}. Aquí tienes el pulso de tu economía.")
 
     # --- CÁLCULO DE KPIs ---
     saldo_inicial = user_profile.get('initial_balance', 0) or 0
     
     if not df_all.empty:
-        # A. Saldo Total Histórico
         total_ingresos = df_all[df_all['type'] == 'Ingreso']['quantity'].sum()
         total_gastos = df_all[df_all['type'] == 'Gasto']['quantity'].sum()
         saldo_total = saldo_inicial + total_ingresos - total_gastos
 
-        # B. Ahorro Este Mes
         hoy = datetime.now()
         df_mes = df_all[(df_all['date'].dt.month == hoy.month) & (df_all['date'].dt.year == hoy.year)]
         ingresos_mes = df_mes[df_mes['type'] == 'Ingreso']['quantity'].sum()
@@ -164,7 +166,7 @@ def render_main_dashboard(df_all, user_profile):
 def render_dashboard(df_all, current_cats, user_id):
     st.markdown(CUSTOM_CSS, unsafe_allow_html=True)
     
-    # CSS Responsive para móviles
+    # CSS Responsive
     st.markdown("""
         <style>
         [data-testid="column"] { flex: 1 1 auto !important; }
@@ -179,10 +181,8 @@ def render_dashboard(df_all, current_cats, user_id):
         </style>
     """, unsafe_allow_html=True)
 
-    # TITULO: Usamos 'wallet2' igual que en el sidebar
     render_header("wallet2", "Movimientos")
 
-    # Menú de navegación interno
     selected = option_menu(
         menu_title=None,
         options=["Nueva", "Historial", "Previsión", "Mensual", "Anual"],
@@ -238,12 +238,11 @@ def render_dashboard(df_all, current_cats, user_id):
                 with col_btn:
                     cb_e, cb_d = st.columns(2)
                     with cb_e:
-                        # NOTA: Usamos Emojis porque Streamlit buttons no soportan iconos HTML dentro
-                        # Pero el CSS se encarga de darles el estilo cuadrado y color
-                        if st.button("✏️", key=f"e_dash_{i['id']}", use_container_width=True): 
+                        # USAMOS SHORTCODES :material/...: PARA ICONOS LIMPIOS
+                        if st.button(":material/edit:", key=f"e_dash_{i['id']}", use_container_width=True): 
                             editar_movimiento_dialog(i, current_cats)
                     with cb_d:
-                        if st.button("🗑️", key=f"d_dash_{i['id']}", use_container_width=True): 
+                        if st.button(":material/delete:", key=f"d_dash_{i['id']}", use_container_width=True): 
                             delete_input(i['id'])
                             st.rerun()
 
@@ -285,10 +284,10 @@ def render_dashboard(df_all, current_cats, user_id):
                         with col_btn:
                             cb1, cb2 = st.columns(2)
                             with cb1:
-                                if st.button("✏️", key=f"e_hist_{i['id']}", use_container_width=True): 
+                                if st.button(":material/edit:", key=f"e_hist_{i['id']}", use_container_width=True): 
                                     editar_movimiento_dialog(i, current_cats)
                             with cb2:
-                                if st.button("🗑️", key=f"d_hist_{i['id']}", use_container_width=True): 
+                                if st.button(":material/delete:", key=f"d_hist_{i['id']}", use_container_width=True): 
                                     delete_input(i['id'])
                                     st.rerun()
 
@@ -296,7 +295,6 @@ def render_dashboard(df_all, current_cats, user_id):
     elif selected == "Previsión":
         st.subheader("🔮 Previsión y Comparativa")
         tp = sum(c['budget'] for c in cat_g)
-        # Media de ingresos simple
         mi = df_all[df_all['type']=='Ingreso']['quantity'].sum() / len(df_all['date'].dt.to_period('M').unique()) if not df_all.empty else 0
         ahorro_potencial = mi - tp
 
@@ -326,14 +324,13 @@ def render_dashboard(df_all, current_cats, user_id):
                 ), use_container_width=True, hide_index=True)
         else: st.info("Añade movimientos para ver la comparativa.")
 
-    # --- D. MENSUAL (CON MÁQUINA DEL TIEMPO) ---
+    # --- D. MENSUAL ---
     elif selected == "Mensual":
         st.subheader("📊 Análisis Mensual")
         c_fil1, c_fil2 = st.columns(2)
         sm = c_fil1.selectbox("Mes", ml, index=datetime.now().month-1)
         sa = c_fil2.selectbox("Año", range(2024, 2031), index=datetime.now().year-2024, key="año_mensual")
         
-        # Lógica de historial (Máquina del Tiempo)
         month_idx = ml.index(sm) + 1
         _, last_day = calendar.monthrange(sa, month_idx)
         fecha_analisis = f"{sa}-{month_idx:02d}-{last_day}"
@@ -445,7 +442,6 @@ def render_dashboard(df_all, current_cats, user_id):
 def render_categories(current_cats):
     st.markdown(CUSTOM_CSS, unsafe_allow_html=True)
 
-    # TITULO: Usamos 'list-task' igual que en el sidebar
     render_header("list-task", "Gestión de Categorías")
     
     if st.button("➕ Nueva Categoría"): 
@@ -458,6 +454,7 @@ def render_categories(current_cats):
             for c in [cat for cat in current_cats if cat.get('type') == t]:
                 with st.container(border=True):
                     k1, k2 = st.columns([4, 1])
+                    # Aquí mantenemos los Emojis de las categorías como pediste
                     k1.write(f"**{c.get('emoji', '📁')} {c['name']}**")
                     if t == "Gasto": 
                         if c.get('budget_type') == 'percentage':
@@ -467,10 +464,10 @@ def render_categories(current_cats):
                     with k2:
                         kb1, kb2 = st.columns(2)
                         with kb1:
-                            if st.button("✏️", key=f"cat_e_{c['id']}", use_container_width=True): 
+                            if st.button(":material/edit:", key=f"cat_e_{c['id']}", use_container_width=True): 
                                 editar_categoria_dialog(c)
                         with kb2:
-                            if st.button("🗑️", key=f"cat_d_{c['id']}", use_container_width=True): 
+                            if st.button(":material/delete:", key=f"cat_d_{c['id']}", use_container_width=True): 
                                 delete_category(c['id'])
                                 st.rerun()
 
@@ -479,7 +476,6 @@ def render_categories(current_cats):
 def render_profile(user_id, p_data):
     st.markdown(CUSTOM_CSS, unsafe_allow_html=True)
 
-    # TITULO: Usamos 'person-gear' igual que en el sidebar
     render_header("person-gear", "Mi Perfil")
     
     # A. Datos Personales
@@ -520,16 +516,15 @@ def render_profile(user_id, p_data):
                         new_url = upload_avatar(uploaded_file, user_id)
                         if new_url: final_avatar = new_url
                     
-                    # Guardado parcial solo de datos personales
                     new_data = {**p_data, "name": n_name, "lastname": n_last, "profile_color": n_color, "social_active": n_social, "avatar_url": final_avatar}
                     if upsert_profile(new_data):
                         st.session_state.user.update(new_data)
                         st.rerun()
 
-    # B. Datos Financieros (Máquina del Tiempo)
+    # B. Datos Financieros
     with st.container(border=True):
         st.subheader("💰 Configuración Financiera")
-        st.info("ℹ️ Cualquier cambio en tu sueldo o ingresos fijos se guardará en tu historial. Esto permitirá que los análisis de meses anteriores sigan siendo precisos con lo que cobrabas entonces.")
+        st.info("ℹ️ Cualquier cambio en tu sueldo o ingresos fijos se guardará en tu historial.")
         
         with st.form("finance_form"):
             st.markdown("##### 🏦 Patrimonio Base")
@@ -563,11 +558,9 @@ def render_profile(user_id, p_data):
                     "id": user_id, "initial_balance": n_balance, "base_salary": n_salary,
                     "other_fixed_income": n_other, "other_income_frequency": n_freq, "payments_per_year": n_pagas
                 }
-                # Recuperamos los datos personales actuales para no sobreescribirlos con vacíos
                 full_update = {**p_data, **new_data}
                 
                 if upsert_profile(full_update):
-                    # Recálculo mágico
                     from database import recalculate_category_budgets
                     n_updated = recalculate_category_budgets(user_id, total_est) or 0
                     
@@ -595,7 +588,6 @@ def render_profile(user_id, p_data):
 def render_import(current_cats, user_id):
     st.markdown(CUSTOM_CSS, unsafe_allow_html=True)
 
-    # TITULO: Usamos 'cloud-upload' igual que en el sidebar
     render_header("cloud-upload", "Importar Movimientos")
     
     with st.expander("📖 Guía de Columnas Sugeridas", expanded=True):
