@@ -2,6 +2,8 @@ import streamlit as st
 import pandas as pd
 import math
 import plotly.graph_objects as go
+import calendar
+from database import get_historical_income
 from datetime import datetime, timedelta
 # Importamos las nuevas funciones necesarias (upload_avatar, change_password)
 from database import save_input, delete_input, get_categories, delete_category, upsert_profile, save_category, update_input, upload_avatar, change_password
@@ -254,19 +256,60 @@ def render_dashboard(df_all, current_cats, user_id):
     with t4:
         st.subheader("Análisis Mensual")
         c_fil1, c_fil2 = st.columns(2)
+        
+        # Selectores de fecha
         sm = c_fil1.selectbox("Mes", ml, index=datetime.now().month-1)
         sa = c_fil2.selectbox("Año", range(2024, 2031), index=datetime.now().year-2024, key="año_mensual")
         
+        # --- LÓGICA DE HISTORIAL (NOVEDAD) ---
+        # 1. Calculamos el último día del mes seleccionado para buscar la configuración vigente entonces
+        import calendar
+        from database import get_historical_income # Asegúrate de tener esto importado arriba
+        
+        month_idx = ml.index(sm) + 1
+        # Obtiene el último día del mes (ej: 28, 30 o 31)
+        _, last_day = calendar.monthrange(sa, month_idx)
+        fecha_analisis = f"{sa}-{month_idx:02d}-{last_day}"
+        
+        # 2. Recuperamos el sueldo que tenías EN ESA FECHA
+        h_data = get_historical_income(user_id, fecha_analisis)
+        h_sueldo = float(h_data.get('base_salary', 0) or 0)
+        h_extras = float(h_data.get('other_fixed_income', 0) or 0)
+        h_total_fijo = h_sueldo + h_extras
+
+        # 3. Mostramos el contexto histórico
+        with st.expander(f"ℹ️ Contexto financiero en {sm} {sa}", expanded=False):
+            st.write(f"En esa fecha, tu configuración era:")
+            st.markdown(f"- Nómina Base: **{h_sueldo:,.2f}€**")
+            st.markdown(f"- Otros Ingresos Fijos: **{h_extras:,.2f}€**")
+            st.markdown(f"- **Total Fijo: {h_total_fijo:,.2f}€**")
+
         if not df_all.empty:
-            df_m = df_all[(df_all['date'].dt.month == ml.index(sm)+1) & (df_all['date'].dt.year == sa)]
-            im = df_m[df_m['type'] == 'Ingreso']['quantity'].sum()
-            gm = df_m[df_m['type'] == 'Gasto']['quantity'].sum()
-            balance = im - gm
+            # Filtramos movimientos del mes seleccionado
+            df_m = df_all[(df_all['date'].dt.month == month_idx) & (df_all['date'].dt.year == sa)]
             
+            # Cálculo de movimientos reales (Manuales)
+            im_variable = df_m[df_m['type'] == 'Ingreso']['quantity'].sum()
+            gm = df_m[df_m['type'] == 'Gasto']['quantity'].sum()
+            
+            # El balance real es: Lo que ingresaste fijo (teórico) + variable (manual) - gastos
+            # NOTA: Si tú ya metes la nómina como un movimiento manual cada mes, 
+            # no sumes 'h_total_fijo' aquí para no duplicar. 
+            # Aquí asumo que quieres ver el balance de flujos registrados:
+            balance = im_variable - gm
+            
+            # Métricas
             c_i, c_g, c_b = st.columns(3)
-            c_i.metric("Ingresos", f"{im:.2f}€")
-            c_g.metric("Gastos", f"{gm:.2f}€")
-            c_b.metric("Balance", f"{balance:.2f}€", delta=f"{balance:.2f}€", delta_color="normal" if balance >= 0 else "inverse")
+            c_i.metric("Entradas Registradas", f"{im_variable:.2f}€", help="Ingresos añadidos manualmente")
+            c_g.metric("Gastos Totales", f"{gm:.2f}€")
+            c_b.metric("Balance (Flujo)", f"{balance:.2f}€", delta=f"{balance:.2f}€", delta_color="normal" if balance >= 0 else "inverse")
+            
+            # Métrica adicional de Ahorro Teórico (Considerando el sueldo fijo histórico)
+            ahorro_teorico = (h_total_fijo + im_variable) - gm
+            # Solo mostramos esto si el usuario no mete la nómina a mano (para evitar confusión)
+            # O lo mostramos como "Capacidad de Ahorro"
+            if h_total_fijo > 0:
+                st.caption(f"💰 Si sumamos tus ingresos fijos de entonces ({h_total_fijo:,.2f}€), tu capacidad de ahorro real fue de **{ahorro_teorico:,.2f}€**")
             
             st.divider()
             st.subheader("Progreso por Categoría (Semáforo)")
@@ -292,7 +335,7 @@ def render_dashboard(df_all, current_cats, user_id):
                     else:
                         txt_restante = f"<span style='color: #EF553B; font-weight: bold; font-size: 0.9em;'>Exceso de {abs(restante):.2f}€</span>"
                     
-                    # HTML de la barra de progreso (Fondo transparente para que se adapte al dark mode)
+                    # HTML de la barra de progreso
                     html_bar = f"""
                     <div style="margin-bottom: 15px;">
                         <div style="display: flex; justify-content: space-between; margin-bottom: 5px; font-family: sans-serif;">
@@ -416,12 +459,11 @@ def render_profile(user_id, p_data):
         c_ava, c_form = st.columns([1, 2])
         
         with c_ava:
-            # Mostrar Avatar Actual
-            avatar = p_data.get('avatar_url')
-            if avatar:
-                st.image(avatar, width=150)
+            # Mostrar Avatar (Usamos st.session_state para forzar refresco inmediato)
+            current_avatar = st.session_state.user.get('avatar_url')
+            if current_avatar:
+                st.image(current_avatar, width=150)
             else:
-                # Placeholder con inicial
                 st.markdown(f"""
                     <div style="width:150px;height:150px;background-color:{p_data.get('profile_color','#636EFA')};
                     border-radius:50%;display:flex;align-items:center;justify-content:center;color:white;font-size:50px;font-weight:bold;">
@@ -429,8 +471,7 @@ def render_profile(user_id, p_data):
                     </div>
                 """, unsafe_allow_html=True)
             
-            # Subir nueva foto
-            uploaded_file = st.file_uploader("Cambiar foto", type=['png', 'jpg', 'jpeg'])
+            uploaded_file = st.file_uploader("Cambiar foto (Máx 5MB)", type=['png', 'jpg', 'jpeg'])
         
         with c_form:
             with st.form("perfil_form"):
@@ -441,63 +482,79 @@ def render_profile(user_id, p_data):
                 submitted_perfil = st.form_submit_button("Guardar Datos Personales")
                 
                 if submitted_perfil:
-                    # Si ha subido foto, la procesamos primero
+                    # 1. Subida de Imagen
                     final_avatar_url = p_data.get('avatar_url', '')
                     if uploaded_file:
                         url_nueva = upload_avatar(uploaded_file, user_id)
                         if url_nueva:
                             final_avatar_url = url_nueva
                     
-                    # Guardamos todo
-                    success = upsert_profile({
+                    # 2. Guardar en BD
+                    new_data = {
                         "id": user_id, 
                         "name": n_name, 
                         "lastname": n_last, 
                         "avatar_url": final_avatar_url, 
                         "profile_color": n_color,
-                        # Mantenemos los datos económicos antiguos para no borrarlos aquí
+                        # Mantener datos financieros
                         "initial_balance": p_data.get('initial_balance', 0),
                         "base_salary": p_data.get('base_salary', 0),
+                        "other_fixed_income": p_data.get('other_fixed_income', 0),
                         "payments_per_year": p_data.get('payments_per_year', 12)
-                    })
+                    }
+                    
+                    success = upsert_profile(new_data)
+                    
                     if success:
-                        st.success("✅ Perfil actualizado")
+                        # 3. ACTUALIZACIÓN INMEDIATA DEL ESTADO (TRUCO CLAVE)
+                        # Actualizamos la sesión de Streamlit manualmente YA,
+                        # así el Sidebar y la foto se ven bien antes de recargar.
+                        st.session_state.user.update(new_data)
+                        st.toast("✅ Perfil actualizado correctamente")
+                        time.sleep(1) # Pequeña pausa para ver el mensaje
                         st.rerun()
 
-    # --- B. DATOS ECONÓMICOS ---
+    # --- B. DATOS ECONÓMICOS (VERSIONADA) ---
     with st.container(border=True):
         st.subheader("💰 Configuración Financiera")
-        st.info("Estos datos son clave para calcular tu patrimonio y previsiones.")
+        st.info("Cualquier cambio aquí se guardará en tu historial. Si ves datos antiguos en gráficas pasadas, es porque usamos el sueldo que tenías entonces.")
         
         with st.form("finance_form"):
             c1, c2 = st.columns(2)
-            # Saldo Inicial
-            n_balance = c1.number_input("Saldo Inicial en cuenta (€)", 
+            n_balance = c1.number_input("Saldo Inicial (€)", 
                                         value=float(p_data.get('initial_balance', 0.0) or 0.0), 
-                                        help="El dinero que tienes hoy antes de añadir gastos en la app.")
+                                        help="Patrimonio antes de usar la app.")
             
-            # Nómina
-            n_salary = c2.number_input("Ingresos Fijos Mensuales (Nómina)", 
-                                       value=float(p_data.get('base_salary', 0.0) or 0.0),
-                                       help="Lo que te llega limpio al banco cada mes.")
+            n_pagas = c2.slider("Número de pagas", 12, 16, int(p_data.get('payments_per_year', 12) or 12))
+
+            st.divider()
+            st.markdown("##### 📥 Ingresos Fijos Mensuales")
             
-            # Número de Pagas
-            val_pagas = int(p_data.get('payments_per_year', 12) or 12)
-            n_pagas = st.slider("Número de pagas al año", 
-                                min_value=12, max_value=16, 
-                                value=val_pagas,
-                                help="12 (Prorrateada), 14 (Verano/Navidad), etc.")
+            ci1, ci2 = st.columns(2)
+            n_salary = ci1.number_input("Nómina Base (€)", 
+                                       value=float(p_data.get('base_salary', 0.0) or 0.0))
             
-            if st.form_submit_button("💾 Actualizar Datos Financieros"):
-                success = upsert_profile({
+            n_other = ci2.number_input("Otros Ingresos Fijos (€)", 
+                                       value=float(p_data.get('other_fixed_income', 0.0) or 0.0),
+                                       help="Alquileres, donaciones recurrentes, side-hustles...")
+            
+            total_fijo = n_salary + n_other
+            st.caption(f"Total Ingresos Fijos: **{total_fijo:,.2f}€ / mes**")
+            
+            if st.form_submit_button("💾 Guardar Nueva Configuración Financiera"):
+                new_finance = {
                     "id": user_id,
-                    "name": p_data.get('name'), # Mantenemos nombre
+                    "name": p_data.get('name'),
                     "initial_balance": n_balance,
                     "base_salary": n_salary,
+                    "other_fixed_income": n_other, # Guardamos el extra
                     "payments_per_year": n_pagas
-                })
+                }
+                success = upsert_profile(new_finance)
                 if success:
-                    st.success("✅ Datos financieros guardados")
+                    st.session_state.user.update(new_finance) # Actualizar sesión
+                    st.success("✅ Datos financieros e histórico actualizados")
+                    time.sleep(1)
                     st.rerun()
 
     # --- C. SEGURIDAD (CAMBIO DE CONTRASEÑA) ---
