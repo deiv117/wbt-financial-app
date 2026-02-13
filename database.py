@@ -58,12 +58,10 @@ def create_user(username, password, email):
     conn = sqlite3.connect(DB_NAME)
     c = conn.cursor()
     try:
-        # Verificar email
         c.execute('SELECT id FROM users WHERE email = ?', (email,))
         if c.fetchone():
             return False 
 
-        # Insertar usuario
         c.execute('''
             INSERT INTO users (name, email, password, profile_color) 
             VALUES (?, ?, ?, ?)
@@ -71,7 +69,6 @@ def create_user(username, password, email):
         
         user_id = c.lastrowid
         
-        # Insertar categorías por defecto
         default_cats = [
             ('Nómina', 'Ingreso', '💰', 0),
             ('Ahorro', 'Ingreso', '🐷', 0),
@@ -162,7 +159,7 @@ def get_transactions(user_id):
         df = pd.read_sql_query(query, conn, params=(user_id,))
         if not df.empty:
             df['date'] = pd.to_datetime(df['date'])
-            # Simplificación de la columna visual para evitar errores de sintaxis
+            # Simplificación para evitar errores
             def format_cat(row):
                 emoji = row['cat_emoji'] if row['cat_emoji'] else '📁'
                 name = row['cat_name'] if row['cat_name'] else 'General'
@@ -187,6 +184,18 @@ def save_category(data):
     conn.commit()
     conn.close()
 
+# ESTA ES LA FUNCIÓN QUE FALTABA
+def update_category(data):
+    conn = sqlite3.connect(DB_NAME)
+    c = conn.cursor()
+    c.execute('''
+        UPDATE categories 
+        SET name=?, emoji=?, budget=?
+        WHERE id=?
+    ''', (data['name'], data.get('emoji', '📁'), data.get('budget', 0), data['id']))
+    conn.commit()
+    conn.close()
+
 def get_categories(user_id):
     conn = sqlite3.connect(DB_NAME)
     conn.row_factory = sqlite3.Row
@@ -198,7 +207,6 @@ def get_categories(user_id):
     cats = [dict(row) for row in rows]
     
     if not cats:
-        # Crear categoría por defecto si no hay ninguna
         conn = sqlite3.connect(DB_NAME)
         c = conn.cursor()
         c.execute("INSERT INTO categories (user_id, name, type, emoji, budget) VALUES (?, 'General', 'Gasto', '📁', 0)", (user_id,))
