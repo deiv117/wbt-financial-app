@@ -116,16 +116,16 @@ def upload_avatar(file, user_id):
         return None
 
 def upsert_profile(user_data):
-    """Actualiza perfil y guarda historial"""
+    """Actualiza perfil y guarda historial de forma segura"""
     try:
-        # 1. Actualizar tabla PROFILES
+        # 1. Actualizar tabla PROFILES (Usamos .get para evitar errores si falta algún dato)
         update_data = {
-            "name": user_data['name'],
+            "name": user_data.get('name', ''), # <--- CORREGIDO: .get() evita el crash
             "lastname": user_data.get('lastname', ''),
             "avatar_url": user_data.get('avatar_url', ''),
             "profile_color": user_data.get('profile_color', '#636EFA'),
             
-            "social_active": user_data.get('social_active', False), # <--- ¡AÑADIR ESTA LÍNEA!
+            "social_active": user_data.get('social_active', False),
             
             "initial_balance": user_data.get('initial_balance', 0),
             "base_salary": user_data.get('base_salary', 0),
@@ -134,9 +134,11 @@ def upsert_profile(user_data):
             "payments_per_year": user_data.get('payments_per_year', 12),
             "updated_at": datetime.now().isoformat()
         }
+        
+        # Ejecutamos la actualización
         supabase.table('profiles').update(update_data).eq('id', user_data['id']).execute()
 
-        # 2. GESTIÓN DEL HISTORIAL (La Máquina del Tiempo)
+        # 2. GESTIÓN DEL HISTORIAL (Mantenemos tu lógica original)
         today = datetime.now().strftime("%Y-%m-%d")
         
         # Insertamos el nuevo registro histórico
@@ -144,7 +146,7 @@ def upsert_profile(user_data):
             "user_id": user_data['id'],
             "base_salary": user_data.get('base_salary', 0),
             "other_fixed_income": user_data.get('other_fixed_income', 0),
-            "other_income_frequency": user_data.get('other_income_frequency', 1), # <--- NUEVO
+            "other_income_frequency": user_data.get('other_income_frequency', 1),
             "valid_from": today
         }
         supabase.table('income_history').insert(history_data).execute()
