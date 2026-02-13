@@ -300,15 +300,25 @@ def get_transactions(user_uuid):
         return pd.DataFrame()
 
 def recalculate_category_budgets(user_id, new_total_income):
+    """Recalcula el presupuesto en € de las categorías basadas en %"""
     try:
-        # 1. Traemos las categorías que son por porcentaje
-        cats = supabase.table('user_categories').select('*').eq('user_id', user_id).eq('budget_type', 'percentage').execute()
+        # 1. Buscamos solo las categorías configuradas como 'percentage'
+        response = supabase.table('user_categories').select('*').eq('user_id', user_id).eq('budget_type', 'percentage').execute()
+        cats = response.data
+
+        count = 0
+        if cats: # Aseguramos que hay categorías
+            for cat in cats:
+                percent = float(cat.get('budget_percent', 0) or 0)
+                if percent > 0:
+                    # 2. Calculamos los nuevos euros
+                    new_euro_budget = (new_total_income * percent) / 100
+                    
+                    # 3. Actualizamos la categoría
+                    supabase.table('user_categories').update({"budget": new_euro_budget}).eq('id', cat['id']).execute()
+                    count += 1
         
-        for cat in cats.data:
-            # 2. Calculamos el nuevo valor en euros
-            new_euro_budget = (new_total_income * float(cat['budget_percent'])) / 100
-            
-            # 3. Actualizamos solo esa categoría
-            supabase.table('user_categories').update({"budget": new_euro_budget}).eq('id', cat['id']).execute()
+        return count # <--- ¡IMPORTANTE! Tiene que devolver el número
     except Exception as e:
-        st.error(f"Error al recalcular presupuestos: {e}")
+        print(f"Error recalculando presupuestos: {e}") 
+        return 0 # <--- ¡IMPORTANTE! Si falla, devuelve 0, no None
