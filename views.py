@@ -275,14 +275,21 @@ def render_dashboard(df_all, current_cats, user_id):
         h_data = get_historical_income(user_id, fecha_analisis)
         h_sueldo = float(h_data.get('base_salary', 0) or 0)
         h_extras = float(h_data.get('other_fixed_income', 0) or 0)
-        h_total_fijo = h_sueldo + h_extras
+        # NUEVO: Recuperamos la frecuencia histórica
+        h_freq = int(h_data.get('other_income_frequency', 1) or 1) 
+        
+        # Calculamos el prorrateo mensual de los extras
+        # Si cobras 300 cada 3 meses -> 100 al mes efectivos
+        h_extras_mensualizados = h_extras / h_freq if h_freq > 0 else 0
+        
+        h_total_fijo = h_sueldo + h_extras_mensualizados
 
         # 3. Mostramos el contexto histórico
         with st.expander(f"ℹ️ Contexto financiero en {sm} {sa}", expanded=False):
             st.write(f"En esa fecha, tu configuración era:")
             st.markdown(f"- Nómina Base: **{h_sueldo:,.2f}€**")
-            st.markdown(f"- Otros Ingresos Fijos: **{h_extras:,.2f}€**")
-            st.markdown(f"- **Total Fijo: {h_total_fijo:,.2f}€**")
+            st.markdown(f"- Otros Ingresos: **{h_extras:,.2f}€** (Cada {h_freq} meses)")
+            st.markdown(f"- **Total Fijo Mensual (Prorrateado): {h_total_fijo:,.2f}€**")
 
         if not df_all.empty:
             # Filtramos movimientos del mes seleccionado
