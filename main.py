@@ -157,9 +157,18 @@ def main():
                     if st.form_submit_button("Entrar", use_container_width=True):
                         auth_user = login_user(email, password)
                         if auth_user:
-                            st.session_state.user = get_user_profile(auth_user.id)
-                            st.rerun()
-                        else: st.error("Credenciales incorrectas o cuenta sin confirmar.")
+                            # 1. Buscamos el perfil
+                            user_prof = get_user_profile(auth_user.id)
+                            
+                            # 2. Si el perfil existe, entramos
+                            if user_prof:
+                                st.session_state.user = user_prof
+                                st.rerun()
+                            # 3. Si no existe, damos el aviso para no volvernos locos
+                            else:
+                                st.error("⚠️ Credenciales correctas, pero tu Perfil no se generó bien en la base de datos. Por favor, crea una cuenta nueva.")
+                        else: 
+                            st.error("Credenciales incorrectas o cuenta sin confirmar.")
                 
                 with st.expander("¿Olvidaste tu contraseña?"):
                     st.write("Te enviaremos un enlace mágico para entrar y cambiarla.")
