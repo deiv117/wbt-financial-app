@@ -78,29 +78,43 @@ def render_subheader(icon_name, text):
 def render_small_header(icon_name, text):
     st.markdown(f'{BOOTSTRAP_ICONS_LINK}<h5><i class="bi bi-{icon_name}"></i> {text}</h5>', unsafe_allow_html=True)
 
-# --- DIÁLOGOS DE CONFIRMACIÓN (SEGURIDAD) ---
-@st.dialog("🗑️ Eliminar Movimiento")
+# --- DIÁLOGOS DE CONFIRMACIÓN (SEGURIDAD) PUDILOS ---
+@st.dialog("Eliminar Movimiento")
 def confirmar_borrar_movimiento(id_mov):
-    st.write("¿Estás seguro de que quieres eliminar este movimiento?")
-    st.warning("⚠️ Esta acción no se puede deshacer.")
+    st.markdown(f'{BOOTSTRAP_ICONS_LINK}<p style="font-size:16px;"><i class="bi bi-question-circle" style="color:#636EFA;"></i> ¿Estás seguro de que quieres eliminar este movimiento?</p>', unsafe_allow_html=True)
+    
+    # Alerta estilo Bootstrap para el Warning
+    st.markdown("""
+        <div style="color: #842029; background-color: #f8d7da; border: 1px solid #f5c2c7; padding: 10px; border-radius: 5px; margin-bottom: 20px;">
+            <i class="bi bi-exclamation-triangle-fill"></i> Esta acción no se puede deshacer.
+        </div>
+    """, unsafe_allow_html=True)
     
     col_no, col_si = st.columns(2)
     with col_si:
-        if st.button("Sí, Eliminar", type="primary", use_container_width=True):
+        # Añadimos :material/delete: para que el CSS lo pinte de rojo automáticamente
+        if st.button(":material/delete: Sí, Eliminar", type="primary", use_container_width=True):
             delete_input(id_mov)
             st.rerun()
     with col_no:
         if st.button("Cancelar", use_container_width=True):
             st.rerun()
 
-@st.dialog("🗑️ Eliminar Categoría")
+@st.dialog("Eliminar Categoría")
 def confirmar_borrar_categoria(id_cat):
-    st.write("¿Seguro que quieres borrar esta categoría?")
-    st.caption("ℹ️ Los movimientos asociados no se borrarán, pero perderán su categoría.")
+    st.markdown(f'{BOOTSTRAP_ICONS_LINK}<p style="font-size:16px;"><i class="bi bi-question-circle" style="color:#636EFA;"></i> ¿Seguro que quieres borrar esta categoría?</p>', unsafe_allow_html=True)
+    
+    # Alerta estilo Bootstrap para la Info
+    st.markdown("""
+        <div style="color: #084298; background-color: #cfe2ff; border: 1px solid #b6d4fe; padding: 10px; border-radius: 5px; margin-bottom: 20px;">
+            <i class="bi bi-info-circle-fill"></i> Los movimientos asociados no se borrarán, pero perderán su categoría actual.
+        </div>
+    """, unsafe_allow_html=True)
     
     col_no, col_si = st.columns(2)
     with col_si:
-        if st.button("Sí, Eliminar", type="primary", use_container_width=True):
+        # Añadimos :material/delete: para que el CSS lo pinte de rojo automáticamente
+        if st.button(":material/delete: Sí, Eliminar", type="primary", use_container_width=True):
             delete_category(id_cat)
             st.rerun()
     with col_no:
@@ -256,7 +270,6 @@ def render_dashboard(df_all, current_cats, user_id):
                         if st.button(":material/edit:", key=f"e_dash_{i['id']}", use_container_width=True): 
                             editar_movimiento_dialog(i, current_cats)
                     with cb_d:
-                        # --- CAMBIO AQUÍ: Llamada al diálogo de confirmación ---
                         if st.button(":material/delete:", key=f"d_dash_{i['id']}", type="primary", use_container_width=True): 
                             confirmar_borrar_movimiento(i['id'])
 
@@ -302,7 +315,6 @@ def render_dashboard(df_all, current_cats, user_id):
                                 if st.button(":material/edit:", key=f"e_hist_{i['id']}", use_container_width=True): 
                                     editar_movimiento_dialog(i, current_cats)
                             with cb2:
-                                # --- CAMBIO AQUÍ: Llamada al diálogo de confirmación ---
                                 if st.button(":material/delete:", key=f"d_hist_{i['id']}", type="primary", use_container_width=True): 
                                     confirmar_borrar_movimiento(i['id'])
 
@@ -484,7 +496,6 @@ def render_categories(current_cats):
                             if st.button(":material/edit:", key=f"cat_e_{c['id']}", use_container_width=True): 
                                 editar_categoria_dialog(c)
                         with kb2:
-                            # --- CAMBIO AQUÍ: Llamada al diálogo de confirmación ---
                             if st.button(":material/delete:", key=f"cat_d_{c['id']}", type="primary", use_container_width=True): 
                                 confirmar_borrar_categoria(c['id'])
 
@@ -527,7 +538,6 @@ def render_profile(user_id, p_data):
                 n_color = st.color_picker("Color de Perfil", value=p_color)
                 n_social = st.toggle("Modo Social", value=p_data.get('social_active', False))
                 
-                # --- BOTÓN GUARDAR (Updated to Material Icon) ---
                 if st.form_submit_button(":material/save: Guardar Datos Personales"):
                     final_avatar = avatar_url
                     if uploaded_file:
@@ -571,7 +581,6 @@ def render_profile(user_id, p_data):
             total_est = n_salary + mensual_extra
             st.caption(f"💰 Ingreso medio mensual estimado: **{total_est:,.2f}€**")
 
-            # --- BOTÓN GUARDAR FINANZAS (Updated to Material Icon) ---
             if st.form_submit_button(":material/save: Guardar Nueva Configuración Financiera"):
                 new_data = {
                     "id": user_id, "initial_balance": n_balance, "base_salary": n_salary,
@@ -591,8 +600,7 @@ def render_profile(user_id, p_data):
                     st.rerun()
 
     # C. Seguridad
-    # --- EXPANDER SEGURIDAD (Updated to Material Icon) ---
-    with st.expander("🔐 Seguridad y Contraseña"):
+    with st.expander("Seguridad y Contraseña", icon=":material/lock:"):
         render_subheader("shield-lock", "Seguridad")
         with st.form("pass_form"):
             p1 = st.text_input("Nueva Contraseña", type="password")
