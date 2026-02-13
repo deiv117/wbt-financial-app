@@ -514,32 +514,61 @@ def render_profile(user_id, p_data):
                         time.sleep(1) # Pequeña pausa para ver el mensaje
                         st.rerun()
 
-    # --- B. DATOS ECONÓMICOS (VERSIONADA) ---
+    # --- B. DATOS ECONÓMICOS ---
     with st.container(border=True):
         st.subheader("💰 Configuración Financiera")
-        st.info("Cualquier cambio aquí se guardará en tu historial. Si ves datos antiguos en gráficas pasadas, es porque usamos el sueldo que tenías entonces.")
+        st.info("Cualquier cambio aquí se guardará en tu historial.")
         
         with st.form("finance_form"):
-            c1, c2 = st.columns(2)
-            n_balance = c1.number_input("Saldo Inicial (€)", 
+            # 1. SALDO INICIAL (SOLO)
+            st.markdown("##### 🏦 Patrimonio Base")
+            n_balance = st.number_input("Saldo Inicial en cuentas (€)", 
                                         value=float(p_data.get('initial_balance', 0.0) or 0.0), 
-                                        help="Patrimonio antes de usar la app.")
+                                        help="Dinero total disponible antes de empezar a usar la app.")
             
-            n_pagas = c2.slider("Número de pagas", 12, 16, int(p_data.get('payments_per_year', 12) or 12))
-
             st.divider()
-            st.markdown("##### 📥 Ingresos Fijos Mensuales")
             
-            ci1, ci2 = st.columns(2)
-            n_salary = ci1.number_input("Nómina Base (€)", 
-                                       value=float(p_data.get('base_salary', 0.0) or 0.0))
+            # 2. NÓMINA + PAGAS (JUNTOS)
+            st.markdown("##### 💼 Nómina y Pagas")
+            c_nom1, c_nom2 = st.columns(2)
             
-            n_other = ci2.number_input("Otros Ingresos Fijos (€)", 
+            n_salary = c_nom1.number_input("Nómina Base Mensual (€)", 
+                                       value=float(p_data.get('base_salary', 0.0) or 0.0),
+                                       help="Lo que ingresas limpio al mes por tu trabajo principal.")
+                                       
+            n_pagas = c_nom2.slider("Número de pagas al año", 12, 16, int(p_data.get('payments_per_year', 12) or 12))
+
+            # 3. OTROS INGRESOS + FRECUENCIA
+            st.markdown("##### ➕ Ingresos Adicionales Recurrentes")
+            c_ext1, c_ext2 = st.columns(2)
+            
+            n_other = c_ext1.number_input("Cantidad (€)", 
                                        value=float(p_data.get('other_fixed_income', 0.0) or 0.0),
-                                       help="Alquileres, donaciones recurrentes, side-hustles...")
+                                       help="Alquileres, bonos fijos, ayudas, etc.")
             
-            total_fijo = n_salary + n_other
-            st.caption(f"Total Ingresos Fijos: **{total_fijo:,.2f}€ / mes**")
+            # Diccionario para traducir frecuencia a meses (Guardamos el numero, mostramos texto)
+            freq_options = {1: "Cada Mes (Mensual)", 2: "Cada 2 Meses (Bimestral)", 3: "Cada 3 Meses (Trimestral)", 
+                            6: "Cada 6 Meses (Semestral)", 12: "Cada Año (Anual)"}
+            
+            # Recuperamos valor actual (default 1)
+            current_freq_val = int(p_data.get('other_income_frequency', 1) or 1)
+            # Buscamos el índice para el selectbox
+            keys_list = list(freq_options.keys())
+            try:
+                idx_freq = keys_list.index(current_freq_val)
+            except ValueError:
+                idx_freq = 0
+                
+            sel_freq_txt = c_ext2.selectbox("Frecuencia de cobro", list(freq_options.values()), index=idx_freq)
+            # Convertimos el texto seleccionado de vuelta a número (1, 2, 3...)
+            n_freq = [k for k, v in freq_options.items() if v == sel_freq_txt][0]
+
+            # CÁLCULO VISUAL DE TOTAL MENSUAL REAL
+            mensual_extra_real = n_other / n_freq if n_freq > 0 else 0
+            total_mensual_estimado = n_salary + mensual_extra_real
+            
+            st.caption(f"📊 **Resumen:** Cobras **{n_salary:,.2f}€** de nómina + **{n_other:,.2f}€** ({sel_freq_txt}).") 
+            st.caption(f"💰 Esto equivale a un ingreso medio mensual de aprox: **{total_mensual_estimado:,.2f}€**")
             
             if st.form_submit_button("💾 Guardar Nueva Configuración Financiera"):
                 new_finance = {
@@ -547,13 +576,14 @@ def render_profile(user_id, p_data):
                     "name": p_data.get('name'),
                     "initial_balance": n_balance,
                     "base_salary": n_salary,
-                    "other_fixed_income": n_other, # Guardamos el extra
+                    "other_fixed_income": n_other, 
+                    "other_income_frequency": n_freq, # Guardamos el numero (1, 3, 12...)
                     "payments_per_year": n_pagas
                 }
                 success = upsert_profile(new_finance)
                 if success:
-                    st.session_state.user.update(new_finance) # Actualizar sesión
-                    st.success("✅ Datos financieros e histórico actualizados")
+                    st.session_state.user.update(new_finance)
+                    st.success("✅ Datos actualizados")
                     time.sleep(1)
                     st.rerun()
 
