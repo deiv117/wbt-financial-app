@@ -41,17 +41,18 @@ def render_main_dashboard(df_all, user_profile):
     # --- TARJETAS DE MÉTRICAS (KPIs) ---
     k1, k2, k3 = st.columns(3)
 
+    # AQUÍ ESTÁ EL ARREGLO: 'with st.container' engloba al 'st.metric'
     with k1:
-        st.container(border=True)
-        st.metric(label="💰 Patrimonio Neto", value=f"{saldo_total:,.2f}€", help="Saldo Inicial + Ingresos - Gastos")
+        with st.container(border=True):
+            st.metric(label="💰 Patrimonio Neto", value=f"{saldo_total:,.2f}€", help="Saldo Inicial + Ingresos - Gastos")
     
     with k2:
-        st.container(border=True)
-        st.metric(label=f"📅 Ahorro {datetime.now().strftime('%B')}", value=f"{ahorro_mes:,.2f}€", delta=f"{ahorro_mes:,.2f}€")
+        with st.container(border=True):
+            st.metric(label=f"📅 Ahorro {datetime.now().strftime('%B')}", value=f"{ahorro_mes:,.2f}€", delta=f"{ahorro_mes:,.2f}€")
         
     with k3:
-        st.container(border=True)
-        st.metric(label="👥 Grupos (Deuda)", value="0.00€", delta="Próximamente", delta_color="off")
+        with st.container(border=True):
+            st.metric(label="👥 Grupos (Deuda)", value="0.00€", delta="Próximamente", delta_color="off")
 
     st.divider()
 
