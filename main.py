@@ -4,8 +4,10 @@ import random
 import time
 from streamlit_option_menu import option_menu 
 
-# FÍJATE AQUÍ: He añadido 'supabase' a las importaciones para poder leer el código mágico
-from database import init_db, login_user, register_user, recover_password, get_user_profile, get_transactions, get_categories, supabase
+# IMPORTANTE: He añadido 'change_password' y 'supabase' a las importaciones
+from database import (init_db, login_user, register_user, recover_password, 
+                      get_user_profile, get_transactions, get_categories, 
+                      change_password, supabase)
 from styles import get_custom_css
 
 # Importaciones unificadas
@@ -42,12 +44,13 @@ def main():
     if "code" in st.query_params:
         code = st.query_params.get("code")
         try:
-            # Si venimos de un enlace del correo, canjeamos el código por una sesión activa
+            # Canjeamos el código del correo por una sesión activa
             res = supabase.auth.exchange_code_for_session({"auth_code": code})
             if res and res.user:
                 st.session_state.user = get_user_profile(res.user.id)
-                st.session_state.just_verified = True # Activamos el pop-up de bienvenida
-                st.query_params.clear() # Limpiamos la URL para que no moleste
+                # Activamos la bandera para mostrar la ventana de cambio de contraseña
+                st.session_state.show_recovery_dialog = True 
+                st.query_params.clear() # Limpiamos la URL
                 st.rerun()
         except Exception as e:
             st.error("❌ El enlace de verificación ha caducado o es inválido. Por favor, solicita uno nuevo.")
@@ -60,17 +63,39 @@ def main():
         df_all = get_transactions(user_id)
         current_cats = get_categories(user_id)
         
-        # POP-UP DE VERIFICACIÓN / CAMBIO DE CONTRASEÑA
-        if st.session_state.get("just_verified"):
-            @st.dialog("🎉 ¡Verificación Exitosa!")
-            def welcome_dialog():
-                st.success("Hemos comprobado tu identidad y ya has iniciado sesión automáticamente.")
-                st.info("🔐 **¿Venías a recuperar tu contraseña?**\nComo ya estás dentro, dirígete al menú **Perfil > Seguridad** para establecer tu nueva contraseña de forma segura.")
-                if st.button("¡Entendido!", use_container_width=True):
-                    st.session_state.just_verified = False
+        # --- NUEVO POP-UP PARA CAMBIAR CONTRASEÑA DIRECTAMENTE ---
+        if st.session_state.get("show_recovery_dialog"):
+            @st.dialog("🔐 Recuperación de Contraseña")
+            def recovery_dialog():
+                st.success("¡Enlace verificado! Ya estás dentro de tu cuenta.")
+                st.write("Si solicitaste **recuperar tu contraseña**, escribe la nueva a continuación:")
+                
+                # Formulario directo para cambiar la clave
+                with st.form("reset_pass_form"):
+                    p1 = st.text_input("Nueva Contraseña", type="password")
+                    p2 = st.text_input("Confirmar Contraseña", type="password")
+                    submit = st.form_submit_button("Actualizar Contraseña", type="primary", use_container_width=True)
+                    
+                    if submit:
+                        if p1 == p2 and len(p1) >= 6:
+                            ok, msg = change_password(p1)
+                            if ok:
+                                st.success("✅ ¡Contraseña actualizada con éxito!")
+                                time.sleep(1.5)
+                                st.session_state.show_recovery_dialog = False
+                                st.rerun()
+                            else:
+                                st.error(f"Error: {msg}")
+                        else:
+                            st.error("Las contraseñas no coinciden o son muy cortas (mínimo 6 caracteres).")
+                
+                st.divider()
+                st.write("¿No querías cambiar la contraseña y solo venías a confirmar tu correo?")
+                if st.button("Solo venía a confirmar mi cuenta (Cerrar)", use_container_width=True):
+                    st.session_state.show_recovery_dialog = False
                     st.rerun()
             
-            welcome_dialog()
+            recovery_dialog()
         
         # --- BARRA LATERAL ---
         with st.sidebar:
@@ -106,7 +131,7 @@ def main():
             
             st.divider()
             if st.button("Cerrar Sesión", use_container_width=True):
-                supabase.auth.sign_out() # Cerramos sesión real en Supabase por seguridad
+                supabase.auth.sign_out() 
                 st.session_state.user = None
                 st.rerun()
 
@@ -167,7 +192,6 @@ def main():
                         else:
                             ok, msg = register_user(reg_email, p1, reg_name, "")
                             if ok: 
-                                # Mensaje actualizado para recordar lo del correo
                                 st.success("✅ **¡Cuenta creada!** Por favor, revisa tu correo electrónico y haz clic en el enlace para confirmar tu cuenta.")
                                 reset_captcha()
                             else: 
