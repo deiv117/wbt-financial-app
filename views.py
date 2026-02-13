@@ -3,9 +3,101 @@ import pandas as pd
 import math
 import plotly.graph_objects as go
 from datetime import datetime, timedelta
-from database import save_input, delete_input, get_categories, delete_category, upsert_profile, save_category, update_input
+# Importamos las nuevas funciones necesarias (upload_avatar, change_password)
+from database import save_input, delete_input, get_categories, delete_category, upsert_profile, save_category, update_input, upload_avatar, change_password
 from components import editar_movimiento_dialog, editar_categoria_dialog, crear_categoria_dialog
 
+# --- 1. NUEVA PANTALLA: RESUMEN GLOBAL (Landing Page) ---
+def render_main_dashboard(df_all, user_profile):
+    st.title(f"👋 Hola, {user_profile.get('name', 'Usuario')}")
+    st.caption("Aquí tienes el pulso de tu economía hoy.")
+
+    # --- CÁLCULO DE KPIs ---
+    
+    # Recuperamos el saldo inicial del perfil (si es None pone 0)
+    saldo_inicial = user_profile.get('initial_balance', 0) or 0
+    
+    if not df_all.empty:
+        # A. Saldo Total Histórico (Incluyendo Saldo Inicial)
+        total_ingresos = df_all[df_all['type'] == 'Ingreso']['quantity'].sum()
+        total_gastos = df_all[df_all['type'] == 'Gasto']['quantity'].sum()
+        
+        # FÓRMULA MAESTRA: Lo que tenía al principio + Lo que he ganado - Lo que he gastado
+        saldo_total = saldo_inicial + total_ingresos - total_gastos
+
+        # B. Ahorro Este Mes
+        hoy = datetime.now()
+        df_mes = df_all[(df_all['date'].dt.month == hoy.month) & (df_all['date'].dt.year == hoy.year)]
+        ingresos_mes = df_mes[df_mes['type'] == 'Ingreso']['quantity'].sum()
+        gastos_mes = df_mes[df_mes['type'] == 'Gasto']['quantity'].sum()
+        ahorro_mes = ingresos_mes - gastos_mes
+    else:
+        saldo_total = saldo_inicial
+        ahorro_mes = 0
+
+    # --- TARJETAS DE MÉTRICAS (KPIs) ---
+    k1, k2, k3 = st.columns(3)
+
+    with k1:
+        st.container(border=True)
+        st.metric(label="💰 Patrimonio Neto", value=f"{saldo_total:,.2f}€", help="Saldo Inicial + Ingresos - Gastos")
+    
+    with k2:
+        st.container(border=True)
+        st.metric(label=f"📅 Ahorro {datetime.now().strftime('%B')}", value=f"{ahorro_mes:,.2f}€", delta=f"{ahorro_mes:,.2f}€")
+        
+    with k3:
+        st.container(border=True)
+        st.metric(label="👥 Grupos (Deuda)", value="0.00€", delta="Próximamente", delta_color="off")
+
+    st.divider()
+
+    # --- GRÁFICO DE EVOLUCIÓN DE PATRIMONIO ---
+    st.subheader("📈 Evolución de tu Patrimonio")
+    
+    # Mostramos gráfico si hay movimientos O si hay saldo inicial configurado
+    if not df_all.empty or saldo_inicial > 0:
+        df_chart = df_all.copy().sort_values('date') if not df_all.empty else pd.DataFrame(columns=['date', 'quantity', 'type'])
+        
+        # Lógica para construir la línea temporal
+        if not df_chart.empty:
+            df_chart['real_qty'] = df_chart.apply(lambda x: x['quantity'] if x['type'] == 'Ingreso' else -x['quantity'], axis=1)
+            # El acumulado empieza sumando el saldo inicial
+            df_chart['saldo_acumulado'] = df_chart['real_qty'].cumsum() + saldo_inicial
+            
+            # Agrupar por día para evitar dientes de sierra en el mismo día
+            df_daily = df_chart.groupby('date')['saldo_acumulado'].last().reset_index()
+            
+            # Truco visual: Añadir un punto al inicio (fecha del primer mov - 1 día) con el saldo inicial
+            # para que el gráfico arranque desde el saldo inicial y no desde 0
+            fecha_inicio = df_daily['date'].min() - timedelta(days=1)
+            row_inicio = pd.DataFrame({'date': [fecha_inicio], 'saldo_acumulado': [saldo_inicial]})
+            df_daily = pd.concat([row_inicio, df_daily]).sort_values('date')
+
+            fig = go.Figure()
+            fig.add_trace(go.Scatter(
+                x=df_daily['date'], 
+                y=df_daily['saldo_acumulado'],
+                fill='tozeroy',
+                mode='lines',
+                line=dict(color='#636EFA', width=3),
+                name='Saldo'
+            ))
+
+            fig.update_layout(
+                margin=dict(l=0, r=0, t=10, b=0),
+                yaxis_title="Euros (€)",
+                hovermode="x unified",
+                height=350
+            )
+            st.plotly_chart(fig, use_container_width=True)
+        else:
+             # Si no hay movimientos pero sí saldo inicial, mostramos mensaje
+             st.info(f"Tu patrimonio actual es tu saldo inicial: {saldo_inicial}€. Añade movimientos para ver la evolución gráfica.")
+    else:
+        st.info("Configura tu saldo inicial en el Perfil o añade movimientos para ver tu evolución.")
+
+# --- 2. GESTIÓN DE MOVIMIENTOS (Tu código original) ---
 def render_dashboard(df_all, current_cats, user_id):
     # --- CSS MÁGICO PARA TARJETAS MÓVILES ---
     st.markdown("""
@@ -285,10 +377,11 @@ def render_dashboard(df_all, current_cats, user_id):
                     """
                     st.markdown(html_bar, unsafe_allow_html=True)
 
+# --- 3. CATEGORÍAS (Tu código original) ---
 def render_categories(current_cats):
     st.title("📂 Gestión de Categorías")
     if st.button("➕ Nueva Categoría"): 
-        crear_categoria_dialog(st.session_state.user.id)
+        crear_categoria_dialog(st.session_state.user['id']) # OJO: Ajuste para el user['id']
     
     ci, cg = st.columns(2)
     for col, t in zip([ci, cg], ["Ingreso", "Gasto"]):
@@ -312,24 +405,118 @@ def render_categories(current_cats):
                                 delete_category(c['id'])
                                 st.rerun()
 
+# --- 4. NUEVA VERSIÓN DE PERFIL (Actualizada) ---
 def render_profile(user_id, p_data):
     st.title("⚙️ Mi Perfil")
-    with st.form("p_form"):
-        c1, c2 = st.columns(2)
-        n_name = c1.text_input("Nombre", value=p_data.get('name',''))
-        n_last = c1.text_input("Apellido", value=p_data.get('lastname',''))
-        n_color = c1.color_picker("Color de Perfil", value=p_data.get('profile_color','#636EFA'))
-        n_avatar = c2.text_input("URL Avatar", value=p_data.get('avatar_url',''))
-        if st.form_submit_button("Actualizar Perfil"):
-            upsert_profile({
-                "id": user_id, 
-                "name": n_name, 
-                "lastname": n_last, 
-                "avatar_url": n_avatar, 
-                "profile_color": n_color
-            })
-            st.rerun()
+    
+    # --- A. DATOS PERSONALES Y AVATAR ---
+    with st.container(border=True):
+        st.subheader("👤 Datos Personales")
+        
+        c_ava, c_form = st.columns([1, 2])
+        
+        with c_ava:
+            # Mostrar Avatar Actual
+            avatar = p_data.get('avatar_url')
+            if avatar:
+                st.image(avatar, width=150)
+            else:
+                # Placeholder con inicial
+                st.markdown(f"""
+                    <div style="width:150px;height:150px;background-color:{p_data.get('profile_color','#636EFA')};
+                    border-radius:50%;display:flex;align-items:center;justify-content:center;color:white;font-size:50px;font-weight:bold;">
+                    {p_data.get('name','U')[0].upper()}
+                    </div>
+                """, unsafe_allow_html=True)
+            
+            # Subir nueva foto
+            uploaded_file = st.file_uploader("Cambiar foto", type=['png', 'jpg', 'jpeg'])
+        
+        with c_form:
+            with st.form("perfil_form"):
+                n_name = st.text_input("Nombre", value=p_data.get('name',''))
+                n_last = st.text_input("Apellido", value=p_data.get('lastname',''))
+                n_color = st.color_picker("Color de Perfil", value=p_data.get('profile_color','#636EFA'))
+                
+                submitted_perfil = st.form_submit_button("Guardar Datos Personales")
+                
+                if submitted_perfil:
+                    # Si ha subido foto, la procesamos primero
+                    final_avatar_url = p_data.get('avatar_url', '')
+                    if uploaded_file:
+                        url_nueva = upload_avatar(uploaded_file, user_id)
+                        if url_nueva:
+                            final_avatar_url = url_nueva
+                    
+                    # Guardamos todo
+                    success = upsert_profile({
+                        "id": user_id, 
+                        "name": n_name, 
+                        "lastname": n_last, 
+                        "avatar_url": final_avatar_url, 
+                        "profile_color": n_color,
+                        # Mantenemos los datos económicos antiguos para no borrarlos aquí
+                        "initial_balance": p_data.get('initial_balance', 0),
+                        "base_salary": p_data.get('base_salary', 0),
+                        "payments_per_year": p_data.get('payments_per_year', 12)
+                    })
+                    if success:
+                        st.success("✅ Perfil actualizado")
+                        st.rerun()
 
+    # --- B. DATOS ECONÓMICOS ---
+    with st.container(border=True):
+        st.subheader("💰 Configuración Financiera")
+        st.info("Estos datos son clave para calcular tu patrimonio y previsiones.")
+        
+        with st.form("finance_form"):
+            c1, c2 = st.columns(2)
+            # Saldo Inicial
+            n_balance = c1.number_input("Saldo Inicial en cuenta (€)", 
+                                        value=float(p_data.get('initial_balance', 0.0) or 0.0), 
+                                        help="El dinero que tienes hoy antes de añadir gastos en la app.")
+            
+            # Nómina
+            n_salary = c2.number_input("Ingresos Fijos Mensuales (Nómina)", 
+                                       value=float(p_data.get('base_salary', 0.0) or 0.0),
+                                       help="Lo que te llega limpio al banco cada mes.")
+            
+            # Número de Pagas
+            val_pagas = int(p_data.get('payments_per_year', 12) or 12)
+            n_pagas = st.slider("Número de pagas al año", 
+                                min_value=12, max_value=16, 
+                                value=val_pagas,
+                                help="12 (Prorrateada), 14 (Verano/Navidad), etc.")
+            
+            if st.form_submit_button("💾 Actualizar Datos Financieros"):
+                success = upsert_profile({
+                    "id": user_id,
+                    "name": p_data.get('name'), # Mantenemos nombre
+                    "initial_balance": n_balance,
+                    "base_salary": n_salary,
+                    "payments_per_year": n_pagas
+                })
+                if success:
+                    st.success("✅ Datos financieros guardados")
+                    st.rerun()
+
+    # --- C. SEGURIDAD (CAMBIO DE CONTRASEÑA) ---
+    with st.expander("🔐 Seguridad y Contraseña"):
+        with st.form("pass_form"):
+            p1 = st.text_input("Nueva Contraseña", type="password")
+            p2 = st.text_input("Confirmar Contraseña", type="password")
+            
+            if st.form_submit_button("Cambiar Contraseña"):
+                if p1 == p2 and len(p1) >= 6:
+                    ok, msg = change_password(p1)
+                    if ok:
+                        st.success("✅ Contraseña actualizada correctamente")
+                    else:
+                        st.error(f"Error: {msg}")
+                else:
+                    st.error("Las contraseñas no coinciden o son muy cortas.")
+
+# --- 5. IMPORTAR (Tu código original) ---
 def render_import(current_cats, user_id):
     st.title("📥 Importar Movimientos")
     
