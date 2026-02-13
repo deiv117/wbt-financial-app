@@ -241,22 +241,60 @@ def render_dashboard(df_all, current_cats, user_id):
 
     with t3:
         st.subheader("🔮 Previsión y Comparativa")
+        
+        # --- CÁLCULOS PREVIOS ---
+        tp = sum(c['budget'] for c in cat_g)
+        # Calculamos la media de ingresos (puedes usar el histórico que creamos o la media de la tabla)
+        mi = df_all[df_all['type']=='Ingreso']['quantity'].sum() / len(df_all['date'].dt.to_period('M').unique()) if not df_all.empty else 0
+        ahorro_potencial = mi - tp
+
+        # --- PRIMERO: LAS TRES COLUMNAS CON MÉTRICAS ---
+        st.markdown("#### Resumen de Objetivos")
+        m1, m2, m3 = st.columns(3)
+        
+        with m1:
+            with st.container(border=True):
+                st.metric("Límite Gastos", f"{tp:,.2f}€", help="Suma de todos tus presupuestos mensuales")
+        
+        with m2:
+            with st.container(border=True):
+                st.metric("Ingresos Medios", f"{mi:,.2f}€", help="Media de ingresos reales registrados")
+        
+        with m3:
+            with st.container(border=True):
+                color_ahorro = "normal" if ahorro_potencial > 0 else "inverse"
+                st.metric("Ahorro Potencial", f"{ahorro_potencial:,.2f}€", 
+                          delta=f"{(ahorro_potencial/mi*100):.1f}%" if mi > 0 else None,
+                          delta_color=color_ahorro)
+
+        st.divider()
+
+        # --- SEGUNDO: LA TABLA DETALLADA POR CATEGORÍAS ---
+        st.markdown("#### Detalle por Categoría (Mes Actual)")
         if not df_all.empty:
-            df_mes_actual = df_all[(df_all['date'].dt.month == datetime.now().month) & (df_all['date'].dt.year == datetime.now().year)]
+            # Filtramos solo el mes actual para la comparativa de la tabla
+            hoy = datetime.now()
+            df_mes_actual = df_all[(df_all['date'].dt.month == hoy.month) & (df_all['date'].dt.year == hoy.year)]
+            
+            # Agrupamos gastos reales por categoría
             gastos_cat = df_mes_actual[df_mes_actual['type'] == 'Gasto'].groupby('category_id')['quantity'].sum().reset_index()
+            
+            # Unimos con la lista de categorías de gasto
             df_prev = pd.DataFrame(cat_g)
             if not df_prev.empty:
                 df_prev = pd.merge(df_prev, gastos_cat, left_on='id', right_on='category_id', how='left').fillna(0)
                 df_prev['Diferencia'] = df_prev['budget'] - df_prev['quantity']
-                st.dataframe(df_prev[['emoji', 'name', 'budget', 'quantity', 'Diferencia']].rename(columns={'emoji':'Icono', 'name':'Categoría', 'budget':'Presupuesto (€)', 'quantity':'Gastado (€)'}), use_container_width=True, hide_index=True)
-        
-        tp = sum(c['budget'] for c in cat_g)
-        mi = df_all[df_all['type']=='Ingreso'].groupby(df_all['date'].dt.to_period('M'))['quantity'].sum().mean() if not df_all.empty else 0
-        
-        m1, m2, m3 = st.columns(3)
-        m1.metric("Límite Gastos", f"{tp:.2f}€")
-        m2.metric("Ingresos Medios", f"{mi:.2f}€")
-        m3.metric("Ahorro Potencial", f"{(mi - tp):.2f}€")
+                
+                # Formateamos la tabla para que se vea profesional
+                st.dataframe(
+                    df_prev[['emoji', 'name', 'budget', 'quantity', 'Diferencia']].rename(
+                        columns={'emoji':'Icono', 'name':'Categoría', 'budget':'Presupuesto (€)', 'quantity':'Gastado (€)'}
+                    ), 
+                    use_container_width=True, 
+                    hide_index=True
+                )
+        else:
+            st.info("Añade movimientos para ver la comparativa detallada.")
 
     with t4:
         st.subheader("Análisis Mensual")
