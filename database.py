@@ -296,3 +296,17 @@ def get_transactions(user_uuid):
         return df
     except Exception as e:
         return pd.DataFrame()
+
+def recalculate_category_budgets(user_id, new_total_income):
+    try:
+        # 1. Traemos las categorías que son por porcentaje
+        cats = supabase.table('user_categories').select('*').eq('user_id', user_id).eq('budget_type', 'percentage').execute()
+        
+        for cat in cats.data:
+            # 2. Calculamos el nuevo valor en euros
+            new_euro_budget = (new_total_income * float(cat['budget_percent'])) / 100
+            
+            # 3. Actualizamos solo esa categoría
+            supabase.table('user_categories').update({"budget": new_euro_budget}).eq('id', cat['id']).execute()
+    except Exception as e:
+        st.error(f"Error al recalcular presupuestos: {e}")
