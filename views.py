@@ -541,13 +541,13 @@ def render_profile(user_id, p_data):
                 n_pagas = st.slider("Pagas al año", 12, 16, int(p_data.get('payments_per_year', 12) or 12))
                 
                 if st.form_submit_button("💾 Guardar Todo"):
-                    # A. Subida de Avatar
+                    # A. Subida de Avatar (Mantenemos tu lógica)
                     final_avatar = avatar_url
                     if uploaded_file:
                         new_url = upload_avatar(uploaded_file, user_id)
                         if new_url: final_avatar = new_url
                     
-                    # B. Preparar datos para guardar
+                    # B. Preparar datos
                     new_data = {
                         "id": user_id,
                         "name": n_name,
@@ -564,19 +564,22 @@ def render_profile(user_id, p_data):
                     
                     # C. Guardar en Base de Datos
                     if upsert_profile(new_data):
-                        # D. LA MAGIA: Recalcular presupuestos por % automáticamente
+                        # D. LA MAGIA: Recalcular presupuestos
                         monthly_extras = n_other / n_freq if n_freq > 0 else 0
                         total_monthly = n_salary + monthly_extras
                         
                         from database import recalculate_category_budgets
-                        n_updated = recalculate_category_budgets(user_id, total_monthly)
+                        
+                        # TRUCO ANTIGOLPES: Añadimos 'or 0' al final.
+                        # Si la función devuelve None, Python usará 0 y no fallará.
+                        n_updated = recalculate_category_budgets(user_id, total_monthly) or 0
                         
                         # E. Actualizar sesión y recargar
                         st.session_state.user.update(new_data)
                         
-                        msg = "✅ Perfil actualizado."
+                        msg = "✅ Perfil actualizado correctamente."
                         if n_updated > 0:
-                            msg += f" Se han recalculado {n_updated} categorías automáticamente."
+                            msg += f" Se han ajustado {n_updated} categorías automáticamente."
                         
                         st.success(msg)
                         time.sleep(1.5)
