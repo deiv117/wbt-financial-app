@@ -37,12 +37,33 @@ def main():
         
         # Sidebar
         with st.sidebar:
-            st.markdown(f"""
-                <div class="sidebar-user-container">
-                    <div class="avatar-circle" style="background-color: {user_profile.get('profile_color', '#636EFA')}">
-                        {user_profile['name'][0].upper() if user_profile.get('name') else 'U'}
+            # 1. Recuperamos la URL del avatar
+            avatar_url = user_profile.get('avatar_url')
+            
+            # 2. Preparamos el HTML: ¿Foto o Inicial?
+            if avatar_url:
+                # Si hay foto: Etiqueta <img> redonda
+                avatar_html = f"""
+                    <img src="{avatar_url}" 
+                         style="width: 90px; height: 90px; border-radius: 50%; object-fit: cover; 
+                                border: 3px solid {user_profile.get('profile_color', '#636EFA')}; margin-bottom: 10px;">
+                """
+            else:
+                # Si no hay foto: El círculo de siempre con la inicial
+                initial = user_profile['name'][0].upper() if user_profile.get('name') else 'U'
+                avatar_html = f"""
+                    <div style="width: 90px; height: 90px; background-color: {user_profile.get('profile_color', '#636EFA')}; 
+                                border-radius: 50%; display: flex; align-items: center; justify-content: center; 
+                                color: white; font-size: 35px; font-weight: bold; margin-bottom: 10px;">
+                        {initial}
                     </div>
-                    <h3>Hola, {user_profile.get('name', 'Usuario')}</h3>
+                """
+            
+            # 3. Renderizamos el bloque completo
+            st.markdown(f"""
+                <div style="display: flex; flex-direction: column; align-items: center; padding: 1rem 0;">
+                    {avatar_html}
+                    <h3 style="margin: 0; text-align: center;">Hola, {user_profile.get('name', 'Usuario')}</h3>
                 </div>
             """, unsafe_allow_html=True)
             
