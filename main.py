@@ -1,3 +1,8 @@
+import streamlit as st
+import pandas as pd
+from database import init_db, login_user, register_user, recover_password, get_user_profile, get_transactions, get_categories
+from styles import get_custom_css
+from views import render_dashboard, render_categories, render_profile, render_import, render_main_dashboard
 from views.dashboard import render_main_dashboard
 from views.transactions import render_dashboard
 from views.categories import render_categories
