@@ -14,6 +14,7 @@ from database import (save_input, delete_input, get_categories, delete_category,
 from components import editar_movimiento_dialog, editar_categoria_dialog, crear_categoria_dialog
 
 # --- ESTILOS CSS GLOBALES Y LIBRERÍA DE ICONOS ---
+# Link a Bootstrap Icons
 BOOTSTRAP_ICONS_LINK = '<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.5/font/bootstrap-icons.css">'
 
 CUSTOM_CSS = """
@@ -21,64 +22,46 @@ CUSTOM_CSS = """
 /* 1. IMPORTAR FUENTE DE ICONOS */
 @import url("https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.5/font/bootstrap-icons.css");
 
-/* 2. ESTILO DE TÍTULOS (Alineación icono-texto) */
-h1 .bi {
-    vertical-align: -4px;
-    margin-right: 10px;
+/* 2. ESTILO DE TÍTULOS (H1 y H3 con iconos alineados) */
+h1 .bi, h3 .bi {
+    vertical-align: -2px;
+    margin-right: 8px;
     color: #636EFA;
 }
 
-/* 3. BOTONES DE ACCIÓN (ICONOS MATERIAL) */
-/* Estilo base para todos los botones de acción */
-div[data-testid="stButton"] button {
-    border-radius: 8px;
-    transition: all 0.2s ease-in-out;
-}
+/* 3. BOTONES DE ACCIÓN (Colores Específicos) */
 
 /* --- BOTÓN EDITAR (Amarillo) --- */
-/* Detectamos el icono "edit" de Material Symbols dentro del botón */
-div[data-testid="stButton"] button:has(span.material-symbols-rounded:contains("edit")) {
-    background-color: rgba(255, 193, 7, 0.1) !important;
-    border: 1px solid #FFC107 !important;
-    color: #FFC107 !important;
-}
-div[data-testid="stButton"] button:has(span.material-symbols-rounded:contains("edit")):hover {
-    background-color: #FFC107 !important;
-    color: #000 !important;
-    transform: scale(1.05);
+/* Busca botones que contengan el icono material 'edit' */
+div[data-testid="stButton"] button:has(span:contains("edit")) {
     border-color: #FFC107 !important;
+    color: #FFC107 !important;
+    background-color: rgba(255, 193, 7, 0.1) !important;
+    border-radius: 8px;
 }
-/* Aseguramos que el icono interno herede el color */
-div[data-testid="stButton"] button:has(span.material-symbols-rounded:contains("edit")) span {
-    color: inherit !important;
+div[data-testid="stButton"] button:has(span:contains("edit")):hover {
+    background-color: #FFC107 !important;
+    color: #000000 !important; /* Texto negro para contraste */
+    border-color: #FFC107 !important;
+    transform: scale(1.02);
 }
 
 /* --- BOTÓN BORRAR (Rojo) --- */
-/* Detectamos el icono "delete" de Material Symbols */
-div[data-testid="stButton"] button:has(span.material-symbols-rounded:contains("delete")) {
-    background-color: rgba(255, 75, 75, 0.1) !important;
-    border: 1px solid #FF4B4B !important;
-    color: #FF4B4B !important;
-}
-div[data-testid="stButton"] button:has(span.material-symbols-rounded:contains("delete")):hover {
-    background-color: #FF4B4B !important;
-    color: #FFF !important;
-    transform: scale(1.05);
+/* Busca botones que contengan el icono material 'delete' */
+div[data-testid="stButton"] button:has(span:contains("delete")) {
     border-color: #FF4B4B !important;
+    color: #FF4B4B !important;
+    background-color: rgba(255, 75, 75, 0.1) !important;
+    border-radius: 8px;
 }
-div[data-testid="stButton"] button:has(span.material-symbols-rounded:contains("delete")) span {
-    color: inherit !important;
-}
-
-/* 4. MODO OSCURO (Ajuste amarillo) */
-@media (prefers-color-scheme: dark) {
-    div[data-testid="stButton"] button:has(span.material-symbols-rounded:contains("edit")) {
-        color: #FFD54F !important;
-        border-color: #FFD54F !important;
-    }
+div[data-testid="stButton"] button:has(span:contains("delete")):hover {
+    background-color: #FF4B4B !important;
+    color: #FFFFFF !important; /* Texto blanco */
+    border-color: #FF4B4B !important;
+    transform: scale(1.02);
 }
 
-/* 5. IGUALAR ALTURA TARJETAS DASHBOARD */
+/* 4. IGUALAR ALTURA TARJETAS DASHBOARD */
 div[data-testid="stVerticalBlockBorderWrapper"]:has(div[data-testid="stMetric"]) {
     min-height: 130px; 
     display: flex; 
@@ -88,9 +71,14 @@ div[data-testid="stVerticalBlockBorderWrapper"]:has(div[data-testid="stMetric"])
 </style>
 """
 
+# Funciones auxiliares para títulos con iconos
 def render_header(icon_name, text):
-    """Renderiza un título h1 con un icono de Bootstrap alineado"""
+    """Título Principal H1"""
     st.markdown(f'{BOOTSTRAP_ICONS_LINK}<h1><i class="bi bi-{icon_name}"></i> {text}</h1>', unsafe_allow_html=True)
+
+def render_subheader(icon_name, text):
+    """Subtítulo H3"""
+    st.markdown(f'{BOOTSTRAP_ICONS_LINK}<h3><i class="bi bi-{icon_name}"></i> {text}</h3>', unsafe_allow_html=True)
 
 
 # --- 1. RESUMEN GLOBAL (Landing Page) ---
@@ -132,7 +120,7 @@ def render_main_dashboard(df_all, user_profile):
     st.divider()
 
     # --- GRÁFICO EVOLUCIÓN ---
-    st.subheader("📈 Evolución de tu Patrimonio")
+    render_subheader("graph-up", "Evolución de tu Patrimonio")
     
     if not df_all.empty or saldo_inicial > 0:
         df_chart = df_all.copy().sort_values('date') if not df_all.empty else pd.DataFrame(columns=['date', 'quantity', 'type'])
@@ -202,7 +190,8 @@ def render_dashboard(df_all, current_cats, user_id):
 
     # --- A. NUEVA ENTRADA ---
     if selected == "Nueva":
-        st.subheader("💸 Añadir Transacción")
+        render_subheader("plus-circle", "Añadir Transacción")
+        
         with st.form("nuevo_movimiento_form", clear_on_submit=True):
             c1, c2, c3 = st.columns(3)
             qty = c1.number_input("Cantidad (€)", min_value=0.0, step=0.01)
@@ -238,7 +227,6 @@ def render_dashboard(df_all, current_cats, user_id):
                 with col_btn:
                     cb_e, cb_d = st.columns(2)
                     with cb_e:
-                        # USAMOS SHORTCODES :material/...: PARA ICONOS LIMPIOS
                         if st.button(":material/edit:", key=f"e_dash_{i['id']}", use_container_width=True): 
                             editar_movimiento_dialog(i, current_cats)
                     with cb_d:
@@ -248,7 +236,8 @@ def render_dashboard(df_all, current_cats, user_id):
 
     # --- B. HISTORIAL ---
     elif selected == "Historial":
-        st.subheader("🗄️ Historial Completo")
+        render_subheader("clock-history", "Historial Completo")
+        
         h1, h2 = st.columns(2)
         f_i = h1.date_input("Desde", datetime.now()-timedelta(days=30), key="hi")
         f_f = h2.date_input("Hasta", datetime.now(), key="hf")
@@ -293,7 +282,8 @@ def render_dashboard(df_all, current_cats, user_id):
 
     # --- C. PREVISIÓN ---
     elif selected == "Previsión":
-        st.subheader("🔮 Previsión y Comparativa")
+        render_subheader("graph-up-arrow", "Previsión y Comparativa")
+        
         tp = sum(c['budget'] for c in cat_g)
         mi = df_all[df_all['type']=='Ingreso']['quantity'].sum() / len(df_all['date'].dt.to_period('M').unique()) if not df_all.empty else 0
         ahorro_potencial = mi - tp
@@ -326,7 +316,8 @@ def render_dashboard(df_all, current_cats, user_id):
 
     # --- D. MENSUAL ---
     elif selected == "Mensual":
-        st.subheader("📊 Análisis Mensual")
+        render_subheader("calendar-month", "Análisis Mensual")
+        
         c_fil1, c_fil2 = st.columns(2)
         sm = c_fil1.selectbox("Mes", ml, index=datetime.now().month-1)
         sa = c_fil2.selectbox("Año", range(2024, 2031), index=datetime.now().year-2024, key="año_mensual")
@@ -387,7 +378,8 @@ def render_dashboard(df_all, current_cats, user_id):
 
     # --- E. ANUAL ---
     elif selected == "Anual":
-        st.subheader("📅 Análisis Anual")
+        render_subheader("calendar3", "Análisis Anual")
+        
         san = st.selectbox("Seleccionar Año", range(2024, 2031), index=datetime.now().year-2024, key="año_anual")
         if not df_all.empty:
             df_an = df_all[df_all['date'].dt.year == san]
@@ -454,7 +446,6 @@ def render_categories(current_cats):
             for c in [cat for cat in current_cats if cat.get('type') == t]:
                 with st.container(border=True):
                     k1, k2 = st.columns([4, 1])
-                    # Aquí mantenemos los Emojis de las categorías como pediste
                     k1.write(f"**{c.get('emoji', '📁')} {c['name']}**")
                     if t == "Gasto": 
                         if c.get('budget_type') == 'percentage':
