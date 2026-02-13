@@ -4,12 +4,14 @@ import math
 import time
 import plotly.graph_objects as go
 import calendar
+from streamlit_option_menu import option_menu # <--- ESTO YA ESTÁ OK
 from datetime import datetime, timedelta
 # Importamos las funciones de base de datos y componentes
 from database import (save_input, delete_input, get_categories, delete_category, 
                       upsert_profile, save_category, update_input, upload_avatar, 
                       change_password, get_historical_income)
 from components import editar_movimiento_dialog, editar_categoria_dialog, crear_categoria_dialog
+
 
 # --- 1. NUEVA PANTALLA: RESUMEN GLOBAL (Landing Page) ---
 def render_main_dashboard(df_all, user_profile):
@@ -114,7 +116,7 @@ def render_main_dashboard(df_all, user_profile):
     else:
         st.info("Configura tu saldo inicial en el Perfil o añade movimientos para ver tu evolución.")
 
-# --- 2. GESTIÓN DE MOVIMIENTOS ---
+# --- 2. GESTIÓN DE MOVIMIENTOS (MODIFICADO CON OPTION MENU) ---
 def render_dashboard(df_all, current_cats, user_id):
     # --- CSS MÁGICO PARA TARJETAS MÓVILES ---
     st.markdown("""
@@ -140,12 +142,28 @@ def render_dashboard(df_all, current_cats, user_id):
         </style>
     """, unsafe_allow_html=True)
 
-    t1, t2, t3, t4, t5 = st.tabs(["💸 Nueva entrada", "🗄️ Historial", "🔮 Previsión", "📊 Mensual", "📅 Anual"])
+    # --- NUEVO MENÚ HORIZONTAL ---
+    selected = option_menu(
+        menu_title=None,
+        options=["Nueva", "Historial", "Previsión", "Mensual", "Anual"],
+        icons=["plus-circle", "clock-history", "graph-up-arrow", "calendar-month", "calendar3"],
+        orientation="horizontal",
+        default_index=0,
+        styles={
+            "container": {"padding": "0!important", "background-color": "transparent"},
+            "icon": {"color": "orange", "font-size": "16px"}, 
+            "nav-link": {"font-size": "14px", "text-align": "center", "margin": "0px", "--hover-color": "#eee"},
+            "nav-link-selected": {"background-color": "#636EFA"},
+        }
+    )
+
+    # Variables comunes
     cat_g = [c for c in current_cats if c.get('type') == 'Gasto']
     ml = ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"]
 
-    with t1:
-        st.subheader("Nuevo Movimiento")
+    # --- OPCIÓN 1: NUEVA ENTRADA ---
+    if selected == "Nueva":
+        st.subheader("💸 Nuevo Movimiento")
         with st.form("nuevo_movimiento_form", clear_on_submit=True):
             c1, c2, c3 = st.columns(3)
             qty = c1.number_input("Cantidad (€)", min_value=0.0, step=0.01)
@@ -194,8 +212,9 @@ def render_dashboard(df_all, current_cats, user_id):
                             delete_input(i['id'])
                             st.rerun()
 
-    with t2:
-        st.subheader("Historial de Movimientos")
+    # --- OPCIÓN 2: HISTORIAL ---
+    elif selected == "Historial":
+        st.subheader("🗄️ Historial de Movimientos")
         h1, h2 = st.columns(2)
         f_i = h1.date_input("Desde", datetime.now()-timedelta(days=30), key="hi")
         f_f = h2.date_input("Hasta", datetime.now(), key="hf")
@@ -239,7 +258,8 @@ def render_dashboard(df_all, current_cats, user_id):
                                     delete_input(i['id'])
                                     st.rerun()
 
-    with t3:
+    # --- OPCIÓN 3: PREVISIÓN ---
+    elif selected == "Previsión":
         st.subheader("🔮 Previsión y Comparativa")
         
         # --- CÁLCULOS PREVIOS ---
@@ -296,8 +316,9 @@ def render_dashboard(df_all, current_cats, user_id):
         else:
             st.info("Añade movimientos para ver la comparativa detallada.")
 
-    with t4:
-        st.subheader("Análisis Mensual")
+    # --- OPCIÓN 4: MENSUAL ---
+    elif selected == "Mensual":
+        st.subheader("📊 Análisis Mensual")
         c_fil1, c_fil2 = st.columns(2)
         
         sm = c_fil1.selectbox("Mes", ml, index=datetime.now().month-1)
@@ -376,8 +397,9 @@ def render_dashboard(df_all, current_cats, user_id):
                     """
                     st.markdown(html_bar, unsafe_allow_html=True)
 
-    with t5:
-        st.subheader("Análisis Anual")
+    # --- OPCIÓN 5: ANUAL ---
+    elif selected == "Anual":
+        st.subheader("📅 Análisis Anual")
         san = st.selectbox("Seleccionar Año", range(2024, 2031), index=datetime.now().year-2024, key="año_anual")
         if not df_all.empty:
             df_an = df_all[df_all['date'].dt.year == san]
@@ -584,78 +606,6 @@ def render_profile(user_id, p_data):
                         st.success(msg)
                         time.sleep(1.5)
                         st.rerun()
-
-    # --- B. DATOS ECONÓMICOS ---
-    with st.container(border=True):
-        st.subheader("💰 Configuración Financiera")
-        st.info("Cualquier cambio aquí se guardará en tu historial.")
-        
-        with st.form("finance_form"):
-            st.markdown("##### 🏦 Patrimonio Base")
-            n_balance = st.number_input("Saldo Inicial en cuentas (€)", 
-                                        value=float(p_data.get('initial_balance', 0.0) or 0.0), 
-                                        help="Dinero total disponible antes de empezar a usar la app.")
-            
-            st.divider()
-            
-            st.markdown("##### 💼 Nómina y Pagas")
-            c_nom1, c_nom2 = st.columns(2)
-            
-            n_salary = c_nom1.number_input("Nómina Base Mensual (€)", 
-                                       value=float(p_data.get('base_salary', 0.0) or 0.0),
-                                       help="Lo que ingresas limpio al mes.")
-                                       
-            n_pagas = c_nom2.slider("Número de pagas al año", 12, 16, int(p_data.get('payments_per_year', 12) or 12))
-
-            st.markdown("##### ➕ Ingresos Adicionales Recurrentes")
-            c_ext1, c_ext2 = st.columns(2)
-            
-            n_other = c_ext1.number_input("Cantidad (€)", 
-                                       value=float(p_data.get('other_fixed_income', 0.0) or 0.0),
-                                       help="Alquileres, bonos fijos, ayudas, etc.")
-            
-            freq_options = {1: "Cada Mes (Mensual)", 2: "Cada 2 Meses (Bimestral)", 3: "Cada 3 Meses (Trimestral)", 
-                            6: "Cada 6 Meses (Semestral)", 12: "Cada Año (Anual)"}
-            
-            current_freq_val = int(p_data.get('other_income_frequency', 1) or 1)
-            keys_list = list(freq_options.keys())
-            try:
-                idx_freq = keys_list.index(current_freq_val)
-            except ValueError:
-                idx_freq = 0
-                
-            sel_freq_txt = c_ext2.selectbox("Frecuencia de cobro", list(freq_options.values()), index=idx_freq)
-            n_freq = [k for k, v in freq_options.items() if v == sel_freq_txt][0]
-
-            mensual_extra_real = n_other / n_freq if n_freq > 0 else 0
-            total_mensual_estimado = n_salary + mensual_extra_real
-            
-            st.caption(f"📊 **Resumen:** Cobras **{n_salary:,.2f}€** de nómina + **{n_other:,.2f}€** ({sel_freq_txt}).") 
-            st.caption(f"💰 Esto equivale a un ingreso medio mensual de aprox: **{total_mensual_estimado:,.2f}€**")
-            
-            if st.form_submit_button("💾 Guardar Nueva Configuración Financiera"):
-                # Calculamos el nuevo ingreso total antes de guardar
-                total_nuevo = n_salary + (n_other / n_freq if n_freq > 0 else 0)
-                
-                new_finance = {
-                    "id": user_id,
-                    "initial_balance": n_balance,
-                    "base_salary": n_salary,
-                    "other_fixed_income": n_other, 
-                    "other_income_frequency": n_freq,
-                    "payments_per_year": n_pagas
-                }
-                
-                success = upsert_profile(new_finance)
-                if success:
-                    # --- LA MAGIA OCURRE AQUÍ ---
-                    from database import recalculate_category_budgets # Import local para evitar ciclos
-                    recalculate_category_budgets(user_id, total_nuevo)
-                    
-                    st.session_state.user.update(new_finance)
-                    st.success("✅ Datos y presupuestos actualizados")
-                    time.sleep(1)
-                    st.rerun()
 
     # --- C. SEGURIDAD ---
     with st.expander("🔐 Seguridad y Contraseña"):
