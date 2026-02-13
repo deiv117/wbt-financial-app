@@ -479,6 +479,7 @@ def render_profile(user_id, p_data):
                     </div>
                 """, unsafe_allow_html=True)
             
+            # El uploader va fuera del form para permitir previsualización si quisiéramos (aunque aquí procesamos al guardar)
             uploaded_file = st.file_uploader("Cambiar foto (Máx 5MB)", type=['png', 'jpg', 'jpeg'])
         
         with c_form:
@@ -486,6 +487,13 @@ def render_profile(user_id, p_data):
                 n_name = st.text_input("Nombre", value=p_data.get('name',''))
                 n_last = st.text_input("Apellido", value=p_data.get('lastname',''))
                 n_color = st.color_picker("Color de Perfil", value=p_data.get('profile_color','#636EFA'))
+                
+                st.markdown("---")
+                # --- AQUÍ RECUPERAMOS EL INTERRUPTOR QUE FALTABA ---
+                st.markdown("##### 🌍 Visibilidad")
+                n_social = st.toggle("Modo Social (Visible para grupos)", 
+                                     value=p_data.get('social_active', False),
+                                     help="Si activas esto, otros usuarios podrán encontrarte por tu email para añadirte a gastos compartidos.")
                 
                 submitted_perfil = st.form_submit_button("Guardar Datos Personales")
                 
@@ -504,22 +512,22 @@ def render_profile(user_id, p_data):
                         "lastname": n_last, 
                         "avatar_url": final_avatar_url, 
                         "profile_color": n_color,
+                        "social_active": n_social, # <--- IMPORTANTE: Guardamos el valor del toggle
                         # Mantener datos financieros
                         "initial_balance": p_data.get('initial_balance', 0),
                         "base_salary": p_data.get('base_salary', 0),
                         "other_fixed_income": p_data.get('other_fixed_income', 0),
+                        "other_income_frequency": p_data.get('other_income_frequency', 1),
                         "payments_per_year": p_data.get('payments_per_year', 12)
                     }
                     
                     success = upsert_profile(new_data)
                     
                     if success:
-                        # 3. ACTUALIZACIÓN INMEDIATA DEL ESTADO (TRUCO CLAVE)
-                        # Actualizamos la sesión de Streamlit manualmente YA,
-                        # así el Sidebar y la foto se ven bien antes de recargar.
+                        # 3. ACTUALIZACIÓN INMEDIATA DEL ESTADO
                         st.session_state.user.update(new_data)
                         st.toast("✅ Perfil actualizado correctamente")
-                        time.sleep(1) # Pequeña pausa para ver el mensaje
+                        time.sleep(1) 
                         st.rerun()
 
     # --- B. DATOS ECONÓMICOS ---
