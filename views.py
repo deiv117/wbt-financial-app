@@ -299,10 +299,14 @@ def render_dashboard(df_all, current_cats, user_id):
     with t4:
         st.subheader("Análisis Mensual")
         c_fil1, c_fil2 = st.columns(2)
+        
         sm = c_fil1.selectbox("Mes", ml, index=datetime.now().month-1)
         sa = c_fil2.selectbox("Año", range(2024, 2031), index=datetime.now().year-2024, key="año_mensual")
         
         # --- LÓGICA DE HISTORIAL ---
+        import calendar
+        from database import get_historical_income
+        
         month_idx = ml.index(sm) + 1
         _, last_day = calendar.monthrange(sa, month_idx)
         fecha_analisis = f"{sa}-{month_idx:02d}-{last_day}"
@@ -313,28 +317,30 @@ def render_dashboard(df_all, current_cats, user_id):
         h_freq = int(h_data.get('other_income_frequency', 1) or 1) 
         
         h_extras_mensualizados = h_extras / h_freq if h_freq > 0 else 0
-        h_total_fijo = h_sueldo + h_extras_mensualizados
-
-        with st.expander(f"ℹ️ Contexto financiero en {sm} {sa}", expanded=False):
-            st.write(f"En esa fecha, tu configuración era:")
-            st.markdown(f"- Nómina Base: **{h_sueldo:,.2f}€**")
-            st.markdown(f"- Otros Ingresos: **{h_extras:,.2f}€** (Cada {h_freq} meses)")
-            st.markdown(f"- **Total Fijo Mensual (Prorrateado): {h_total_fijo:,.2f}€**")
+        h_total_previsto = h_sueldo + h_extras_mensualizados
 
         if not df_all.empty:
             df_m = df_all[(df_all['date'].dt.month == month_idx) & (df_all['date'].dt.year == sa)]
-            im_variable = df_m[df_m['type'] == 'Ingreso']['quantity'].sum()
-            gm = df_m[df_m['type'] == 'Gasto']['quantity'].sum()
-            balance = im_variable - gm
             
+            im_real = df_m[df_m['type'] == 'Ingreso']['quantity'].sum()
+            gm_real = df_m[df_m['type'] == 'Gasto']['quantity'].sum()
+            ahorro_real = im_real - gm_real
+            
+            # Métricas principales
             c_i, c_g, c_b = st.columns(3)
-            c_i.metric("Entradas Registradas", f"{im_variable:.2f}€", help="Ingresos añadidos manualmente")
-            c_g.metric("Gastos Totales", f"{gm:.2f}€")
-            c_b.metric("Balance (Flujo)", f"{balance:.2f}€", delta=f"{balance:.2f}€", delta_color="normal" if balance >= 0 else "inverse")
+            c_i.metric("Ingresos Reales", f"{im_real:,.2f}€")
+            c_g.metric("Gastos Reales", f"{gm_real:,.2f}€")
+            c_b.metric("Ahorro Neto", f"{ahorro_real:,.2f}€", delta=f"{ahorro_real:,.2f}€")
             
-            ahorro_teorico = (h_total_fijo + im_variable) - gm
-            if h_total_fijo > 0:
-                st.caption(f"💰 Si sumamos tus ingresos fijos de entonces ({h_total_fijo:,.2f}€), tu capacidad de ahorro real fue de **{ahorro_teorico:,.2f}€**")
+            # --- MENSAJE PERSONALIZADO Y MOTIVADOR ---
+            st.write("---")
+            if im_real > h_total_previsto:
+                exceso_ingreso = im_real - h_total_previsto
+                st.success(f"🌟 **¡Enhorabuena!** Este mes has ingresado **{exceso_ingreso:,.2f}€ más** de lo previsto. Tu ahorro neto real ha sido de **{ahorro_real:,.2f}€**. ¡Sigue así!")
+            elif ahorro_real > 0:
+                st.info(f"✅ Buen trabajo. Has logrado terminar el mes con un ahorro de **{ahorro_real:,.2f}€**.")
+            else:
+                st.warning(f"⚠️ Este mes los gastos han superado a los ingresos por **{abs(ahorro_real):,.2f}€**. ¡Toca revisar el presupuesto!")
             
             st.divider()
             st.subheader("Progreso por Categoría (Semáforo)")
