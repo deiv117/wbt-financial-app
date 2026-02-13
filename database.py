@@ -116,7 +116,7 @@ def upload_avatar(file, user_id):
         return None
 
 def upsert_profile(user_data):
-    """Actualiza perfil y guarda historial de sueldo si cambia"""
+    """Actualiza perfil y guarda historial"""
     try:
         # 1. Actualizar tabla PROFILES
         update_data = {
@@ -124,10 +124,13 @@ def upsert_profile(user_data):
             "lastname": user_data.get('lastname', ''),
             "avatar_url": user_data.get('avatar_url', ''),
             "profile_color": user_data.get('profile_color', '#636EFA'),
+            
+            "social_active": user_data.get('social_active', False), # <--- ¡AÑADIR ESTA LÍNEA!
+            
             "initial_balance": user_data.get('initial_balance', 0),
             "base_salary": user_data.get('base_salary', 0),
             "other_fixed_income": user_data.get('other_fixed_income', 0),
-            "other_income_frequency": user_data.get('other_income_frequency', 1), # <--- NUEVO
+            "other_income_frequency": user_data.get('other_income_frequency', 1),
             "payments_per_year": user_data.get('payments_per_year', 12),
             "updated_at": datetime.now().isoformat()
         }
