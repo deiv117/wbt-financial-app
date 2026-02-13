@@ -28,7 +28,39 @@ h1 .bi, h3 .bi, h5 .bi {
     color: #636EFA;
 }
 
-/* 3. IGUALAR ALTURA TARJETAS DASHBOARD */
+/* 3. COLORES PARA BOTONES DE ACCIÓN (Material Icons) */
+
+/* --- BOTÓN EDITAR (Amarillo) --- */
+/* Detecta el icono 'edit' dentro del botón */
+div[data-testid="stButton"] button:has(span:contains("edit")) {
+    border-color: #FFC107 !important;
+    color: #FFC107 !important;
+    background-color: rgba(255, 193, 7, 0.1) !important;
+    border-radius: 8px;
+}
+div[data-testid="stButton"] button:has(span:contains("edit")):hover {
+    background-color: #FFC107 !important;
+    color: #000000 !important; /* Texto negro para contraste */
+    border-color: #FFC107 !important;
+    transform: scale(1.02);
+}
+
+/* --- BOTÓN BORRAR (Rojo) --- */
+/* Detecta el icono 'delete' dentro del botón */
+div[data-testid="stButton"] button:has(span:contains("delete")) {
+    border-color: #FF4B4B !important;
+    color: #FF4B4B !important;
+    background-color: rgba(255, 75, 75, 0.1) !important;
+    border-radius: 8px;
+}
+div[data-testid="stButton"] button:has(span:contains("delete")):hover {
+    background-color: #FF4B4B !important;
+    color: #FFFFFF !important; /* Texto blanco */
+    border-color: #FF4B4B !important;
+    transform: scale(1.02);
+}
+
+/* 4. IGUALAR ALTURA TARJETAS DASHBOARD */
 div[data-testid="stVerticalBlockBorderWrapper"]:has(div[data-testid="stMetric"]) {
     min-height: 130px; 
     display: flex; 
@@ -38,7 +70,7 @@ div[data-testid="stVerticalBlockBorderWrapper"]:has(div[data-testid="stMetric"])
 </style>
 """
 
-# Funciones auxiliares para títulos con iconos
+# Funciones auxiliares para títulos con iconos HTML (Bootstrap)
 def render_header(icon_name, text):
     """Título Principal H1"""
     st.markdown(f'{BOOTSTRAP_ICONS_LINK}<h1><i class="bi bi-{icon_name}"></i> {text}</h1>', unsafe_allow_html=True)
@@ -161,6 +193,7 @@ def render_dashboard(df_all, current_cats, user_id):
 
     # --- A. NUEVA ENTRADA ---
     if selected == "Nueva":
+        # Usamos el icono que corresponde al menú (plus-circle)
         render_subheader("plus-circle", "Añadir Transacción")
         
         with st.form("nuevo_movimiento_form", clear_on_submit=True):
@@ -381,7 +414,7 @@ def render_dashboard(df_all, current_cats, user_id):
             st.subheader("Progreso Anual por Categoría")
             st.caption("_(Presupuesto mensual configurado multiplicado por 12)_")
             gcm_anual = df_an[df_an['type'] == 'Gasto'].groupby('category_id')['quantity'].sum().reset_index()
-            for _, r in pd.merge(pd.DataFrame(cat_g), gcm, left_on='id', right_on='category_id', how='left').fillna(0).iterrows():
+            for _, r in pd.merge(pd.DataFrame(cat_g), gcm_anual, left_on='id', right_on='category_id', how='left').fillna(0).iterrows():
                 gastado = r['quantity']
                 presupuesto_anual = r['budget'] * 12
                 if presupuesto_anual > 0:
@@ -472,7 +505,8 @@ def render_profile(user_id, p_data):
                 n_color = st.color_picker("Color de Perfil", value=p_color)
                 n_social = st.toggle("Modo Social", value=p_data.get('social_active', False))
                 
-                if st.form_submit_button("Guardar Datos Personales"):
+                # --- BOTÓN GUARDAR (Updated to Material Icon) ---
+                if st.form_submit_button(":material/save: Guardar Datos Personales"):
                     final_avatar = avatar_url
                     if uploaded_file:
                         new_url = upload_avatar(uploaded_file, user_id)
@@ -515,7 +549,8 @@ def render_profile(user_id, p_data):
             total_est = n_salary + mensual_extra
             st.caption(f"💰 Ingreso medio mensual estimado: **{total_est:,.2f}€**")
 
-            if st.form_submit_button("💾 Guardar Nueva Configuración Financiera"):
+            # --- BOTÓN GUARDAR FINANZAS (Updated to Material Icon) ---
+            if st.form_submit_button(":material/save: Guardar Nueva Configuración Financiera"):
                 new_data = {
                     "id": user_id, "initial_balance": n_balance, "base_salary": n_salary,
                     "other_fixed_income": n_other, "other_income_frequency": n_freq, "payments_per_year": n_pagas
@@ -534,7 +569,8 @@ def render_profile(user_id, p_data):
                     st.rerun()
 
     # C. Seguridad
-    with st.expander("🔐 Seguridad y Contraseña"):
+    # --- EXPANDER SEGURIDAD (Updated to Material Icon) ---
+    with st.expander(":material/lock: Seguridad y Contraseña"):
         render_subheader("shield-lock", "Seguridad")
         with st.form("pass_form"):
             p1 = st.text_input("Nueva Contraseña", type="password")
