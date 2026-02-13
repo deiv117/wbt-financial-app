@@ -1,15 +1,14 @@
 import sqlite3
-import pandas as pd # Movemos pandas aquí arriba para evitar errores ocultos
+import pandas as pd
 from datetime import datetime
 
 DB_NAME = 'finance.db'
 
 def init_db():
-    """Inicializa la base de datos y crea las tablas si no existen"""
     conn = sqlite3.connect(DB_NAME)
     c = conn.cursor()
     
-    # Tabla Usuarios (Con columna email)
+    # Tabla Usuarios
     c.execute('''
         CREATE TABLE IF NOT EXISTS users (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -56,17 +55,15 @@ def init_db():
 # --- FUNCIONES DE USUARIO ---
 
 def create_user(username, password, email):
-    """Crea un nuevo usuario y sus categorías por defecto"""
     conn = sqlite3.connect(DB_NAME)
     c = conn.cursor()
     try:
-        # Verificar si el email ya existe
+        # Verificar email
         c.execute('SELECT id FROM users WHERE email = ?', (email,))
         if c.fetchone():
             return False 
 
-        # Crear Usuario (Contraseña en texto plano por ahora para simplificar)
-        # Nota: En un entorno real, usaríamos hash para la contraseña
+        # Insertar usuario
         c.execute('''
             INSERT INTO users (name, email, password, profile_color) 
             VALUES (?, ?, ?, ?)
@@ -74,7 +71,7 @@ def create_user(username, password, email):
         
         user_id = c.lastrowid
         
-        # Categorías por defecto
+        # Insertar categorías por defecto
         default_cats = [
             ('Nómina', 'Ingreso', '💰', 0),
             ('Ahorro', 'Ingreso', '🐷', 0),
@@ -95,27 +92,23 @@ def create_user(username, password, email):
         conn.commit()
         return True
     except Exception as e:
-        print(f"Error creando usuario: {e}")
+        print(f"Error: {e}")
         return False
     finally:
         conn.close()
 
 def get_user(email_or_name):
-    """Busca un usuario por email o nombre"""
     conn = sqlite3.connect(DB_NAME)
     conn.row_factory = sqlite3.Row
     c = conn.cursor()
     c.execute('SELECT * FROM users WHERE email = ? OR name = ?', (email_or_name, email_or_name))
-    user = c.fetchone()
+    row = c.fetchone()
     conn.close()
-    
-    # Convertimos el objeto Row a un diccionario normal de Python para evitar problemas
-    if user:
-        return dict(user)
+    if row:
+        return dict(row)
     return None
 
 def upsert_profile(user_data):
-    """Actualiza el perfil del usuario"""
     conn = sqlite3.connect(DB_NAME)
     c = conn.cursor()
     c.execute('''
@@ -134,4 +127,90 @@ def save_input(data):
     c.execute('''
         INSERT INTO movements (user_id, quantity, type, category_id, date, notes)
         VALUES (?, ?, ?, ?, ?, ?)
-    ''', (data['user_id
+    ''', (data['user_id'], data['quantity'], data['type'], data['category_id'], data['date'], data['notes']))
+    conn.commit()
+    conn.close()
+
+def update_input(data):
+    conn = sqlite3.connect(DB_NAME)
+    c = conn.cursor()
+    c.execute('''
+        UPDATE movements 
+        SET quantity=?, type=?, category_id=?, date=?, notes=?
+        WHERE id=?
+    ''', (data['quantity'], data['type'], data['category_id'], data['date'], data['notes'], data['id']))
+    conn.commit()
+    conn.close()
+
+def delete_input(mov_id):
+    conn = sqlite3.connect(DB_NAME)
+    c = conn.cursor()
+    c.execute('DELETE FROM movements WHERE id = ?', (mov_id,))
+    conn.commit()
+    conn.close()
+
+def get_transactions(user_id):
+    conn = sqlite3.connect(DB_NAME)
+    query = '''
+        SELECT m.id, m.date, m.quantity, m.type, m.notes, m.category_id,
+               c.name as cat_name, c.emoji as cat_emoji, c.budget
+        FROM movements m
+        LEFT JOIN categories c ON m.category_id = c.id
+        WHERE m.user_id = ?
+    '''
+    try:
+        df = pd.read_sql_query(query, conn, params=(user_id,))
+        if not df.empty:
+            df['date'] = pd.to_datetime(df['date'])
+            # Simplificación de la columna visual para evitar errores de sintaxis
+            def format_cat(row):
+                emoji = row['cat_emoji'] if row['cat_emoji'] else '📁'
+                name = row['cat_name'] if row['cat_name'] else 'General'
+                return f"{emoji} {name}"
+            
+            df['cat_display'] = df.apply(format_cat, axis=1)
+    except Exception:
+        df = pd.DataFrame()
+    finally:
+        conn.close()
+    return df
+
+# --- FUNCIONES DE CATEGORÍAS ---
+
+def save_category(data):
+    conn = sqlite3.connect(DB_NAME)
+    c = conn.cursor()
+    c.execute('''
+        INSERT INTO categories (user_id, name, type, emoji, budget)
+        VALUES (?, ?, ?, ?, ?)
+    ''', (data['user_id'], data['name'], data['type'], data.get('emoji','📁'), data.get('budget',0)))
+    conn.commit()
+    conn.close()
+
+def get_categories(user_id):
+    conn = sqlite3.connect(DB_NAME)
+    conn.row_factory = sqlite3.Row
+    c = conn.cursor()
+    c.execute('SELECT * FROM categories WHERE user_id = ?', (user_id,))
+    rows = c.fetchall()
+    conn.close()
+    
+    cats = [dict(row) for row in rows]
+    
+    if not cats:
+        # Crear categoría por defecto si no hay ninguna
+        conn = sqlite3.connect(DB_NAME)
+        c = conn.cursor()
+        c.execute("INSERT INTO categories (user_id, name, type, emoji, budget) VALUES (?, 'General', 'Gasto', '📁', 0)", (user_id,))
+        conn.commit()
+        conn.close()
+        return get_categories(user_id)
+        
+    return cats
+
+def delete_category(cat_id):
+    conn = sqlite3.connect(DB_NAME)
+    c = conn.cursor()
+    c.execute('DELETE FROM categories WHERE id = ?', (cat_id,))
+    conn.commit()
+    conn.close()
