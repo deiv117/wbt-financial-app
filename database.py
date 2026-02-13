@@ -1,224 +1,216 @@
-import sqlite3
+import streamlit as st
+from supabase import create_client, Client
 import pandas as pd
 from datetime import datetime
 
-DB_NAME = 'finance.db'
+# Inicializar cliente Supabase
+@st.cache_resource
+def init_connection():
+    url = st.secrets["supabase"]["url"]
+    key = st.secrets["supabase"]["key"]
+    return create_client(url, key)
+
+supabase: Client = init_connection()
 
 def init_db():
-    conn = sqlite3.connect(DB_NAME)
-    c = conn.cursor()
-    
-    # Tabla Usuarios
-    c.execute('''
-        CREATE TABLE IF NOT EXISTS users (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            email TEXT UNIQUE,
-            name TEXT,
-            lastname TEXT,
-            password TEXT,
-            avatar_url TEXT,
-            profile_color TEXT
-        )
-    ''')
-    
-    # Tabla Categorías
-    c.execute('''
-        CREATE TABLE IF NOT EXISTS categories (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            user_id INTEGER,
-            name TEXT,
-            type TEXT,
-            emoji TEXT,
-            budget REAL,
-            FOREIGN KEY(user_id) REFERENCES users(id)
-        )
-    ''')
-    
-    # Tabla Movimientos
-    c.execute('''
-        CREATE TABLE IF NOT EXISTS movements (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            user_id INTEGER,
-            quantity REAL,
-            type TEXT,
-            category_id INTEGER,
-            date TEXT,
-            notes TEXT,
-            FOREIGN KEY(user_id) REFERENCES users(id),
-            FOREIGN KEY(category_id) REFERENCES categories(id)
-        )
-    ''')
-    
-    conn.commit()
-    conn.close()
+    # En Supabase las tablas ya están creadas.
+    pass
 
-# --- FUNCIONES DE USUARIO ---
+# --- AUTENTICACIÓN Y USUARIO (Supabase Auth + Profiles) ---
 
-def create_user(username, password, email):
-    conn = sqlite3.connect(DB_NAME)
-    c = conn.cursor()
+def login_user(email, password):
+    """Inicia sesión usando Supabase Auth"""
     try:
-        c.execute('SELECT id FROM users WHERE email = ?', (email,))
-        if c.fetchone():
-            return False 
-
-        c.execute('''
-            INSERT INTO users (name, email, password, profile_color) 
-            VALUES (?, ?, ?, ?)
-        ''', (username, email, password, '#636EFA'))
-        
-        user_id = c.lastrowid
-        
-        default_cats = [
-            ('Nómina', 'Ingreso', '💰', 0),
-            ('Ahorro', 'Ingreso', '🐷', 0),
-            ('Vivienda', 'Gasto', '🏠', 600),
-            ('Supermercado', 'Gasto', '🛒', 300),
-            ('Transporte', 'Gasto', '🚌', 50),
-            ('Ocio', 'Gasto', '🎉', 150),
-            ('Restaurantes', 'Gasto', '🍔', 100),
-            ('Salud', 'Gasto', '💊', 50)
-        ]
-        
-        for nombre, tipo, emoji, presupuesto in default_cats:
-            c.execute('''
-                INSERT INTO categories (user_id, name, type, emoji, budget)
-                VALUES (?, ?, ?, ?, ?)
-            ''', (user_id, nombre, tipo, emoji, presupuesto))
-        
-        conn.commit()
-        return True
+        response = supabase.auth.sign_in_with_password({"email": email, "password": password})
+        return response.user
     except Exception as e:
-        print(f"Error: {e}")
-        return False
-    finally:
-        conn.close()
+        print(f"Error login: {e}")
+        return None
 
-def get_user(email_or_name):
-    conn = sqlite3.connect(DB_NAME)
-    conn.row_factory = sqlite3.Row
-    c = conn.cursor()
-    c.execute('SELECT * FROM users WHERE email = ? OR name = ?', (email_or_name, email_or_name))
-    row = c.fetchone()
-    conn.close()
-    if row:
-        return dict(row)
-    return None
-
-def upsert_profile(user_data):
-    conn = sqlite3.connect(DB_NAME)
-    c = conn.cursor()
-    c.execute('''
-        UPDATE users 
-        SET name = ?, lastname = ?, avatar_url = ?, profile_color = ?
-        WHERE id = ?
-    ''', (user_data['name'], user_data.get('lastname',''), user_data.get('avatar_url',''), user_data.get('profile_color','#636EFA'), user_data['id']))
-    conn.commit()
-    conn.close()
-
-# --- FUNCIONES DE MOVIMIENTOS ---
-
-def save_input(data):
-    conn = sqlite3.connect(DB_NAME)
-    c = conn.cursor()
-    c.execute('''
-        INSERT INTO movements (user_id, quantity, type, category_id, date, notes)
-        VALUES (?, ?, ?, ?, ?, ?)
-    ''', (data['user_id'], data['quantity'], data['type'], data['category_id'], data['date'], data['notes']))
-    conn.commit()
-    conn.close()
-
-def update_input(data):
-    conn = sqlite3.connect(DB_NAME)
-    c = conn.cursor()
-    c.execute('''
-        UPDATE movements 
-        SET quantity=?, type=?, category_id=?, date=?, notes=?
-        WHERE id=?
-    ''', (data['quantity'], data['type'], data['category_id'], data['date'], data['notes'], data['id']))
-    conn.commit()
-    conn.close()
-
-def delete_input(mov_id):
-    conn = sqlite3.connect(DB_NAME)
-    c = conn.cursor()
-    c.execute('DELETE FROM movements WHERE id = ?', (mov_id,))
-    conn.commit()
-    conn.close()
-
-def get_transactions(user_id):
-    conn = sqlite3.connect(DB_NAME)
-    query = '''
-        SELECT m.id, m.date, m.quantity, m.type, m.notes, m.category_id,
-               c.name as cat_name, c.emoji as cat_emoji, c.budget
-        FROM movements m
-        LEFT JOIN categories c ON m.category_id = c.id
-        WHERE m.user_id = ?
-    '''
+def register_user(email, password, name, lastname=""):
+    """Registra usuario en Auth y crea su perfil público y categorías"""
     try:
-        df = pd.read_sql_query(query, conn, params=(user_id,))
-        if not df.empty:
-            df['date'] = pd.to_datetime(df['date'])
-            # Simplificación para evitar errores
-            def format_cat(row):
-                emoji = row['cat_emoji'] if row['cat_emoji'] else '📁'
-                name = row['cat_name'] if row['cat_name'] else 'General'
-                return f"{emoji} {name}"
-            
-            df['cat_display'] = df.apply(format_cat, axis=1)
-    except Exception:
-        df = pd.DataFrame()
-    finally:
-        conn.close()
-    return df
+        # 1. Crear usuario en Supabase Auth
+        auth_response = supabase.auth.sign_up({
+            "email": email, 
+            "password": password,
+            "options": {
+                "data": {"first_name": name} # Metadatos opcionales
+            }
+        })
+        
+        if not auth_response.user:
+            return False, "No se pudo crear el usuario."
 
-# --- FUNCIONES DE CATEGORÍAS ---
+        user_uuid = auth_response.user.id
+
+        # 2. Crear entrada en tabla 'profiles'
+        profile_data = {
+            "id": user_uuid,
+            "name": name,
+            "lastname": lastname,
+            "profile_color": "#636EFA",
+            "social_active": False
+        }
+        supabase.table('profiles').insert(profile_data).execute()
+        
+        # 3. Crear Categorías por defecto en 'user_categories'
+        crear_categorias_default(user_uuid)
+        
+        return True, "Usuario creado correctamente."
+
+    except Exception as e:
+        return False, str(e)
+
+def get_user_profile(user_uuid):
+    """Obtiene los datos de la tabla profiles"""
+    try:
+        res = supabase.table('profiles').select('*').eq('id', user_uuid).execute()
+        if res.data:
+            return res.data[0]
+        return None
+    except Exception as e:
+        print(f"Error recuperando perfil: {e}")
+        return None
+
+def upsert_profile(profile_data):
+    """Actualiza la tabla profiles"""
+    try:
+        # 'updated_at' debería ser automático si tienes un trigger, 
+        # pero lo mandamos por si acaso
+        update_data = {
+            "name": profile_data['name'],
+            "lastname": profile_data.get('lastname', ''),
+            "avatar_url": profile_data.get('avatar_url', ''),
+            "profile_color": profile_data.get('profile_color', '#636EFA'),
+            "updated_at": datetime.now().isoformat()
+        }
+        supabase.table('profiles').update(update_data).eq('id', profile_data['id']).execute()
+    except Exception as e:
+        st.error(f"Error actualizando perfil: {e}")
+
+# --- GESTIÓN DE CATEGORÍAS (user_categories) ---
+
+def crear_categorias_default(user_uuid):
+    default_cats = [
+        {'user_id': user_uuid, 'name': 'Nómina', 'type': 'Ingreso', 'emoji': '💰', 'budget': 0},
+        {'user_id': user_uuid, 'name': 'Ahorro', 'type': 'Ingreso', 'emoji': '🐷', 'budget': 0},
+        {'user_id': user_uuid, 'name': 'Vivienda', 'type': 'Gasto', 'emoji': '🏠', 'budget': 600},
+        {'user_id': user_uuid, 'name': 'Supermercado', 'type': 'Gasto', 'emoji': '🛒', 'budget': 300},
+        {'user_id': user_uuid, 'name': 'Transporte', 'type': 'Gasto', 'emoji': '🚌', 'budget': 50},
+        {'user_id': user_uuid, 'name': 'Ocio', 'type': 'Gasto', 'emoji': '🎉', 'budget': 150},
+        {'user_id': user_uuid, 'name': 'Restaurantes', 'type': 'Gasto', 'emoji': '🍔', 'budget': 100},
+        {'user_id': user_uuid, 'name': 'Salud', 'type': 'Gasto', 'emoji': '💊', 'budget': 50}
+    ]
+    try:
+        supabase.table('user_categories').insert(default_cats).execute()
+    except Exception as e:
+        print(f"Error creando categorías default: {e}")
+
+def get_categories(user_uuid):
+    try:
+        res = supabase.table('user_categories').select('*').eq('user_id', user_uuid).execute()
+        cats = res.data
+        if not cats:
+            crear_categorias_default(user_uuid)
+            return get_categories(user_uuid)
+        return cats
+    except Exception as e:
+        print(f"Error get_categories: {e}")
+        return []
 
 def save_category(data):
-    conn = sqlite3.connect(DB_NAME)
-    c = conn.cursor()
-    c.execute('''
-        INSERT INTO categories (user_id, name, type, emoji, budget)
-        VALUES (?, ?, ?, ?, ?)
-    ''', (data['user_id'], data['name'], data['type'], data.get('emoji','📁'), data.get('budget',0)))
-    conn.commit()
-    conn.close()
+    try:
+        supabase.table('user_categories').insert({
+            "user_id": data['user_id'],
+            "name": data['name'],
+            "type": data['type'],
+            "emoji": data.get('emoji', '📁'),
+            "budget": data.get('budget', 0)
+        }).execute()
+    except Exception as e:
+        st.error(f"Error guardando categoría: {e}")
 
-# ESTA ES LA FUNCIÓN QUE FALTABA
 def update_category(data):
-    conn = sqlite3.connect(DB_NAME)
-    c = conn.cursor()
-    c.execute('''
-        UPDATE categories 
-        SET name=?, emoji=?, budget=?
-        WHERE id=?
-    ''', (data['name'], data.get('emoji', '📁'), data.get('budget', 0), data['id']))
-    conn.commit()
-    conn.close()
-
-def get_categories(user_id):
-    conn = sqlite3.connect(DB_NAME)
-    conn.row_factory = sqlite3.Row
-    c = conn.cursor()
-    c.execute('SELECT * FROM categories WHERE user_id = ?', (user_id,))
-    rows = c.fetchall()
-    conn.close()
-    
-    cats = [dict(row) for row in rows]
-    
-    if not cats:
-        conn = sqlite3.connect(DB_NAME)
-        c = conn.cursor()
-        c.execute("INSERT INTO categories (user_id, name, type, emoji, budget) VALUES (?, 'General', 'Gasto', '📁', 0)", (user_id,))
-        conn.commit()
-        conn.close()
-        return get_categories(user_id)
-        
-    return cats
+    try:
+        supabase.table('user_categories').update({
+            "name": data['name'],
+            "emoji": data.get('emoji', '📁'),
+            "budget": data.get('budget', 0)
+        }).eq('id', data['id']).execute()
+    except Exception as e:
+        st.error(f"Error actualizando categoría: {e}")
 
 def delete_category(cat_id):
-    conn = sqlite3.connect(DB_NAME)
-    c = conn.cursor()
-    c.execute('DELETE FROM categories WHERE id = ?', (cat_id,))
-    conn.commit()
-    conn.close()
+    try:
+        supabase.table('user_categories').delete().eq('id', cat_id).execute()
+    except Exception as e:
+        st.error(f"Error borrando categoría: {e}")
+
+# --- GESTIÓN DE MOVIMIENTOS (user_imputs) ---
+
+def save_input(data):
+    try:
+        # Nota: Corregido 'user_imputs' según tu schema (ojo si es inputs o imputs en tu tabla real)
+        # Asumo 'user_imputs' tal cual me lo has escrito.
+        supabase.table('user_imputs').insert({
+            "user_id": data['user_id'],
+            "quantity": data['quantity'],
+            "type": data['type'],
+            "category_id": data['category_id'],
+            "date": str(data['date']),
+            "notes": data['notes'],
+            "group_id": data.get('group_id', None) # Preparado para el futuro
+        }).execute()
+    except Exception as e:
+        st.error(f"Error guardando movimiento: {e}")
+
+def update_input(data):
+    try:
+        supabase.table('user_imputs').update({
+            "quantity": data['quantity'],
+            "type": data['type'],
+            "category_id": data['category_id'],
+            "date": str(data['date']),
+            "notes": data['notes']
+        }).eq('id', data['id']).execute()
+    except Exception as e:
+        st.error(f"Error actualizando movimiento: {e}")
+
+def delete_input(mov_id):
+    try:
+        supabase.table('user_imputs').delete().eq('id', mov_id).execute()
+    except Exception as e:
+        st.error(f"Error borrando movimiento: {e}")
+
+def get_transactions(user_uuid):
+    try:
+        # Join con user_categories
+        response = supabase.table('user_imputs') \
+            .select('*, user_categories(name, emoji, budget)') \
+            .eq('user_id', user_uuid) \
+            .execute()
+        
+        data = response.data
+        if not data:
+            return pd.DataFrame()
+            
+        flat_data = []
+        for row in data:
+            cat = row.get('user_categories') or {}
+            flat_row = row.copy()
+            del flat_row['user_categories']
+            
+            flat_row['cat_name'] = cat.get('name', 'General')
+            flat_row['cat_emoji'] = cat.get('emoji', '📁')
+            flat_row['budget'] = cat.get('budget', 0)
+            flat_data.append(flat_row)
+            
+        df = pd.DataFrame(flat_data)
+        if not df.empty:
+            df['date'] = pd.to_datetime(df['date'])
+            df['cat_display'] = df.apply(lambda x: f"{x['cat_emoji']} {x['cat_name']}", axis=1)
+        return df
+    except Exception as e:
+        print(f"Error get_transactions: {e}")
+        return pd.DataFrame()
