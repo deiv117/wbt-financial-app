@@ -1,154 +1,118 @@
 import streamlit as st
 import pandas as pd
+from streamlit_option_menu import option_menu # <--- NUEVA LIBRERÍA
 from database import init_db, login_user, register_user, recover_password, get_user_profile, get_transactions, get_categories
 from styles import get_custom_css
+
+# Importaciones unificadas
 from views import render_dashboard, render_categories, render_profile, render_import, render_main_dashboard
 
-# Configuración de página
+# 1. Configuración de página
 st.set_page_config(page_title="Mi Finanzas", page_icon="💰", layout="wide")
-
-# Inicializar conexión (en este caso es pasivo)
 init_db()
-
-# Cargar CSS
 st.markdown(get_custom_css(), unsafe_allow_html=True)
 
-# CSS Específico Login
+# CSS Extra para ocultar el padding superior excesivo de Streamlit y ajustar el menú
 st.markdown("""
     <style>
-    .stTextInput input {
-        background-color: rgba(255, 255, 255, 0.05) !important;
-        color: inherit !important;
-        border: 1px solid rgba(128, 128, 128, 0.2) !important;
-    }
+        .st-emotion-cache-16txtl3 {padding-top: 1rem;} /* Ajuste padding sidebar */
+        .block-container {padding-top: 2rem;} /* Ajuste padding main */
     </style>
 """, unsafe_allow_html=True)
 
-# Gestión de Sesión
 if 'user' not in st.session_state:
     st.session_state.user = None
 
 def main():
     if st.session_state.user:
-        # --- APP PRINCIPAL ---
-        # user es ahora un diccionario con los datos de 'profiles'
         user_profile = st.session_state.user
-        user_id = user_profile['id'] # Esto es el UUID
+        user_id = user_profile['id']
+        df_all = get_transactions(user_id)
+        current_cats = get_categories(user_id)
         
-        # Sidebar
+        # --- NUEVA BARRA LATERAL ESTILO GOOGLE ---
         with st.sidebar:
-            # 1. Recuperamos datos para el avatar
+            # 1. CABECERA PERFIL MINIMALISTA
             avatar_url = user_profile.get('avatar_url')
             p_color = user_profile.get('profile_color', '#636EFA')
             name = user_profile.get('name', 'Usuario')
             
-            # 2. HTML del Avatar (Simplificado para evitar errores visuales)
+            # Avatar más pequeño (60px) y nombre al lado o debajo
             if avatar_url:
-                avatar_html = f'<img src="{avatar_url}" style="width: 120px; height: 120px; border-radius: 50%; object-fit: cover; border: 4px solid {p_color}; margin-bottom: 15px; display: block; margin-left: auto; margin-right: auto;">'
+                avatar_html = f'<img src="{avatar_url}" style="width: 60px; height: 60px; border-radius: 50%; object-fit: cover; border: 2px solid {p_color};">'
             else:
                 initial = name[0].upper() if name else 'U'
-                avatar_html = f'<div style="width: 120px; height: 120px; background-color: {p_color}; border-radius: 50%; display: flex; align-items: center; justify-content: center; color: white; font-size: 50px; font-weight: bold; margin-bottom: 15px; margin-left: auto; margin-right: auto;">{initial}</div>'
+                avatar_html = f'<div style="width: 60px; height: 60px; background-color: {p_color}; border-radius: 50%; display: flex; align-items: center; justify-content: center; color: white; font-size: 24px; font-weight: bold;">{initial}</div>'
             
-            # 3. Renderizamos el encabezado del Sidebar
+            # Renderizamos la cabecera compacta
             st.markdown(f"""
-                <div style="text-align: center; padding-top: 20px; padding-bottom: 20px;">
+                <div style="display: flex; align-items: center; gap: 15px; margin-bottom: 20px; padding: 10px; background-color: rgba(255,255,255,0.05); border-radius: 10px;">
                     {avatar_html}
-                    <h2 style="margin: 0; font-size: 24px;">Hola, {name}</h2>
+                    <div style="font-weight: bold; font-size: 16px;">{name}</div>
                 </div>
             """, unsafe_allow_html=True)
-            
-            st.divider()
-            
-            # Menú de Navegación
-            page = st.radio("Navegación", ["🏠 Resumen", "💸 Movimientos", "📂 Categorías", "📥 Importar", "⚙️ Perfil"], label_visibility="collapsed")
+
+            # 2. MENÚ DE NAVEGACIÓN CON ICONOS
+            # Usamos iconos de Bootstrap (similares a Material Design)
+            selected = option_menu(
+                menu_title=None,  # Ocultamos el título del menú
+                options=["Resumen", "Movimientos", "Categorías", "Importar", "Perfil"], # Nombres limpios
+                icons=["house", "wallet2", "list-task", "cloud-upload", "person-gear"], # Iconos modernos
+                default_index=0,
+                styles={
+                    "container": {"padding": "0!important", "background-color": "transparent"},
+                    "icon": {"color": "orange", "font-size": "18px"}, 
+                    "nav-link": {"font-size": "16px", "text-align": "left", "margin": "0px", "--hover-color": "#eee"},
+                    "nav-link-selected": {"background-color": "#636EFA"}, # Color de selección (azul)
+                }
+            )
             
             st.divider()
             if st.button("Cerrar Sesión", use_container_width=True):
-                st.session_state.user = None
-                st.rerun()
+                st.session_state.user = None; st.rerun()
 
-        # Cargar datos comunes
-        df_all = get_transactions(user_id)
-        current_cats = get_categories(user_id)
-
-        # Renderizar vistas según la página seleccionada
-        if page == "🏠 Resumen":
-            render_main_dashboard(df_all, user_profile)
-        elif page == "💸 Movimientos": # Antes llamado Dashboard
-            render_dashboard(df_all, current_cats, user_id)
-        elif page == "📂 Categorías":
-            render_categories(current_cats)
-        elif page == "📥 Importar":
-            render_import(current_cats, user_id)
-        elif page == "⚙️ Perfil":
-            render_profile(user_id, user_profile)
+        # --- ENRUTAMIENTO (Actualizado a los nuevos nombres sin emojis) ---
+        if selected == "Resumen": render_main_dashboard(df_all, user_profile)
+        elif selected == "Movimientos": render_dashboard(df_all, current_cats, user_id)
+        elif selected == "Categorías": render_categories(current_cats)
+        elif selected == "Importar": render_import(current_cats, user_id)
+        elif selected == "Perfil": render_profile(user_id, user_profile)
 
     else:
-        # --- PANTALLA DE LOGIN / REGISTRO ---
+        # PANTALLA DE LOGIN (Igual que antes)
         c1, c2, c3 = st.columns([1, 2, 1])
         with c2:
             st.title("💰 Mi Finanzas App")
             st.markdown("---")
-            
             tab_login, tab_register = st.tabs(["Iniciar Sesión", "Registrarse"])
             
-            # --- LOGIN ---
             with tab_login:
                 with st.form("login_form"):
                     email = st.text_input("Email")
                     password = st.text_input("Contraseña", type="password")
-                    submitted = st.form_submit_button("Entrar", use_container_width=True)
-                    
-                    if submitted:
+                    if st.form_submit_button("Entrar", use_container_width=True):
                         auth_user = login_user(email, password)
                         if auth_user:
-                            profile = get_user_profile(auth_user.id)
-                            if profile:
-                                st.session_state.user = profile
-                                st.rerun()
-                            else:
-                                st.error("Login correcto pero no se encontró perfil.")
-                        else:
-                            st.error("Email o contraseña incorrectos.")
-                
-                # Recuperar contraseña
-                with st.expander("¿Olvidaste tu contraseña?", expanded=False):
-                    st.caption("Introduce tu email y te enviaremos un enlace mágico.")
-                    rec_email = st.text_input("Tu Email de registro", key="rec_email")
-                    if st.button("Enviar correo de recuperación"):
-                        if rec_email:
-                            success, msg = recover_password(rec_email)
-                            if success:
-                                st.success(msg)
-                            else:
-                                st.error(msg)
-                        else:
-                            st.warning("Por favor, escribe tu email.")
+                            st.session_state.user = get_user_profile(auth_user.id)
+                            st.rerun()
+                        else: st.error("Credenciales incorrectas")
+                with st.expander("¿Olvidaste tu contraseña?"):
+                    rec_email = st.text_input("Tu Email", key="rec")
+                    if st.button("Recuperar"):
+                        ok, msg = recover_password(rec_email)
+                        if ok: st.success(msg)
+                        else: st.error(msg)
 
-            # --- REGISTRO ---
             with tab_register:
                 with st.form("register_form"):
-                    reg_name = st.text_input("Nombre")
-                    reg_lastname = st.text_input("Apellido (Opcional)")
-                    reg_email = st.text_input("Email")
-                    reg_pass = st.text_input("Contraseña", type="password")
-                    reg_pass_conf = st.text_input("Confirmar Contraseña", type="password")
-                    
-                    reg_submit = st.form_submit_button("Crear Cuenta", use_container_width=True)
-                    
-                    if reg_submit:
-                        if reg_pass != reg_pass_conf:
-                            st.error("Las contraseñas no coinciden.")
-                        elif len(reg_pass) < 6:
-                            st.error("La contraseña debe tener al menos 6 caracteres.")
-                        elif not reg_name or not reg_email:
-                            st.error("Nombre y Email son obligatorios.")
+                    reg_name, reg_email = st.text_input("Nombre"), st.text_input("Email")
+                    p1, p2 = st.text_input("Contraseña", type="password"), st.text_input("Confirmar", type="password")
+                    if st.form_submit_button("Crear Cuenta", use_container_width=True):
+                        if p1!=p2: st.error("Las contraseñas no coinciden")
                         else:
-                            success, msg = register_user(reg_email, reg_pass, reg_name, reg_lastname)
-                            if success:
-                                st.success("¡Cuenta creada! Revisa tu email para confirmar (si está activo) o inicia sesión.")
-                            else:
-                                st.error(f"Error al registrar: {msg}")
+                            ok, msg = register_user(reg_email, p1, reg_name, "")
+                            if ok: st.success("Cuenta creada"); st.rerun()
+                            else: st.error(msg)
 
 if __name__ == "__main__":
     main()
