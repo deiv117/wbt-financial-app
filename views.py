@@ -585,19 +585,26 @@ def render_profile(user_id, p_data):
             st.caption(f"💰 Esto equivale a un ingreso medio mensual de aprox: **{total_mensual_estimado:,.2f}€**")
             
             if st.form_submit_button("💾 Guardar Nueva Configuración Financiera"):
+                # Calculamos el nuevo ingreso total antes de guardar
+                total_nuevo = n_salary + (n_other / n_freq if n_freq > 0 else 0)
+                
                 new_finance = {
                     "id": user_id,
-                    "name": p_data.get('name'),
                     "initial_balance": n_balance,
                     "base_salary": n_salary,
                     "other_fixed_income": n_other, 
                     "other_income_frequency": n_freq,
                     "payments_per_year": n_pagas
                 }
+                
                 success = upsert_profile(new_finance)
                 if success:
+                    # --- LA MAGIA OCURRE AQUÍ ---
+                    from database import recalculate_category_budgets # Import local para evitar ciclos
+                    recalculate_category_budgets(user_id, total_nuevo)
+                    
                     st.session_state.user.update(new_finance)
-                    st.success("✅ Datos actualizados")
+                    st.success("✅ Datos y presupuestos actualizados")
                     time.sleep(1)
                     st.rerun()
 
