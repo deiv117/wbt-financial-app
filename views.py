@@ -4,14 +4,28 @@ import math
 import time
 import plotly.graph_objects as go
 import calendar
-from database import get_historical_income
 from datetime import datetime, timedelta
-# Importamos las nuevas funciones necesarias (upload_avatar, change_password)
-from database import save_input, delete_input, get_categories, delete_category, upsert_profile, save_category, update_input, upload_avatar, change_password
+# Importamos las funciones de base de datos y componentes
+from database import (save_input, delete_input, get_categories, delete_category, 
+                      upsert_profile, save_category, update_input, upload_avatar, 
+                      change_password, get_historical_income)
 from components import editar_movimiento_dialog, editar_categoria_dialog, crear_categoria_dialog
 
 # --- 1. NUEVA PANTALLA: RESUMEN GLOBAL (Landing Page) ---
 def render_main_dashboard(df_all, user_profile):
+    # --- CSS CORONA: IGUALAR ALTURA DE TARJETAS ---
+    st.markdown("""
+        <style>
+        /* Busca contenedores con borde que TENGAN dentro una métrica y les fuerza altura */
+        div[data-testid="stVerticalBlockBorderWrapper"]:has(div[data-testid="stMetric"]) {
+            min-height: 130px;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+        }
+        </style>
+    """, unsafe_allow_html=True)
+
     st.title(f"👋 Hola, {user_profile.get('name', 'Usuario')}")
     st.caption("Aquí tienes el pulso de tu economía hoy.")
 
@@ -41,10 +55,10 @@ def render_main_dashboard(df_all, user_profile):
     # --- TARJETAS DE MÉTRICAS (KPIs) ---
     k1, k2, k3 = st.columns(3)
 
-    # AQUÍ ESTÁ EL ARREGLO: 'with st.container' engloba al 'st.metric'
     with k1:
         with st.container(border=True):
-            st.metric(label="💰 Patrimonio Neto", value=f"{saldo_total:,.2f}€", help="Saldo Inicial + Ingresos - Gastos")
+            # Truco: delta=" " (espacio) reserva el hueco vertical para igualar altura
+            st.metric(label="💰 Patrimonio Neto", value=f"{saldo_total:,.2f}€", delta=" ", delta_color="off", help="Saldo Inicial + Ingresos - Gastos")
     
     with k2:
         with st.container(border=True):
@@ -96,12 +110,11 @@ def render_main_dashboard(df_all, user_profile):
             )
             st.plotly_chart(fig, use_container_width=True)
         else:
-             # Si no hay movimientos pero sí saldo inicial, mostramos mensaje
              st.info(f"Tu patrimonio actual es tu saldo inicial: {saldo_inicial}€. Añade movimientos para ver la evolución gráfica.")
     else:
         st.info("Configura tu saldo inicial en el Perfil o añade movimientos para ver tu evolución.")
 
-# --- 2. GESTIÓN DE MOVIMIENTOS (Tu código original) ---
+# --- 2. GESTIÓN DE MOVIMIENTOS ---
 def render_dashboard(df_all, current_cats, user_id):
     # --- CSS MÁGICO PARA TARJETAS MÓVILES ---
     st.markdown("""
@@ -113,13 +126,11 @@ def render_dashboard(df_all, current_cats, user_id):
 
         /* 2. RESPONSIVE MÓVIL: Botones 50/50 exactos dentro de las tarjetas */
         @media (max-width: 640px) {
-            /* Forzamos que la sub-columna de botones se mantenga en horizontal */
             [data-testid="stVerticalBlockBorderWrapper"] [data-testid="stHorizontalBlock"] [data-testid="stHorizontalBlock"] {
                 flex-direction: row !important;
                 gap: 8px !important;
                 margin-top: 5px !important;
             }
-            /* Le damos el 50% del ancho a cada botón */
             [data-testid="stVerticalBlockBorderWrapper"] [data-testid="stHorizontalBlock"] [data-testid="stHorizontalBlock"] > [data-testid="column"] {
                 width: 50% !important;
                 flex: 1 1 50% !important;
@@ -135,7 +146,6 @@ def render_dashboard(df_all, current_cats, user_id):
 
     with t1:
         st.subheader("Nuevo Movimiento")
-        # Formulario auto-limpiable
         with st.form("nuevo_movimiento_form", clear_on_submit=True):
             c1, c2, c3 = st.columns(3)
             qty = c1.number_input("Cantidad (€)", min_value=0.0, step=0.01)
@@ -165,9 +175,8 @@ def render_dashboard(df_all, current_cats, user_id):
         df_rec = df_all.sort_values('date', ascending=False).head(10) if not df_all.empty else pd.DataFrame()
         
         for _, i in df_rec.iterrows():
-            with st.container(border=True): # Tarjeta
+            with st.container(border=True):
                 col_info, col_btn = st.columns([4, 1])
-                
                 with col_info:
                     color_q = "red" if i['type'] == 'Gasto' else "green"
                     signo = "-" if i['type'] == 'Gasto' else "+"
@@ -176,7 +185,6 @@ def render_dashboard(df_all, current_cats, user_id):
                     st.caption(f"📅 {i['date'].strftime('%d/%m/%Y')} &nbsp;|&nbsp; 📝 _{notas_txt}_")
                 
                 with col_btn:
-                    # Botones side-by-side que se expanden (50/50 en móvil)
                     cb_e, cb_d = st.columns(2)
                     with cb_e:
                         if st.button("✏️", key=f"e_dash_{i['id']}", use_container_width=True): 
@@ -199,8 +207,6 @@ def render_dashboard(df_all, current_cats, user_id):
                 st.info("No hay movimientos en este rango de fechas.")
             else:
                 st.divider()
-                
-                # --- PAGINACIÓN ---
                 total_items = len(df_h)
                 col_pag1, col_pag2, col_pag3 = st.columns([1, 1, 2])
                 rows_per_page = col_pag1.selectbox("Registros por página:", [10, 25, 50, 100], index=2)
@@ -214,18 +220,15 @@ def render_dashboard(df_all, current_cats, user_id):
                 st.markdown("---")
                 df_page = df_h.iloc[start_idx:end_idx]
                 
-                # --- TARJETAS HISTORIAL ---
                 for _, i in df_page.iterrows():
                     with st.container(border=True):
                         col_info, col_btn = st.columns([4, 1])
-                        
                         with col_info:
                             color_q = "red" if i['type'] == 'Gasto' else "green"
                             signo = "-" if i['type'] == 'Gasto' else "+"
                             st.markdown(f"**{i['cat_display']}** &nbsp;|&nbsp; :{color_q}[**{signo}{i['quantity']:.2f}€**]")
                             notas_txt = i['notes'] if i['notes'] else 'Sin concepto'
                             st.caption(f"📅 {i['date'].strftime('%d/%m/%Y')} &nbsp;|&nbsp; 📝 _{notas_txt}_")
-                        
                         with col_btn:
                             cb1, cb2 = st.columns(2)
                             with cb1:
@@ -258,35 +261,22 @@ def render_dashboard(df_all, current_cats, user_id):
     with t4:
         st.subheader("Análisis Mensual")
         c_fil1, c_fil2 = st.columns(2)
-        
-        # Selectores de fecha
         sm = c_fil1.selectbox("Mes", ml, index=datetime.now().month-1)
         sa = c_fil2.selectbox("Año", range(2024, 2031), index=datetime.now().year-2024, key="año_mensual")
         
-        # --- LÓGICA DE HISTORIAL (NOVEDAD) ---
-        # 1. Calculamos el último día del mes seleccionado para buscar la configuración vigente entonces
-        import calendar
-        from database import get_historical_income # Asegúrate de tener esto importado arriba
-        
+        # --- LÓGICA DE HISTORIAL ---
         month_idx = ml.index(sm) + 1
-        # Obtiene el último día del mes (ej: 28, 30 o 31)
         _, last_day = calendar.monthrange(sa, month_idx)
         fecha_analisis = f"{sa}-{month_idx:02d}-{last_day}"
         
-        # 2. Recuperamos el sueldo que tenías EN ESA FECHA
         h_data = get_historical_income(user_id, fecha_analisis)
         h_sueldo = float(h_data.get('base_salary', 0) or 0)
         h_extras = float(h_data.get('other_fixed_income', 0) or 0)
-        # NUEVO: Recuperamos la frecuencia histórica
         h_freq = int(h_data.get('other_income_frequency', 1) or 1) 
         
-        # Calculamos el prorrateo mensual de los extras
-        # Si cobras 300 cada 3 meses -> 100 al mes efectivos
         h_extras_mensualizados = h_extras / h_freq if h_freq > 0 else 0
-        
         h_total_fijo = h_sueldo + h_extras_mensualizados
 
-        # 3. Mostramos el contexto histórico
         with st.expander(f"ℹ️ Contexto financiero en {sm} {sa}", expanded=False):
             st.write(f"En esa fecha, tu configuración era:")
             st.markdown(f"- Nómina Base: **{h_sueldo:,.2f}€**")
@@ -294,29 +284,17 @@ def render_dashboard(df_all, current_cats, user_id):
             st.markdown(f"- **Total Fijo Mensual (Prorrateado): {h_total_fijo:,.2f}€**")
 
         if not df_all.empty:
-            # Filtramos movimientos del mes seleccionado
             df_m = df_all[(df_all['date'].dt.month == month_idx) & (df_all['date'].dt.year == sa)]
-            
-            # Cálculo de movimientos reales (Manuales)
             im_variable = df_m[df_m['type'] == 'Ingreso']['quantity'].sum()
             gm = df_m[df_m['type'] == 'Gasto']['quantity'].sum()
-            
-            # El balance real es: Lo que ingresaste fijo (teórico) + variable (manual) - gastos
-            # NOTA: Si tú ya metes la nómina como un movimiento manual cada mes, 
-            # no sumes 'h_total_fijo' aquí para no duplicar. 
-            # Aquí asumo que quieres ver el balance de flujos registrados:
             balance = im_variable - gm
             
-            # Métricas
             c_i, c_g, c_b = st.columns(3)
             c_i.metric("Entradas Registradas", f"{im_variable:.2f}€", help="Ingresos añadidos manualmente")
             c_g.metric("Gastos Totales", f"{gm:.2f}€")
             c_b.metric("Balance (Flujo)", f"{balance:.2f}€", delta=f"{balance:.2f}€", delta_color="normal" if balance >= 0 else "inverse")
             
-            # Métrica adicional de Ahorro Teórico (Considerando el sueldo fijo histórico)
             ahorro_teorico = (h_total_fijo + im_variable) - gm
-            # Solo mostramos esto si el usuario no mete la nómina a mano (para evitar confusión)
-            # O lo mostramos como "Capacidad de Ahorro"
             if h_total_fijo > 0:
                 st.caption(f"💰 Si sumamos tus ingresos fijos de entonces ({h_total_fijo:,.2f}€), tu capacidad de ahorro real fue de **{ahorro_teorico:,.2f}€**")
             
@@ -331,20 +309,16 @@ def render_dashboard(df_all, current_cats, user_id):
                 if presupuesto > 0:
                     pct = gastado / presupuesto
                     pct_clamp = min(pct, 1.0)
+                    if pct <= 0.75: color_bar = "#00CC96"
+                    elif pct <= 1.0: color_bar = "#FFC107"
+                    else: color_bar = "#EF553B"
                     
-                    # Lógica del semáforo
-                    if pct <= 0.75: color_bar = "#00CC96" # Verde
-                    elif pct <= 1.0: color_bar = "#FFC107" # Naranja/Amarillo
-                    else: color_bar = "#EF553B" # Rojo
-                    
-                    # Cálculo de exceso o restante
                     restante = presupuesto - gastado
                     if restante >= 0:
                         txt_restante = f"<span style='color: gray; font-size: 0.9em;'>Quedan {restante:.2f}€</span>"
                     else:
                         txt_restante = f"<span style='color: #EF553B; font-weight: bold; font-size: 0.9em;'>Exceso de {abs(restante):.2f}€</span>"
                     
-                    # HTML de la barra de progreso
                     html_bar = f"""
                     <div style="margin-bottom: 15px;">
                         <div style="display: flex; justify-content: space-between; margin-bottom: 5px; font-family: sans-serif;">
@@ -378,7 +352,6 @@ def render_dashboard(df_all, current_cats, user_id):
             for t in ['Ingreso', 'Gasto']: 
                 if t not in rm.columns: rm[t] = 0
             
-            # Línea de Ahorro
             rm['Ahorro'] = rm['Ingreso'] - rm['Gasto']
             
             fig = go.Figure()
@@ -397,25 +370,21 @@ def render_dashboard(df_all, current_cats, user_id):
             
             for _, r in pd.merge(pd.DataFrame(cat_g), gcm_anual, left_on='id', right_on='category_id', how='left').fillna(0).iterrows():
                 gastado = r['quantity']
-                presupuesto_anual = r['budget'] * 12 # Objetivo anual
+                presupuesto_anual = r['budget'] * 12
                 
                 if presupuesto_anual > 0:
                     pct = gastado / presupuesto_anual
                     pct_clamp = min(pct, 1.0)
+                    if pct <= 0.75: color_bar = "#00CC96"
+                    elif pct <= 1.0: color_bar = "#FFC107"
+                    else: color_bar = "#EF553B"
                     
-                    # Lógica del semáforo
-                    if pct <= 0.75: color_bar = "#00CC96" # Verde
-                    elif pct <= 1.0: color_bar = "#FFC107" # Naranja/Amarillo
-                    else: color_bar = "#EF553B" # Rojo
-                    
-                    # Cálculo de exceso o restante
                     restante = presupuesto_anual - gastado
                     if restante >= 0:
                         txt_restante = f"<span style='color: gray; font-size: 0.9em;'>Quedan {restante:.2f}€</span>"
                     else:
                         txt_restante = f"<span style='color: #EF553B; font-weight: bold; font-size: 0.9em;'>Exceso de {abs(restante):.2f}€</span>"
                     
-                    # HTML de la barra de progreso (Fondo transparente para que se adapte al dark mode)
                     html_bar = f"""
                     <div style="margin-bottom: 15px;">
                         <div style="display: flex; justify-content: space-between; margin-bottom: 5px; font-family: sans-serif;">
@@ -429,11 +398,11 @@ def render_dashboard(df_all, current_cats, user_id):
                     """
                     st.markdown(html_bar, unsafe_allow_html=True)
 
-# --- 3. CATEGORÍAS (Tu código original) ---
+# --- 3. CATEGORÍAS ---
 def render_categories(current_cats):
     st.title("📂 Gestión de Categorías")
     if st.button("➕ Nueva Categoría"): 
-        crear_categoria_dialog(st.session_state.user['id']) # OJO: Ajuste para el user['id']
+        crear_categoria_dialog(st.session_state.user['id'])
     
     ci, cg = st.columns(2)
     for col, t in zip([ci, cg], ["Ingreso", "Gasto"]):
@@ -441,13 +410,11 @@ def render_categories(current_cats):
             st.subheader(f"{t}s")
             for c in [cat for cat in current_cats if cat.get('type') == t]:
                 with st.container(border=True):
-                    # Aquí usamos columnas normales sin el wrapper horizontal
                     k1, k2 = st.columns([4, 1])
                     k1.write(f"**{c.get('emoji', '📁')} {c['name']}**")
                     if t == "Gasto": 
                         k1.caption(f"Meta: {c['budget']:.2f}€")
                     with k2:
-                        # Botones 50/50 aplicados a las categorías también
                         kb1, kb2 = st.columns(2)
                         with kb1:
                             if st.button("✏️", key=f"cat_e_{c['id']}", use_container_width=True): 
@@ -457,7 +424,7 @@ def render_categories(current_cats):
                                 delete_category(c['id'])
                                 st.rerun()
 
-# --- 4. NUEVA VERSIÓN DE PERFIL (Actualizada) ---
+# --- 4. PERFIL ---
 def render_profile(user_id, p_data):
     st.title("⚙️ Mi Perfil")
     
@@ -468,7 +435,7 @@ def render_profile(user_id, p_data):
         c_ava, c_form = st.columns([1, 2])
         
         with c_ava:
-            # Mostrar Avatar (Usamos st.session_state para forzar refresco inmediato)
+            # Mostrar Avatar
             current_avatar = st.session_state.user.get('avatar_url')
             if current_avatar:
                 st.image(current_avatar, width=150)
@@ -480,7 +447,6 @@ def render_profile(user_id, p_data):
                     </div>
                 """, unsafe_allow_html=True)
             
-            # El uploader va fuera del form para permitir previsualización si quisiéramos (aunque aquí procesamos al guardar)
             uploaded_file = st.file_uploader("Cambiar foto (Máx 5MB)", type=['png', 'jpg', 'jpeg'])
         
         with c_form:
@@ -490,31 +456,27 @@ def render_profile(user_id, p_data):
                 n_color = st.color_picker("Color de Perfil", value=p_data.get('profile_color','#636EFA'))
                 
                 st.markdown("---")
-                # --- AQUÍ RECUPERAMOS EL INTERRUPTOR QUE FALTABA ---
                 st.markdown("##### 🌍 Visibilidad")
                 n_social = st.toggle("Modo Social (Visible para grupos)", 
                                      value=p_data.get('social_active', False),
-                                     help="Si activas esto, otros usuarios podrán encontrarte por tu email para añadirte a gastos compartidos.")
+                                     help="Si activas esto, otros usuarios podrán encontrarte por tu email.")
                 
                 submitted_perfil = st.form_submit_button("Guardar Datos Personales")
                 
                 if submitted_perfil:
-                    # 1. Subida de Imagen
                     final_avatar_url = p_data.get('avatar_url', '')
                     if uploaded_file:
                         url_nueva = upload_avatar(uploaded_file, user_id)
                         if url_nueva:
                             final_avatar_url = url_nueva
                     
-                    # 2. Guardar en BD
                     new_data = {
                         "id": user_id, 
                         "name": n_name, 
                         "lastname": n_last, 
                         "avatar_url": final_avatar_url, 
                         "profile_color": n_color,
-                        "social_active": n_social, # <--- IMPORTANTE: Guardamos el valor del toggle
-                        # Mantener datos financieros
+                        "social_active": n_social,
                         "initial_balance": p_data.get('initial_balance', 0),
                         "base_salary": p_data.get('base_salary', 0),
                         "other_fixed_income": p_data.get('other_fixed_income', 0),
@@ -525,7 +487,6 @@ def render_profile(user_id, p_data):
                     success = upsert_profile(new_data)
                     
                     if success:
-                        # 3. ACTUALIZACIÓN INMEDIATA DEL ESTADO
                         st.session_state.user.update(new_data)
                         st.toast("✅ Perfil actualizado correctamente")
                         time.sleep(1) 
@@ -537,7 +498,6 @@ def render_profile(user_id, p_data):
         st.info("Cualquier cambio aquí se guardará en tu historial.")
         
         with st.form("finance_form"):
-            # 1. SALDO INICIAL (SOLO)
             st.markdown("##### 🏦 Patrimonio Base")
             n_balance = st.number_input("Saldo Inicial en cuentas (€)", 
                                         value=float(p_data.get('initial_balance', 0.0) or 0.0), 
@@ -545,17 +505,15 @@ def render_profile(user_id, p_data):
             
             st.divider()
             
-            # 2. NÓMINA + PAGAS (JUNTOS)
             st.markdown("##### 💼 Nómina y Pagas")
             c_nom1, c_nom2 = st.columns(2)
             
             n_salary = c_nom1.number_input("Nómina Base Mensual (€)", 
                                        value=float(p_data.get('base_salary', 0.0) or 0.0),
-                                       help="Lo que ingresas limpio al mes por tu trabajo principal.")
+                                       help="Lo que ingresas limpio al mes.")
                                        
             n_pagas = c_nom2.slider("Número de pagas al año", 12, 16, int(p_data.get('payments_per_year', 12) or 12))
 
-            # 3. OTROS INGRESOS + FRECUENCIA
             st.markdown("##### ➕ Ingresos Adicionales Recurrentes")
             c_ext1, c_ext2 = st.columns(2)
             
@@ -563,13 +521,10 @@ def render_profile(user_id, p_data):
                                        value=float(p_data.get('other_fixed_income', 0.0) or 0.0),
                                        help="Alquileres, bonos fijos, ayudas, etc.")
             
-            # Diccionario para traducir frecuencia a meses (Guardamos el numero, mostramos texto)
             freq_options = {1: "Cada Mes (Mensual)", 2: "Cada 2 Meses (Bimestral)", 3: "Cada 3 Meses (Trimestral)", 
                             6: "Cada 6 Meses (Semestral)", 12: "Cada Año (Anual)"}
             
-            # Recuperamos valor actual (default 1)
             current_freq_val = int(p_data.get('other_income_frequency', 1) or 1)
-            # Buscamos el índice para el selectbox
             keys_list = list(freq_options.keys())
             try:
                 idx_freq = keys_list.index(current_freq_val)
@@ -577,10 +532,8 @@ def render_profile(user_id, p_data):
                 idx_freq = 0
                 
             sel_freq_txt = c_ext2.selectbox("Frecuencia de cobro", list(freq_options.values()), index=idx_freq)
-            # Convertimos el texto seleccionado de vuelta a número (1, 2, 3...)
             n_freq = [k for k, v in freq_options.items() if v == sel_freq_txt][0]
 
-            # CÁLCULO VISUAL DE TOTAL MENSUAL REAL
             mensual_extra_real = n_other / n_freq if n_freq > 0 else 0
             total_mensual_estimado = n_salary + mensual_extra_real
             
@@ -594,7 +547,7 @@ def render_profile(user_id, p_data):
                     "initial_balance": n_balance,
                     "base_salary": n_salary,
                     "other_fixed_income": n_other, 
-                    "other_income_frequency": n_freq, # Guardamos el numero (1, 3, 12...)
+                    "other_income_frequency": n_freq,
                     "payments_per_year": n_pagas
                 }
                 success = upsert_profile(new_finance)
@@ -604,7 +557,7 @@ def render_profile(user_id, p_data):
                     time.sleep(1)
                     st.rerun()
 
-    # --- C. SEGURIDAD (CAMBIO DE CONTRASEÑA) ---
+    # --- C. SEGURIDAD ---
     with st.expander("🔐 Seguridad y Contraseña"):
         with st.form("pass_form"):
             p1 = st.text_input("Nueva Contraseña", type="password")
@@ -620,7 +573,7 @@ def render_profile(user_id, p_data):
                 else:
                     st.error("Las contraseñas no coinciden o son muy cortas.")
 
-# --- 5. IMPORTAR (Tu código original) ---
+# --- 5. IMPORTAR ---
 def render_import(current_cats, user_id):
     st.title("📥 Importar Movimientos")
     
