@@ -141,9 +141,20 @@ def main():
         elif selected == "Movimientos": render_dashboard(df_all, current_cats, user_id)
         elif selected == "Categorías": render_categories(current_cats)
         elif selected == "Grupos": 
-            # Intentamos sacar el email del perfil, y si no está, del objeto de autenticación
-            user_email = user_profile.get('email') or st.session_state.supabase_client.auth.get_user().user.email
-            render_groups(user_id, user_email)
+            # Obtenemos el usuario actual de la sesión de Supabase de forma segura
+            session_user = st.session_state.supabase_client.auth.get_user()
+            
+            # Extraemos el email manejando si la respuesta es un objeto o un diccionario
+            try:
+                user_email = session_user.user.email
+            except AttributeError:
+                # Por si la versión de la librería devuelve los datos de otra forma
+                user_email = session_user.data.user.email if hasattr(session_user, 'data') else None
+            
+            if user_email:
+                render_groups(user_id, user_email)
+            else:
+                st.error("No se pudo recuperar tu email de sesión. Intenta cerrar sesión y volver a entrar.")
         elif selected == "Importar": render_import(current_cats, user_id)
         elif selected == "Perfil": render_profile(user_id, user_profile)
 
