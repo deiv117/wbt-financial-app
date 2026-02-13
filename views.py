@@ -21,7 +21,7 @@ CUSTOM_CSS = """
 /* 1. IMPORTAR FUENTE DE ICONOS */
 @import url("https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.5/font/bootstrap-icons.css");
 
-/* 2. ESTILO DE TÍTULOS (Alineación perfecta icono-texto) */
+/* 2. ESTILO DE TÍTULOS */
 h1 .bi, h3 .bi, h5 .bi {
     vertical-align: -3px;
     margin-right: 10px;
@@ -31,7 +31,6 @@ h1 .bi, h3 .bi, h5 .bi {
 /* 3. COLORES PARA BOTONES DE ACCIÓN (Material Icons) */
 
 /* --- BOTÓN EDITAR (Amarillo) --- */
-/* Detecta el icono 'edit' dentro del botón */
 div[data-testid="stButton"] button:has(span:contains("edit")) {
     border-color: #FFC107 !important;
     color: #FFC107 !important;
@@ -40,13 +39,12 @@ div[data-testid="stButton"] button:has(span:contains("edit")) {
 }
 div[data-testid="stButton"] button:has(span:contains("edit")):hover {
     background-color: #FFC107 !important;
-    color: #000000 !important; /* Texto negro para contraste */
+    color: #000000 !important; 
     border-color: #FFC107 !important;
     transform: scale(1.02);
 }
 
 /* --- BOTÓN BORRAR (Rojo) --- */
-/* Detecta el icono 'delete' dentro del botón */
 div[data-testid="stButton"] button:has(span:contains("delete")) {
     border-color: #FF4B4B !important;
     color: #FF4B4B !important;
@@ -55,7 +53,7 @@ div[data-testid="stButton"] button:has(span:contains("delete")) {
 }
 div[data-testid="stButton"] button:has(span:contains("delete")):hover {
     background-color: #FF4B4B !important;
-    color: #FFFFFF !important; /* Texto blanco */
+    color: #FFFFFF !important; 
     border-color: #FF4B4B !important;
     transform: scale(1.02);
 }
@@ -70,21 +68,47 @@ div[data-testid="stVerticalBlockBorderWrapper"]:has(div[data-testid="stMetric"])
 </style>
 """
 
-# Funciones auxiliares para títulos con iconos HTML (Bootstrap)
+# --- FUNCIONES AUXILIARES UI ---
 def render_header(icon_name, text):
-    """Título Principal H1"""
     st.markdown(f'{BOOTSTRAP_ICONS_LINK}<h1><i class="bi bi-{icon_name}"></i> {text}</h1>', unsafe_allow_html=True)
 
 def render_subheader(icon_name, text):
-    """Subtítulo H3"""
     st.markdown(f'{BOOTSTRAP_ICONS_LINK}<h3><i class="bi bi-{icon_name}"></i> {text}</h3>', unsafe_allow_html=True)
 
 def render_small_header(icon_name, text):
-    """Encabezado pequeño H5"""
     st.markdown(f'{BOOTSTRAP_ICONS_LINK}<h5><i class="bi bi-{icon_name}"></i> {text}</h5>', unsafe_allow_html=True)
 
+# --- DIÁLOGOS DE CONFIRMACIÓN (SEGURIDAD) ---
+@st.dialog("🗑️ Eliminar Movimiento")
+def confirmar_borrar_movimiento(id_mov):
+    st.write("¿Estás seguro de que quieres eliminar este movimiento?")
+    st.warning("⚠️ Esta acción no se puede deshacer.")
+    
+    col_no, col_si = st.columns(2)
+    with col_si:
+        if st.button("Sí, Eliminar", type="primary", use_container_width=True):
+            delete_input(id_mov)
+            st.rerun()
+    with col_no:
+        if st.button("Cancelar", use_container_width=True):
+            st.rerun()
 
-# --- 1. RESUMEN GLOBAL (Landing Page) ---
+@st.dialog("🗑️ Eliminar Categoría")
+def confirmar_borrar_categoria(id_cat):
+    st.write("¿Seguro que quieres borrar esta categoría?")
+    st.caption("ℹ️ Los movimientos asociados no se borrarán, pero perderán su categoría.")
+    
+    col_no, col_si = st.columns(2)
+    with col_si:
+        if st.button("Sí, Eliminar", type="primary", use_container_width=True):
+            delete_category(id_cat)
+            st.rerun()
+    with col_no:
+        if st.button("Cancelar", use_container_width=True):
+            st.rerun()
+
+
+# --- 1. RESUMEN GLOBAL ---
 def render_main_dashboard(df_all, user_profile):
     st.markdown(CUSTOM_CSS, unsafe_allow_html=True)
 
@@ -157,7 +181,6 @@ def render_main_dashboard(df_all, user_profile):
 def render_dashboard(df_all, current_cats, user_id):
     st.markdown(CUSTOM_CSS, unsafe_allow_html=True)
     
-    # CSS Responsive
     st.markdown("""
         <style>
         [data-testid="column"] { flex: 1 1 auto !important; }
@@ -193,7 +216,6 @@ def render_dashboard(df_all, current_cats, user_id):
 
     # --- A. NUEVA ENTRADA ---
     if selected == "Nueva":
-        # Usamos el icono que corresponde al menú (plus-circle)
         render_subheader("plus-circle", "Añadir Transacción")
         
         with st.form("nuevo_movimiento_form", clear_on_submit=True):
@@ -234,9 +256,9 @@ def render_dashboard(df_all, current_cats, user_id):
                         if st.button(":material/edit:", key=f"e_dash_{i['id']}", use_container_width=True): 
                             editar_movimiento_dialog(i, current_cats)
                     with cb_d:
+                        # --- CAMBIO AQUÍ: Llamada al diálogo de confirmación ---
                         if st.button(":material/delete:", key=f"d_dash_{i['id']}", type="primary", use_container_width=True): 
-                            delete_input(i['id'])
-                            st.rerun()
+                            confirmar_borrar_movimiento(i['id'])
 
     # --- B. HISTORIAL ---
     elif selected == "Historial":
@@ -280,9 +302,9 @@ def render_dashboard(df_all, current_cats, user_id):
                                 if st.button(":material/edit:", key=f"e_hist_{i['id']}", use_container_width=True): 
                                     editar_movimiento_dialog(i, current_cats)
                             with cb2:
+                                # --- CAMBIO AQUÍ: Llamada al diálogo de confirmación ---
                                 if st.button(":material/delete:", key=f"d_hist_{i['id']}", type="primary", use_container_width=True): 
-                                    delete_input(i['id'])
-                                    st.rerun()
+                                    confirmar_borrar_movimiento(i['id'])
 
     # --- C. PREVISIÓN ---
     elif selected == "Previsión":
@@ -462,9 +484,9 @@ def render_categories(current_cats):
                             if st.button(":material/edit:", key=f"cat_e_{c['id']}", use_container_width=True): 
                                 editar_categoria_dialog(c)
                         with kb2:
+                            # --- CAMBIO AQUÍ: Llamada al diálogo de confirmación ---
                             if st.button(":material/delete:", key=f"cat_d_{c['id']}", type="primary", use_container_width=True): 
-                                delete_category(c['id'])
-                                st.rerun()
+                                confirmar_borrar_categoria(c['id'])
 
 
 # --- 4. PERFIL ---
@@ -570,7 +592,7 @@ def render_profile(user_id, p_data):
 
     # C. Seguridad
     # --- EXPANDER SEGURIDAD (Updated to Material Icon) ---
-    with st.expander(":material/lock: Seguridad y Contraseña"):
+    with st.expander("🔐 Seguridad y Contraseña"):
         render_subheader("shield-lock", "Seguridad")
         with st.form("pass_form"):
             p1 = st.text_input("Nueva Contraseña", type="password")
