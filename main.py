@@ -12,6 +12,7 @@ from styles import get_custom_css
 
 # Importaciones unificadas
 from views import render_dashboard, render_categories, render_profile, render_import, render_main_dashboard
+from views_groups import render_groups
 
 # 1. Configuración de página
 st.set_page_config(page_title="Mi Finanzas", page_icon="💰", layout="wide")
@@ -118,8 +119,8 @@ def main():
 
             selected = option_menu(
                 menu_title=None,
-                options=["Resumen", "Movimientos", "Categorías", "Importar", "Perfil"],
-                icons=["house", "wallet2", "list-task", "cloud-upload", "person-gear"],
+                options=["Resumen", "Movimientos", "Categorías", "Grupos", "Importar", "Perfil"], # <-- Añadido "Grupos"
+                icons=["house", "wallet2", "list-task", "people", "cloud-upload", "person-gear"], # <-- Añadido "people"
                 default_index=0,
                 styles={
                     "container": {"padding": "0!important", "background-color": "transparent"},
@@ -139,6 +140,7 @@ def main():
         if selected == "Resumen": render_main_dashboard(df_all, user_profile)
         elif selected == "Movimientos": render_dashboard(df_all, current_cats, user_id)
         elif selected == "Categorías": render_categories(current_cats)
+        elif selected == "Grupos": render_groups(user_id)
         elif selected == "Importar": render_import(current_cats, user_id)
         elif selected == "Perfil": render_profile(user_id, user_profile)
 
