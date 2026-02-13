@@ -2,6 +2,7 @@ import streamlit as st
 from supabase import create_client, Client
 import pandas as pd
 from datetime import datetime
+import time
 
 # Inicializar cliente Supabase
 @st.cache_resource
@@ -13,39 +14,24 @@ def init_connection():
 supabase: Client = init_connection()
 
 def init_db():
-    # En Supabase las tablas ya están creadas.
     pass
 
-# --- AUTENTICACIÓN Y USUARIO (Supabase Auth + Profiles) ---
+# --- AUTENTICACIÓN Y USUARIO ---
 
 def login_user(email, password):
-    """Inicia sesión usando Supabase Auth"""
     try:
         response = supabase.auth.sign_in_with_password({"email": email, "password": password})
         return response.user
     except Exception as e:
         print(f"Error login: {e}")
         return None
-        
-def recover_password(email):
-    """Envía un correo para restablecer la contraseña"""
-    try:
-        # Esto envía el email usando la plantilla que acabas de configurar
-        supabase.auth.reset_password_email(email)
-        return True, "Correo de recuperación enviado. Revisa tu bandeja de entrada (y spam)."
-    except Exception as e:
-        return False, f"Error: {str(e)}"
-        
+
 def register_user(email, password, name, lastname=""):
-    """Registra usuario en Auth y crea su perfil público y categorías"""
     try:
-        # 1. Crear usuario en Supabase Auth
         auth_response = supabase.auth.sign_up({
             "email": email, 
             "password": password,
-            "options": {
-                "data": {"first_name": name} # Metadatos opcionales
-            }
+            "options": {"data": {"first_name": name}}
         })
         
         if not auth_response.user:
@@ -53,17 +39,17 @@ def register_user(email, password, name, lastname=""):
 
         user_uuid = auth_response.user.id
 
-        # 2. Crear entrada en tabla 'profiles'
         profile_data = {
             "id": user_uuid,
             "name": name,
             "lastname": lastname,
             "profile_color": "#636EFA",
-            "social_active": False
+            "social_active": False,
+            "initial_balance": 0,
+            "base_salary": 0,
+            "payments_per_year": 12
         }
         supabase.table('profiles').insert(profile_data).execute()
-        
-        # 3. Crear Categorías por defecto en 'user_categories'
         crear_categorias_default(user_uuid)
         
         return True, "Usuario creado correctamente."
@@ -71,8 +57,24 @@ def register_user(email, password, name, lastname=""):
     except Exception as e:
         return False, str(e)
 
+def recover_password(email):
+    try:
+        supabase.auth.reset_password_email(email)
+        return True, "Correo de recuperación enviado."
+    except Exception as e:
+        return False, f"Error: {str(e)}"
+
+def change_password(new_password):
+    """Cambia la contraseña del usuario logueado"""
+    try:
+        supabase.auth.update_user({"password": new_password})
+        return True, "Contraseña actualizada."
+    except Exception as e:
+        return False, str(e)
+
+# --- PERFIL Y AVATAR ---
+
 def get_user_profile(user_uuid):
-    """Obtiene los datos de la tabla profiles"""
     try:
         res = supabase.table('profiles').select('*').eq('id', user_uuid).execute()
         if res.data:
@@ -82,23 +84,45 @@ def get_user_profile(user_uuid):
         print(f"Error recuperando perfil: {e}")
         return None
 
-def upsert_profile(profile_data):
-    """Actualiza la tabla profiles"""
+def upload_avatar(file, user_id):
+    """Sube una foto al bucket 'avatars' y devuelve la URL pública"""
     try:
-        # 'updated_at' debería ser automático si tienes un trigger, 
-        # pero lo mandamos por si acaso
+        file_ext = file.name.split('.')[-1]
+        file_path = f"{user_id}/avatar_{int(time.time())}.{file_ext}"
+        
+        # Subir archivo
+        supabase.storage.from_("avatars").upload(
+            path=file_path,
+            file=file.getvalue(),
+            file_options={"content-type": file.type}
+        )
+        
+        # Obtener URL pública
+        public_url = supabase.storage.from_("avatars").get_public_url(file_path)
+        return public_url
+    except Exception as e:
+        st.error(f"Error subiendo imagen: {e}")
+        return None
+
+def upsert_profile(user_data):
+    try:
         update_data = {
-            "name": profile_data['name'],
-            "lastname": profile_data.get('lastname', ''),
-            "avatar_url": profile_data.get('avatar_url', ''),
-            "profile_color": profile_data.get('profile_color', '#636EFA'),
+            "name": user_data['name'],
+            "lastname": user_data.get('lastname', ''),
+            "avatar_url": user_data.get('avatar_url', ''),
+            "profile_color": user_data.get('profile_color', '#636EFA'),
+            "initial_balance": user_data.get('initial_balance', 0),
+            "base_salary": user_data.get('base_salary', 0),
+            "payments_per_year": user_data.get('payments_per_year', 12),
             "updated_at": datetime.now().isoformat()
         }
-        supabase.table('profiles').update(update_data).eq('id', profile_data['id']).execute()
+        supabase.table('profiles').update(update_data).eq('id', user_data['id']).execute()
+        return True
     except Exception as e:
         st.error(f"Error actualizando perfil: {e}")
+        return False
 
-# --- GESTIÓN DE CATEGORÍAS (user_categories) ---
+# --- CATEGORÍAS (Igual que antes) ---
 
 def crear_categorias_default(user_uuid):
     default_cats = [
@@ -114,7 +138,7 @@ def crear_categorias_default(user_uuid):
     try:
         supabase.table('user_categories').insert(default_cats).execute()
     except Exception as e:
-        print(f"Error creando categorías default: {e}")
+        print(f"Error default cats: {e}")
 
 def get_categories(user_uuid):
     try:
@@ -125,7 +149,6 @@ def get_categories(user_uuid):
             return get_categories(user_uuid)
         return cats
     except Exception as e:
-        print(f"Error get_categories: {e}")
         return []
 
 def save_category(data):
@@ -138,7 +161,7 @@ def save_category(data):
             "budget": data.get('budget', 0)
         }).execute()
     except Exception as e:
-        st.error(f"Error guardando categoría: {e}")
+        st.error(f"Error: {e}")
 
 def update_category(data):
     try:
@@ -148,20 +171,18 @@ def update_category(data):
             "budget": data.get('budget', 0)
         }).eq('id', data['id']).execute()
     except Exception as e:
-        st.error(f"Error actualizando categoría: {e}")
+        st.error(f"Error: {e}")
 
 def delete_category(cat_id):
     try:
         supabase.table('user_categories').delete().eq('id', cat_id).execute()
     except Exception as e:
-        st.error(f"Error borrando categoría: {e}")
+        st.error(f"Error: {e}")
 
-# --- GESTIÓN DE MOVIMIENTOS (user_imputs) ---
+# --- MOVIMIENTOS (Igual que antes) ---
 
 def save_input(data):
     try:
-        # Nota: Corregido 'user_imputs' según tu schema (ojo si es inputs o imputs en tu tabla real)
-        # Asumo 'user_imputs' tal cual me lo has escrito.
         supabase.table('user_imputs').insert({
             "user_id": data['user_id'],
             "quantity": data['quantity'],
@@ -169,10 +190,10 @@ def save_input(data):
             "category_id": data['category_id'],
             "date": str(data['date']),
             "notes": data['notes'],
-            "group_id": data.get('group_id', None) # Preparado para el futuro
+            "group_id": data.get('group_id', None)
         }).execute()
     except Exception as e:
-        st.error(f"Error guardando movimiento: {e}")
+        st.error(f"Error input: {e}")
 
 def update_input(data):
     try:
@@ -184,32 +205,29 @@ def update_input(data):
             "notes": data['notes']
         }).eq('id', data['id']).execute()
     except Exception as e:
-        st.error(f"Error actualizando movimiento: {e}")
+        st.error(f"Error update input: {e}")
 
 def delete_input(mov_id):
     try:
         supabase.table('user_imputs').delete().eq('id', mov_id).execute()
     except Exception as e:
-        st.error(f"Error borrando movimiento: {e}")
+        st.error(f"Error delete input: {e}")
 
 def get_transactions(user_uuid):
     try:
-        # Join con user_categories
         response = supabase.table('user_imputs') \
             .select('*, user_categories(name, emoji, budget)') \
             .eq('user_id', user_uuid) \
             .execute()
         
         data = response.data
-        if not data:
-            return pd.DataFrame()
+        if not data: return pd.DataFrame()
             
         flat_data = []
         for row in data:
             cat = row.get('user_categories') or {}
             flat_row = row.copy()
             del flat_row['user_categories']
-            
             flat_row['cat_name'] = cat.get('name', 'General')
             flat_row['cat_emoji'] = cat.get('emoji', '📁')
             flat_row['budget'] = cat.get('budget', 0)
@@ -221,5 +239,4 @@ def get_transactions(user_uuid):
             df['cat_display'] = df.apply(lambda x: f"{x['cat_emoji']} {x['cat_name']}", axis=1)
         return df
     except Exception as e:
-        print(f"Error get_transactions: {e}")
         return pd.DataFrame()
