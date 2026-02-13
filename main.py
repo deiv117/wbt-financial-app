@@ -86,15 +86,28 @@ def main():
                     if submitted:
                         auth_user = login_user(email, password)
                         if auth_user:
-                            # Si el login es correcto, recuperamos el perfil completo de la tabla 'profiles'
                             profile = get_user_profile(auth_user.id)
                             if profile:
-                                st.session_state.user = profile # Guardamos el perfil en sesión
+                                st.session_state.user = profile
                                 st.rerun()
                             else:
-                                st.error("Login correcto pero no se encontró perfil. Contacta soporte.")
+                                st.error("Login correcto pero no se encontró perfil.")
                         else:
                             st.error("Email o contraseña incorrectos.")
+                
+                # --- SECCIÓN NUEVA: RECUPERAR CONTRASEÑA ---
+                with st.expander("¿Olvidaste tu contraseña?", expanded=False):
+                    st.caption("Introduce tu email y te enviaremos un enlace mágico.")
+                    rec_email = st.text_input("Tu Email de registro", key="rec_email")
+                    if st.button("Enviar correo de recuperación"):
+                        if rec_email:
+                            success, msg = recover_password(rec_email)
+                            if success:
+                                st.success(msg)
+                            else:
+                                st.error(msg)
+                        else:
+                            st.warning("Por favor, escribe tu email.")
 
             # --- REGISTRO ---
             with tab_register:
