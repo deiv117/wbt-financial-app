@@ -140,7 +140,10 @@ def main():
         if selected == "Resumen": render_main_dashboard(df_all, user_profile)
         elif selected == "Movimientos": render_dashboard(df_all, current_cats, user_id)
         elif selected == "Categorías": render_categories(current_cats)
-        elif selected == "Grupos": render_groups(user_id, user_profile['email'])
+        elif selected == "Grupos": 
+            # Intentamos sacar el email del perfil, y si no está, del objeto de autenticación
+            user_email = user_profile.get('email') or st.session_state.supabase_client.auth.get_user().user.email
+            render_groups(user_id, user_email)
         elif selected == "Importar": render_import(current_cats, user_id)
         elif selected == "Perfil": render_profile(user_id, user_profile)
 
