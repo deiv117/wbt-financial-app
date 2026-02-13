@@ -1,8 +1,11 @@
 import streamlit as st
 import pandas as pd
-import random # <--- IMPORTANTE: Librería para generar números aleatorios
+import random
+import time
 from streamlit_option_menu import option_menu 
-from database import init_db, login_user, register_user, recover_password, get_user_profile, get_transactions, get_categories
+
+# FÍJATE AQUÍ: He añadido 'supabase' a las importaciones para poder leer el código mágico
+from database import init_db, login_user, register_user, recover_password, get_user_profile, get_transactions, get_categories, supabase
 from styles import get_custom_css
 
 # Importaciones unificadas
@@ -25,39 +28,62 @@ st.markdown("""
 if 'user' not in st.session_state:
     st.session_state.user = None
 
-# Variables para el Captcha de seguridad
 if 'captcha_n1' not in st.session_state:
     st.session_state.captcha_n1 = random.randint(1, 10)
 if 'captcha_n2' not in st.session_state:
     st.session_state.captcha_n2 = random.randint(1, 10)
 
 def reset_captcha():
-    """Genera nuevos números para el captcha tras un intento fallido o exitoso"""
     st.session_state.captcha_n1 = random.randint(1, 10)
     st.session_state.captcha_n2 = random.randint(1, 10)
 
 def main():
+    # --- LA MAGIA: INTERCEPTAR ENLACES DEL CORREO ---
+    if "code" in st.query_params:
+        code = st.query_params.get("code")
+        try:
+            # Si venimos de un enlace del correo, canjeamos el código por una sesión activa
+            res = supabase.auth.exchange_code_for_session({"auth_code": code})
+            if res and res.user:
+                st.session_state.user = get_user_profile(res.user.id)
+                st.session_state.just_verified = True # Activamos el pop-up de bienvenida
+                st.query_params.clear() # Limpiamos la URL para que no moleste
+                st.rerun()
+        except Exception as e:
+            st.error("❌ El enlace de verificación ha caducado o es inválido. Por favor, solicita uno nuevo.")
+            st.query_params.clear()
+
+    # --- FLUJO DE USUARIO LOGUEADO ---
     if st.session_state.user:
         user_profile = st.session_state.user
         user_id = user_profile['id']
         df_all = get_transactions(user_id)
         current_cats = get_categories(user_id)
         
-        # --- NUEVA BARRA LATERAL ESTILO GOOGLE ---
+        # POP-UP DE VERIFICACIÓN / CAMBIO DE CONTRASEÑA
+        if st.session_state.get("just_verified"):
+            @st.dialog("🎉 ¡Verificación Exitosa!")
+            def welcome_dialog():
+                st.success("Hemos comprobado tu identidad y ya has iniciado sesión automáticamente.")
+                st.info("🔐 **¿Venías a recuperar tu contraseña?**\nComo ya estás dentro, dirígete al menú **Perfil > Seguridad** para establecer tu nueva contraseña de forma segura.")
+                if st.button("¡Entendido!", use_container_width=True):
+                    st.session_state.just_verified = False
+                    st.rerun()
+            
+            welcome_dialog()
+        
+        # --- BARRA LATERAL ---
         with st.sidebar:
-            # 1. CABECERA PERFIL MINIMALISTA
             avatar_url = user_profile.get('avatar_url')
             p_color = user_profile.get('profile_color', '#636EFA')
             name = user_profile.get('name', 'Usuario')
             
-            # Avatar más pequeño (60px) y nombre al lado o debajo
             if avatar_url:
                 avatar_html = f'<img src="{avatar_url}" style="width: 60px; height: 60px; border-radius: 50%; object-fit: cover; border: 2px solid {p_color};">'
             else:
                 initial = name[0].upper() if name else 'U'
                 avatar_html = f'<div style="width: 60px; height: 60px; background-color: {p_color}; border-radius: 50%; display: flex; align-items: center; justify-content: center; color: white; font-size: 24px; font-weight: bold;">{initial}</div>'
             
-            # Renderizamos la cabecera compacta
             st.markdown(f"""
                 <div style="display: flex; align-items: center; gap: 15px; margin-bottom: 20px; padding: 10px; background-color: rgba(255,255,255,0.05); border-radius: 10px;">
                     {avatar_html}
@@ -65,24 +91,24 @@ def main():
                 </div>
             """, unsafe_allow_html=True)
 
-            # 2. MENÚ DE NAVEGACIÓN CON ICONOS
-            # Usamos iconos de Bootstrap (similares a Material Design)
             selected = option_menu(
-                menu_title=None,  # Ocultamos el título del menú
-                options=["Resumen", "Movimientos", "Categorías", "Importar", "Perfil"], # Nombres limpios
-                icons=["house", "wallet2", "list-task", "cloud-upload", "person-gear"], # Iconos modernos
+                menu_title=None,
+                options=["Resumen", "Movimientos", "Categorías", "Importar", "Perfil"],
+                icons=["house", "wallet2", "list-task", "cloud-upload", "person-gear"],
                 default_index=0,
                 styles={
                     "container": {"padding": "0!important", "background-color": "transparent"},
                     "icon": {"color": "orange", "font-size": "18px"}, 
                     "nav-link": {"font-size": "16px", "text-align": "left", "margin": "0px", "--hover-color": "#eee"},
-                    "nav-link-selected": {"background-color": "#636EFA"}, # Color de selección (azul)
+                    "nav-link-selected": {"background-color": "#636EFA"},
                 }
             )
             
             st.divider()
             if st.button("Cerrar Sesión", use_container_width=True):
-                st.session_state.user = None; st.rerun()
+                supabase.auth.sign_out() # Cerramos sesión real en Supabase por seguridad
+                st.session_state.user = None
+                st.rerun()
 
         # --- ENRUTAMIENTO ---
         if selected == "Resumen": render_main_dashboard(df_all, user_profile)
@@ -91,8 +117,8 @@ def main():
         elif selected == "Importar": render_import(current_cats, user_id)
         elif selected == "Perfil": render_profile(user_id, user_profile)
 
+    # --- FLUJO DE USUARIO NO LOGUEADO ---
     else:
-        # PANTALLA DE LOGIN Y REGISTRO (CON PROTECCIÓN ANTI-BOTS)
         c1, c2, c3 = st.columns([1, 2, 1])
         with c2:
             st.title("💰 Mi Finanzas App")
@@ -108,12 +134,14 @@ def main():
                         if auth_user:
                             st.session_state.user = get_user_profile(auth_user.id)
                             st.rerun()
-                        else: st.error("Credenciales incorrectas")
+                        else: st.error("Credenciales incorrectas o cuenta sin confirmar.")
+                
                 with st.expander("¿Olvidaste tu contraseña?"):
+                    st.write("Te enviaremos un enlace mágico para entrar y cambiarla.")
                     rec_email = st.text_input("Tu Email", key="rec")
-                    if st.button("Recuperar"):
+                    if st.button("Recuperar Contraseña"):
                         ok, msg = recover_password(rec_email)
-                        if ok: st.success(msg)
+                        if ok: st.success("✅ " + msg)
                         else: st.error(msg)
 
             with tab_register:
@@ -123,29 +151,25 @@ def main():
                     
                     st.divider()
                     st.markdown("**🛡️ Verificación de Seguridad**")
-                    # Recuperamos los números del session_state para mostrarlos en la pregunta
-                    n1 = st.session_state.captcha_n1
-                    n2 = st.session_state.captcha_n2
+                    n1, n2 = st.session_state.captcha_n1, st.session_state.captcha_n2
                     correct_answer = n1 + n2
                     
                     captcha_user_answer = st.number_input(f"¿Cuánto es {n1} + {n2}? (Anti-bots)", min_value=0, max_value=100, step=1)
                     
                     if st.form_submit_button("Crear Cuenta", use_container_width=True):
-                        # 1. Comprobamos la contraseña
                         if p1 != p2: 
                             st.error("Las contraseñas no coinciden")
-                        # 2. Comprobamos el CAPTCHA Matemático
                         elif captcha_user_answer != correct_answer:
                             st.error("❌ Verificación de seguridad fallida. La suma es incorrecta.")
-                            reset_captcha() # Reseteamos para que lo vuelva a intentar con otra suma
-                            time.sleep(1) # Pequeña pausa
+                            reset_captcha()
+                            time.sleep(1)
                             st.rerun()
-                        # 3. Si todo está bien, registramos al usuario
                         else:
                             ok, msg = register_user(reg_email, p1, reg_name, "")
                             if ok: 
-                                st.success("✅ Cuenta creada correctamente. Ya puedes iniciar sesión.")
-                                reset_captcha() # Limpiamos por si acaso
+                                # Mensaje actualizado para recordar lo del correo
+                                st.success("✅ **¡Cuenta creada!** Por favor, revisa tu correo electrónico y haz clic en el enlace para confirmar tu cuenta.")
+                                reset_captcha()
                             else: 
                                 st.error(f"Error: {msg}")
                                 reset_captcha()
