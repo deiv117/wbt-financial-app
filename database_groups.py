@@ -1,26 +1,52 @@
 # database_groups.py
 from database import supabase
 
-def create_group(name, user_id):
-    """
-    Crea un nuevo grupo y automáticamente añade al creador como el primer miembro.
-    """
+def create_group(name, emoji, color, user_id):
     try:
-        # 1. Insertar el grupo en la tabla 'groups'
-        group_data = {"name": name, "created_by": user_id}
+        group_data = {"name": name, "emoji": emoji, "color": color, "created_by": user_id}
         res = supabase.table("groups").insert(group_data).execute()
         
         if res.data:
             group_id = res.data[0]['id']
-            # 2. Insertar al creador en la tabla 'group_members'
-            # (Usamos created_at como especificaste, aunque Supabase lo rellena solo si tiene default now())
             member_data = {"group_id": group_id, "user_id": user_id}
             supabase.table("group_members").insert(member_data).execute()
-            
             return True, "Grupo creado con éxito"
-        return False, "No se pudo crear el grupo."
+        return False, "Error al crear grupo."
     except Exception as e:
-        return False, f"Error: {str(e)}"
+        return False, str(e)
+
+def send_invitation(group_id, email):
+    try:
+        data = {"group_id": group_id, "invited_email": email.lower().strip()}
+        supabase.table("group_invitations").insert(data).execute()
+        return True, "Invitación enviada"
+    except Exception as e:
+        return False, str(e)
+
+def get_my_invitations(email):
+    try:
+        # Traemos la invitación y los datos del grupo (JOIN)
+        res = supabase.table("group_invitations") \
+            .select("*, groups(name, emoji)") \
+            .eq("invited_email", email.lower().strip()) \
+            .eq("status", "pending") \
+            .execute()
+        return res.data or []
+    except:
+        return []
+
+def respond_invitation(invitation_id, group_id, user_id, accept=True):
+    try:
+        status = "accepted" if accept else "rejected"
+        # 1. Actualizar estado de la invitación
+        supabase.table("group_invitations").update({"status": status}).eq("id", invitation_id).execute()
+        
+        # 2. Si acepta, añadirlo a la tabla de miembros
+        if accept:
+            supabase.table("group_members").insert({"group_id": group_id, "user_id": user_id}).execute()
+        return True
+    except:
+        return False
 
 def get_user_groups(user_id):
     """
