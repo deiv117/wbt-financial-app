@@ -14,7 +14,6 @@ from database import (save_input, delete_input, get_categories, delete_category,
 from components import editar_movimiento_dialog, editar_categoria_dialog, crear_categoria_dialog
 
 # --- ESTILOS CSS GLOBALES Y LIBRERÍA DE ICONOS ---
-# Link a Bootstrap Icons
 BOOTSTRAP_ICONS_LINK = '<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.5/font/bootstrap-icons.css">'
 
 CUSTOM_CSS = """
@@ -22,46 +21,14 @@ CUSTOM_CSS = """
 /* 1. IMPORTAR FUENTE DE ICONOS */
 @import url("https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.5/font/bootstrap-icons.css");
 
-/* 2. ESTILO DE TÍTULOS (H1 y H3 con iconos alineados) */
-h1 .bi, h3 .bi {
-    vertical-align: -2px;
-    margin-right: 8px;
+/* 2. ESTILO DE TÍTULOS (Alineación perfecta icono-texto) */
+h1 .bi, h3 .bi, h5 .bi {
+    vertical-align: -3px;
+    margin-right: 10px;
     color: #636EFA;
 }
 
-/* 3. BOTONES DE ACCIÓN (Colores Específicos) */
-
-/* --- BOTÓN EDITAR (Amarillo) --- */
-/* Busca botones que contengan el icono material 'edit' */
-div[data-testid="stButton"] button:has(span:contains("edit")) {
-    border-color: #FFC107 !important;
-    color: #FFC107 !important;
-    background-color: rgba(255, 193, 7, 0.1) !important;
-    border-radius: 8px;
-}
-div[data-testid="stButton"] button:has(span:contains("edit")):hover {
-    background-color: #FFC107 !important;
-    color: #000000 !important; /* Texto negro para contraste */
-    border-color: #FFC107 !important;
-    transform: scale(1.02);
-}
-
-/* --- BOTÓN BORRAR (Rojo) --- */
-/* Busca botones que contengan el icono material 'delete' */
-div[data-testid="stButton"] button:has(span:contains("delete")) {
-    border-color: #FF4B4B !important;
-    color: #FF4B4B !important;
-    background-color: rgba(255, 75, 75, 0.1) !important;
-    border-radius: 8px;
-}
-div[data-testid="stButton"] button:has(span:contains("delete")):hover {
-    background-color: #FF4B4B !important;
-    color: #FFFFFF !important; /* Texto blanco */
-    border-color: #FF4B4B !important;
-    transform: scale(1.02);
-}
-
-/* 4. IGUALAR ALTURA TARJETAS DASHBOARD */
+/* 3. IGUALAR ALTURA TARJETAS DASHBOARD */
 div[data-testid="stVerticalBlockBorderWrapper"]:has(div[data-testid="stMetric"]) {
     min-height: 130px; 
     display: flex; 
@@ -79,6 +46,10 @@ def render_header(icon_name, text):
 def render_subheader(icon_name, text):
     """Subtítulo H3"""
     st.markdown(f'{BOOTSTRAP_ICONS_LINK}<h3><i class="bi bi-{icon_name}"></i> {text}</h3>', unsafe_allow_html=True)
+
+def render_small_header(icon_name, text):
+    """Encabezado pequeño H5"""
+    st.markdown(f'{BOOTSTRAP_ICONS_LINK}<h5><i class="bi bi-{icon_name}"></i> {text}</h5>', unsafe_allow_html=True)
 
 
 # --- 1. RESUMEN GLOBAL (Landing Page) ---
@@ -230,7 +201,7 @@ def render_dashboard(df_all, current_cats, user_id):
                         if st.button(":material/edit:", key=f"e_dash_{i['id']}", use_container_width=True): 
                             editar_movimiento_dialog(i, current_cats)
                     with cb_d:
-                        if st.button(":material/delete:", key=f"d_dash_{i['id']}", use_container_width=True): 
+                        if st.button(":material/delete:", key=f"d_dash_{i['id']}", type="primary", use_container_width=True): 
                             delete_input(i['id'])
                             st.rerun()
 
@@ -276,7 +247,7 @@ def render_dashboard(df_all, current_cats, user_id):
                                 if st.button(":material/edit:", key=f"e_hist_{i['id']}", use_container_width=True): 
                                     editar_movimiento_dialog(i, current_cats)
                             with cb2:
-                                if st.button(":material/delete:", key=f"d_hist_{i['id']}", use_container_width=True): 
+                                if st.button(":material/delete:", key=f"d_hist_{i['id']}", type="primary", use_container_width=True): 
                                     delete_input(i['id'])
                                     st.rerun()
 
@@ -410,7 +381,7 @@ def render_dashboard(df_all, current_cats, user_id):
             st.subheader("Progreso Anual por Categoría")
             st.caption("_(Presupuesto mensual configurado multiplicado por 12)_")
             gcm_anual = df_an[df_an['type'] == 'Gasto'].groupby('category_id')['quantity'].sum().reset_index()
-            for _, r in pd.merge(pd.DataFrame(cat_g), gcm_anual, left_on='id', right_on='category_id', how='left').fillna(0).iterrows():
+            for _, r in pd.merge(pd.DataFrame(cat_g), gcm, left_on='id', right_on='category_id', how='left').fillna(0).iterrows():
                 gastado = r['quantity']
                 presupuesto_anual = r['budget'] * 12
                 if presupuesto_anual > 0:
@@ -458,7 +429,7 @@ def render_categories(current_cats):
                             if st.button(":material/edit:", key=f"cat_e_{c['id']}", use_container_width=True): 
                                 editar_categoria_dialog(c)
                         with kb2:
-                            if st.button(":material/delete:", key=f"cat_d_{c['id']}", use_container_width=True): 
+                            if st.button(":material/delete:", key=f"cat_d_{c['id']}", type="primary", use_container_width=True): 
                                 delete_category(c['id'])
                                 st.rerun()
 
@@ -471,7 +442,7 @@ def render_profile(user_id, p_data):
     
     # A. Datos Personales
     with st.container(border=True):
-        st.subheader("👤 Datos Personales")
+        render_subheader("person-lines-fill", "Datos Personales")
         c_ava, c_form = st.columns([1, 2])
         
         with c_ava:
@@ -514,21 +485,21 @@ def render_profile(user_id, p_data):
 
     # B. Datos Financieros
     with st.container(border=True):
-        st.subheader("💰 Configuración Financiera")
+        render_subheader("cash-coin", "Configuración Financiera")
         st.info("ℹ️ Cualquier cambio en tu sueldo o ingresos fijos se guardará en tu historial.")
         
         with st.form("finance_form"):
-            st.markdown("##### 🏦 Patrimonio Base")
+            render_small_header("bank", "Patrimonio Base")
             n_balance = st.number_input("Saldo Inicial en cuentas (€)", value=float(p_data.get('initial_balance', 0) or 0), help="Dinero total antes de empezar a usar la app")
             
             st.divider()
             
-            st.markdown("##### 💼 Nómina y Pagas")
+            render_small_header("briefcase", "Nómina y Pagas")
             col_n1, col_n2 = st.columns(2)
             n_salary = col_n1.number_input("Nómina Base Mensual (€)", value=float(p_data.get('base_salary', 0) or 0))
             n_pagas = col_n2.slider("Pagas al año", 12, 16, int(p_data.get('payments_per_year', 12) or 12))
 
-            st.markdown("##### ➕ Ingresos Adicionales Recurrentes")
+            render_small_header("graph-up-arrow", "Ingresos Adicionales")
             col_ex1, col_ex2 = st.columns(2)
             n_other = col_ex1.number_input("Cantidad (€)", value=float(p_data.get('other_fixed_income', 0) or 0))
             
@@ -564,6 +535,7 @@ def render_profile(user_id, p_data):
 
     # C. Seguridad
     with st.expander("🔐 Seguridad y Contraseña"):
+        render_subheader("shield-lock", "Seguridad")
         with st.form("pass_form"):
             p1 = st.text_input("Nueva Contraseña", type="password")
             p2 = st.text_input("Confirmar Contraseña", type="password")
