@@ -2,7 +2,7 @@ import streamlit as st
 import pandas as pd
 from database import init_db, login_user, register_user, recover_password, get_user_profile, get_transactions, get_categories
 from styles import get_custom_css
-from views import render_dashboard, render_categories, render_profile, render_import
+from views import render_dashboard, render_categories, render_profile, render_import, render_main_dashboard
 
 # Configuración de página
 st.set_page_config(page_title="Mi Finanzas", page_icon="💰", layout="wide")
@@ -37,49 +37,44 @@ def main():
         
         # Sidebar
         with st.sidebar:
-            # 1. Recuperamos la URL del avatar
+            # 1. Recuperamos datos para el avatar
             avatar_url = user_profile.get('avatar_url')
+            p_color = user_profile.get('profile_color', '#636EFA')
+            name = user_profile.get('name', 'Usuario')
             
-            # 2. Preparamos el HTML: ¿Foto o Inicial?
+            # 2. HTML del Avatar (Simplificado para evitar errores visuales)
             if avatar_url:
-                # Si hay foto: Etiqueta <img> redonda
-                avatar_html = f"""
-                    <img src="{avatar_url}" 
-                         style="width: 90px; height: 90px; border-radius: 50%; object-fit: cover; 
-                                border: 3px solid {user_profile.get('profile_color', '#636EFA')}; margin-bottom: 10px;">
-                """
+                avatar_html = f'<img src="{avatar_url}" style="width: 120px; height: 120px; border-radius: 50%; object-fit: cover; border: 4px solid {p_color}; margin-bottom: 15px; display: block; margin-left: auto; margin-right: auto;">'
             else:
-                # Si no hay foto: El círculo de siempre con la inicial
-                initial = user_profile['name'][0].upper() if user_profile.get('name') else 'U'
-                avatar_html = f"""
-                    <div style="width: 90px; height: 90px; background-color: {user_profile.get('profile_color', '#636EFA')}; 
-                                border-radius: 50%; display: flex; align-items: center; justify-content: center; 
-                                color: white; font-size: 35px; font-weight: bold; margin-bottom: 10px;">
-                        {initial}
-                    </div>
-                """
+                initial = name[0].upper() if name else 'U'
+                avatar_html = f'<div style="width: 120px; height: 120px; background-color: {p_color}; border-radius: 50%; display: flex; align-items: center; justify-content: center; color: white; font-size: 50px; font-weight: bold; margin-bottom: 15px; margin-left: auto; margin-right: auto;">{initial}</div>'
             
-            # 3. Renderizamos el bloque completo
+            # 3. Renderizamos el encabezado del Sidebar
             st.markdown(f"""
-                <div style="display: flex; flex-direction: column; align-items: center; padding: 1rem 0;">
+                <div style="text-align: center; padding-top: 20px; padding-bottom: 20px;">
                     {avatar_html}
-                    <h3 style="margin: 0; text-align: center;">Hola, {user_profile.get('name', 'Usuario')}</h3>
+                    <h2 style="margin: 0; font-size: 24px;">Hola, {name}</h2>
                 </div>
             """, unsafe_allow_html=True)
             
-            page = st.radio("Navegación", ["📊 Dashboard", "📂 Categorías", "📥 Importar", "⚙️ Perfil"], label_visibility="collapsed")
+            st.divider()
+            
+            # Menú de Navegación
+            page = st.radio("Navegación", ["🏠 Resumen", "💸 Movimientos", "📂 Categorías", "📥 Importar", "⚙️ Perfil"], label_visibility="collapsed")
             
             st.divider()
-            if st.button("Cerrar Sesión"):
+            if st.button("Cerrar Sesión", use_container_width=True):
                 st.session_state.user = None
                 st.rerun()
 
-        # Cargar datos
+        # Cargar datos comunes
         df_all = get_transactions(user_id)
         current_cats = get_categories(user_id)
 
-        # Renderizar vistas
-        if page == "📊 Dashboard":
+        # Renderizar vistas según la página seleccionada
+        if page == "🏠 Resumen":
+            render_main_dashboard(df_all, user_profile)
+        elif page == "💸 Movimientos": # Antes llamado Dashboard
             render_dashboard(df_all, current_cats, user_id)
         elif page == "📂 Categorías":
             render_categories(current_cats)
@@ -116,7 +111,7 @@ def main():
                         else:
                             st.error("Email o contraseña incorrectos.")
                 
-                # --- SECCIÓN NUEVA: RECUPERAR CONTRASEÑA ---
+                # Recuperar contraseña
                 with st.expander("¿Olvidaste tu contraseña?", expanded=False):
                     st.caption("Introduce tu email y te enviaremos un enlace mágico.")
                     rec_email = st.text_input("Tu Email de registro", key="rec_email")
