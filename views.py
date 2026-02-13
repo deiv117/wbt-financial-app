@@ -13,43 +13,64 @@ from database import (save_input, delete_input, get_categories, delete_category,
                       change_password, get_historical_income)
 from components import editar_movimiento_dialog, editar_categoria_dialog, crear_categoria_dialog
 
-# --- ESTILOS CSS GLOBALES (Para botones de colores y tarjetas) ---
-BUTTON_STYLES = """
+# --- ESTILOS CSS GLOBALES Y LIBRERÍA DE ICONOS ---
+# Importamos la librería de iconos de Bootstrap para usarlos en los Títulos
+BOOTSTRAP_ICONS_LINK = '<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.5/font/bootstrap-icons.css">'
+
+# CSS Personalizado para Botones y Títulos
+CUSTOM_CSS = """
 <style>
-/* 1. BOTÓN EDITAR (AMARILLO/ÁMBAR) - Busca el emoji ✏️ */
+/* 1. IMPORTAR FUENTE DE ICONOS (Solo funciona si se inyecta en el markdown) */
+@import url("https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.5/font/bootstrap-icons.css");
+
+/* 2. ESTILO DE TÍTULOS (Para que los iconos se alineen bien con el texto) */
+h1 .bi {
+    vertical-align: -5px; /* Ajuste fino para alinear icono y texto */
+    margin-right: 10px;
+    color: #636EFA; /* Color del icono alineado con el tema */
+}
+
+/* 3. BOTONES DE ACCIÓN (Editar/Borrar) - Estilo "Icon Button" */
+div[data-testid="stButton"] button {
+    border-radius: 8px; /* Bordes redondeados suaves */
+    font-weight: bold;
+}
+
+/* Botón EDITAR (Amarillo) */
 div[data-testid="stButton"] button:has(div p:contains('✏️')) {
-    background-color: rgba(255, 193, 7, 0.15);
+    background-color: rgba(255, 193, 7, 0.1);
     border: 1px solid #FFC107;
     color: #FFC107;
-    transition: all 0.3s ease;
+    transition: all 0.2s ease-in-out;
 }
 div[data-testid="stButton"] button:has(div p:contains('✏️')):hover {
     background-color: #FFC107;
-    color: #000000;
-    border-color: #FFC107;
+    color: #000;
+    transform: scale(1.02); /* Pequeño efecto zoom */
 }
 
-/* 2. BOTÓN BORRAR (ROJO) - Busca el emoji 🗑️ */
+/* Botón BORRAR (Rojo) */
 div[data-testid="stButton"] button:has(div p:contains('🗑️')) {
-    background-color: rgba(255, 75, 75, 0.15);
+    background-color: rgba(255, 75, 75, 0.1);
     border: 1px solid #FF4B4B;
     color: #FF4B4B;
-    transition: all 0.3s ease;
+    transition: all 0.2s ease-in-out;
 }
 div[data-testid="stButton"] button:has(div p:contains('🗑️')):hover {
     background-color: #FF4B4B;
-    color: #FFFFFF;
-    border-color: #FF4B4B;
+    color: #FFF;
+    transform: scale(1.02);
 }
 
-/* 3. MODO OSCURO (Ajustes de legibilidad) */
+/* 4. MODO OSCURO (Ajustes de contraste para el amarillo) */
 @media (prefers-color-scheme: dark) {
     div[data-testid="stButton"] button:has(div p:contains('✏️')) {
         color: #FFD54F;
+        border-color: #FFD54F;
     }
 }
 
-/* 4. IGUALAR ALTURA TARJETAS DASHBOARD */
+/* 5. IGUALAR ALTURA TARJETAS DASHBOARD */
 div[data-testid="stVerticalBlockBorderWrapper"]:has(div[data-testid="stMetric"]) {
     min-height: 130px; 
     display: flex; 
@@ -59,12 +80,20 @@ div[data-testid="stVerticalBlockBorderWrapper"]:has(div[data-testid="stMetric"])
 </style>
 """
 
+# Función auxiliar para pintar títulos con iconos Bootstrap
+def render_header(icon_name, text):
+    # Inyectamos el CSS de los iconos + el HTML del título
+    st.markdown(f'{BOOTSTRAP_ICONS_LINK}<h1><i class="bi bi-{icon_name}"></i> {text}</h1>', unsafe_allow_html=True)
+
+
 # --- 1. RESUMEN GLOBAL (Landing Page) ---
 def render_main_dashboard(df_all, user_profile):
     # Inyectamos estilos
-    st.markdown(BUTTON_STYLES, unsafe_allow_html=True)
+    st.markdown(CUSTOM_CSS, unsafe_allow_html=True)
 
-    st.title(f"🏠 Resumen Global")
+    # TITULO: Usamos 'house' igual que en el sidebar
+    render_header("house", "Resumen Global")
+    
     st.caption(f"Hola de nuevo, {user_profile.get('name', 'Usuario')}. Aquí tienes el pulso de tu economía.")
 
     # --- CÁLCULO DE KPIs ---
@@ -102,6 +131,7 @@ def render_main_dashboard(df_all, user_profile):
 
     # --- GRÁFICO EVOLUCIÓN ---
     st.subheader("📈 Evolución de tu Patrimonio")
+    
     if not df_all.empty or saldo_inicial > 0:
         df_chart = df_all.copy().sort_values('date') if not df_all.empty else pd.DataFrame(columns=['date', 'quantity', 'type'])
         
@@ -132,8 +162,7 @@ def render_main_dashboard(df_all, user_profile):
 
 # --- 2. GESTIÓN DE MOVIMIENTOS ---
 def render_dashboard(df_all, current_cats, user_id):
-    # Inyectamos estilos
-    st.markdown(BUTTON_STYLES, unsafe_allow_html=True)
+    st.markdown(CUSTOM_CSS, unsafe_allow_html=True)
     
     # CSS Responsive para móviles
     st.markdown("""
@@ -150,7 +179,8 @@ def render_dashboard(df_all, current_cats, user_id):
         </style>
     """, unsafe_allow_html=True)
 
-    st.title("💳 Movimientos")
+    # TITULO: Usamos 'wallet2' igual que en el sidebar
+    render_header("wallet2", "Movimientos")
 
     # Menú de navegación interno
     selected = option_menu(
@@ -208,6 +238,8 @@ def render_dashboard(df_all, current_cats, user_id):
                 with col_btn:
                     cb_e, cb_d = st.columns(2)
                     with cb_e:
+                        # NOTA: Usamos Emojis porque Streamlit buttons no soportan iconos HTML dentro
+                        # Pero el CSS se encarga de darles el estilo cuadrado y color
                         if st.button("✏️", key=f"e_dash_{i['id']}", use_container_width=True): 
                             editar_movimiento_dialog(i, current_cats)
                     with cb_d:
@@ -411,8 +443,10 @@ def render_dashboard(df_all, current_cats, user_id):
 
 # --- 3. CATEGORÍAS ---
 def render_categories(current_cats):
-    st.markdown(BUTTON_STYLES, unsafe_allow_html=True)
-    st.title("📑 Gestión de Categorías")
+    st.markdown(CUSTOM_CSS, unsafe_allow_html=True)
+
+    # TITULO: Usamos 'list-task' igual que en el sidebar
+    render_header("list-task", "Gestión de Categorías")
     
     if st.button("➕ Nueva Categoría"): 
         crear_categoria_dialog(st.session_state.user['id'])
@@ -443,7 +477,10 @@ def render_categories(current_cats):
 
 # --- 4. PERFIL ---
 def render_profile(user_id, p_data):
-    st.title("⚙️ Mi Perfil")
+    st.markdown(CUSTOM_CSS, unsafe_allow_html=True)
+
+    # TITULO: Usamos 'person-gear' igual que en el sidebar
+    render_header("person-gear", "Mi Perfil")
     
     # A. Datos Personales
     with st.container(border=True):
@@ -556,7 +593,10 @@ def render_profile(user_id, p_data):
 
 # --- 5. IMPORTAR ---
 def render_import(current_cats, user_id):
-    st.title("☁️ Importar Movimientos")
+    st.markdown(CUSTOM_CSS, unsafe_allow_html=True)
+
+    # TITULO: Usamos 'cloud-upload' igual que en el sidebar
+    render_header("cloud-upload", "Importar Movimientos")
     
     with st.expander("📖 Guía de Columnas Sugeridas", expanded=True):
         st.table({
