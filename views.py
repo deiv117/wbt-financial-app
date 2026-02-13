@@ -1,6 +1,7 @@
 import streamlit as st
 import pandas as pd
 import math
+import time
 import plotly.graph_objects as go
 import calendar
 from database import get_historical_income
