@@ -78,12 +78,11 @@ def render_subheader(icon_name, text):
 def render_small_header(icon_name, text):
     st.markdown(f'{BOOTSTRAP_ICONS_LINK}<h5><i class="bi bi-{icon_name}"></i> {text}</h5>', unsafe_allow_html=True)
 
-# --- DIÁLOGOS DE CONFIRMACIÓN (SEGURIDAD) PUDILOS ---
+# --- DIÁLOGOS DE CONFIRMACIÓN (SEGURIDAD) ---
 @st.dialog("Eliminar Movimiento")
 def confirmar_borrar_movimiento(id_mov):
     st.markdown(f'{BOOTSTRAP_ICONS_LINK}<p style="font-size:16px;"><i class="bi bi-question-circle" style="color:#636EFA;"></i> ¿Estás seguro de que quieres eliminar este movimiento?</p>', unsafe_allow_html=True)
     
-    # Alerta estilo Bootstrap para el Warning
     st.markdown("""
         <div style="color: #842029; background-color: #f8d7da; border: 1px solid #f5c2c7; padding: 10px; border-radius: 5px; margin-bottom: 20px;">
             <i class="bi bi-exclamation-triangle-fill"></i> Esta acción no se puede deshacer.
@@ -92,7 +91,6 @@ def confirmar_borrar_movimiento(id_mov):
     
     col_no, col_si = st.columns(2)
     with col_si:
-        # Añadimos :material/delete: para que el CSS lo pinte de rojo automáticamente
         if st.button(":material/delete: Sí, Eliminar", type="primary", use_container_width=True):
             delete_input(id_mov)
             st.rerun()
@@ -104,7 +102,6 @@ def confirmar_borrar_movimiento(id_mov):
 def confirmar_borrar_categoria(id_cat):
     st.markdown(f'{BOOTSTRAP_ICONS_LINK}<p style="font-size:16px;"><i class="bi bi-question-circle" style="color:#636EFA;"></i> ¿Seguro que quieres borrar esta categoría?</p>', unsafe_allow_html=True)
     
-    # Alerta estilo Bootstrap para la Info
     st.markdown("""
         <div style="color: #084298; background-color: #cfe2ff; border: 1px solid #b6d4fe; padding: 10px; border-radius: 5px; margin-bottom: 20px;">
             <i class="bi bi-info-circle-fill"></i> Los movimientos asociados no se borrarán, pero perderán su categoría actual.
@@ -113,7 +110,6 @@ def confirmar_borrar_categoria(id_cat):
     
     col_no, col_si = st.columns(2)
     with col_si:
-        # Añadimos :material/delete: para que el CSS lo pinte de rojo automáticamente
         if st.button(":material/delete: Sí, Eliminar", type="primary", use_container_width=True):
             delete_category(id_cat)
             st.rerun()
@@ -318,39 +314,142 @@ def render_dashboard(df_all, current_cats, user_id):
                                 if st.button(":material/delete:", key=f"d_hist_{i['id']}", type="primary", use_container_width=True): 
                                     confirmar_borrar_movimiento(i['id'])
 
-    # --- C. PREVISIÓN ---
+    # --- C. PREVISIÓN (NUEVA SUPER-PANTALLA) ---
     elif selected == "Previsión":
         render_subheader("graph-up-arrow", "Previsión y Comparativa")
         
-        tp = sum(c['budget'] for c in cat_g)
-        mi = df_all[df_all['type']=='Ingreso']['quantity'].sum() / len(df_all['date'].dt.to_period('M').unique()) if not df_all.empty else 0
-        ahorro_potencial = mi - tp
+        # 1. Recuperar datos financieros del perfil de usuario
+        p_data = st.session_state.user if 'user' in st.session_state else {}
+        n_salary = float(p_data.get('base_salary', 0) or 0)
+        n_other = float(p_data.get('other_fixed_income', 0) or 0)
+        n_freq = int(p_data.get('other_income_frequency', 1) or 1)
+        
+        ingresos_fijos = n_salary + (n_other / n_freq if n_freq > 0 else 0)
+        limite_gastos = sum(float(c.get('budget', 0) or 0) for c in cat_g)
+        ahorro_teorico = ingresos_fijos - limite_gastos
 
+        # --- FILA 1: EL PLAN MAESTRO ---
+        render_small_header("bullseye", "El Plan Maestro")
         m1, m2, m3 = st.columns(3)
         with m1: 
-            with st.container(border=True): st.metric("Límite Gastos", f"{tp:,.2f}€", help="Presupuestos sumados")
+            with st.container(border=True): 
+                st.metric("Ingresos Fijos (Plan)", f"{ingresos_fijos:,.2f}€", help="Nómina + Extras fijos mensuales de tu Perfil")
         with m2: 
-            with st.container(border=True): st.metric("Ingresos Medios", f"{mi:,.2f}€", help="Media histórica")
+            with st.container(border=True): 
+                st.metric("Límite de Gastos", f"{limite_gastos:,.2f}€", help="La suma total de tus presupuestos configurados")
         with m3: 
             with st.container(border=True): 
-                color_ahorro = "normal" if ahorro_potencial > 0 else "inverse"
-                st.metric("Ahorro Potencial", f"{ahorro_potencial:,.2f}€", delta=f"{(ahorro_potencial/mi*100):.1f}%" if mi > 0 else None, delta_color=color_ahorro)
+                color_ahorro = "normal" if ahorro_teorico > 0 else "inverse"
+                pct_ahorro = f"{(ahorro_teorico/ingresos_fijos*100):.1f}%" if ingresos_fijos > 0 else None
+                st.metric("Ahorro Teórico", f"{ahorro_teorico:,.2f}€", delta=pct_ahorro, delta_color=color_ahorro, help="Lo que te sobrará si cumples tu plan")
 
         st.divider()
-        st.markdown("#### Detalle por Categoría (Mes Actual)")
-        if not df_all.empty:
-            hoy = datetime.now()
-            df_mes_actual = df_all[(df_all['date'].dt.month == hoy.month) & (df_all['date'].dt.year == hoy.year)]
-            gastos_cat = df_mes_actual[df_mes_actual['type'] == 'Gasto'].groupby('category_id')['quantity'].sum().reset_index()
+
+        # --- FILA 2: SALUD FINANCIERA & PROYECCIÓN ---
+        col_s1, col_s2 = st.columns([1, 2])
+        
+        with col_s1:
+            render_small_header("heart-pulse", "Salud Financiera")
+            tasa_ahorro = (ahorro_teorico / ingresos_fijos * 100) if ingresos_fijos > 0 else 0
+            ratio_cob = (ingresos_fijos / limite_gastos) if limite_gastos > 0 else 0
             
-            df_prev = pd.DataFrame(cat_g)
-            if not df_prev.empty:
-                df_prev = pd.merge(df_prev, gastos_cat, left_on='id', right_on='category_id', how='left').fillna(0)
-                df_prev['Diferencia'] = df_prev['budget'] - df_prev['quantity']
-                st.dataframe(df_prev[['emoji', 'name', 'budget', 'quantity', 'Diferencia']].rename(
-                    columns={'emoji':'Icono', 'name':'Categoría', 'budget':'Presupuesto (€)', 'quantity':'Gastado (€)'}
-                ), use_container_width=True, hide_index=True)
-        else: st.info("Añade movimientos para ver la comparativa.")
+            estado_tasa = "🟢 Óptimo" if tasa_ahorro >= 20 else ("🟡 Mejorable" if tasa_ahorro > 0 else "🔴 Peligro")
+            estado_ratio = "🟢 Sobrado" if ratio_cob >= 1.2 else ("🟡 Ajustado" if ratio_cob >= 1 else "🔴 Insuficiente")
+            
+            with st.container(border=True):
+                st.markdown(f"<p style='margin-bottom:0px; color:gray; font-size:14px;'>Tasa de Ahorro Planificada</p><h3 style='margin-top:0px;'>{tasa_ahorro:.1f}% <span style='font-size:16px; font-weight:normal;'>{estado_tasa}</span></h3>", unsafe_allow_html=True)
+            with st.container(border=True):
+                st.markdown(f"<p style='margin-bottom:0px; color:gray; font-size:14px;'>Ratio Cobertura de Gastos</p><h3 style='margin-top:0px;'>{ratio_cob:.2f}x <span style='font-size:16px; font-weight:normal;'>{estado_ratio}</span></h3>", unsafe_allow_html=True)
+
+        with col_s2:
+            render_small_header("crystal-ball", "Proyección a 12 meses")
+            
+            # Calcular saldo actual real
+            saldo_inicial = float(p_data.get('initial_balance', 0) or 0)
+            if not df_all.empty:
+                ti = df_all[df_all['type'] == 'Ingreso']['quantity'].sum()
+                tg = df_all[df_all['type'] == 'Gasto']['quantity'].sum()
+                saldo_actual = saldo_inicial + ti - tg
+            else:
+                saldo_actual = saldo_inicial
+            
+            saldo_futuro = saldo_actual + (ahorro_teorico * 12)
+            st.caption(f"Si cumples tu plan a rajatabla, dentro de un año tendrás **{saldo_futuro:,.2f}€** ahorrados.")
+            
+            # Gráfico de Proyección
+            meses_proj = [datetime.now() + timedelta(days=30*i) for i in range(13)]
+            saldos_proj = [saldo_actual + (ahorro_teorico * i) for i in range(13)]
+            
+            fig_p = go.Figure()
+            fig_p.add_trace(go.Scatter(x=meses_proj, y=saldos_proj, fill='tozeroy', mode='lines', line=dict(color='#00CC96', width=3)))
+            fig_p.update_layout(height=180, margin=dict(l=0, r=0, t=10, b=0), yaxis_title="Euros (€)", hovermode="x unified")
+            st.plotly_chart(fig_p, use_container_width=True)
+
+        st.divider()
+
+        # --- FILA 3: REALITY CHECK ---
+        render_small_header("search", "Reality Check (Plan vs. Realidad)")
+        st.write("Compara tus presupuestos con tu media histórica de gastos reales para detectar fugas.")
+        
+        if not df_all.empty:
+            df_gastos = df_all[df_all['type'] == 'Gasto']
+            
+            if not df_gastos.empty:
+                # Calcular número de meses registrados para la media
+                unique_months = df_gastos['date'].dt.to_period('M').nunique()
+                meses_hist = max(1, unique_months)
+                
+                # Agrupar media histórica
+                hist_cat = df_gastos.groupby('category_id')['quantity'].sum().reset_index()
+                hist_cat['Media_Histórica'] = hist_cat['quantity'] / meses_hist
+                
+                # Agrupar mes actual
+                hoy = datetime.now()
+                df_mes_actual = df_gastos[(df_gastos['date'].dt.month == hoy.month) & (df_gastos['date'].dt.year == hoy.year)]
+                act_cat = df_mes_actual.groupby('category_id')['quantity'].sum().reset_index()
+                act_cat.rename(columns={'quantity': 'Gastado_Mes'}, inplace=True)
+                
+                # Cruce de datos con las categorías de presupuesto
+                df_prev = pd.DataFrame(cat_g)
+                if not df_prev.empty:
+                    df_prev = pd.merge(df_prev, act_cat[['category_id', 'Gastado_Mes']], left_on='id', right_on='category_id', how='left').fillna(0)
+                    df_prev = pd.merge(df_prev, hist_cat[['category_id', 'Media_Histórica']], left_on='id', right_on='category_id', how='left').fillna(0)
+                    
+                    # Lógica del Estado/Alarma
+                    def get_estado(row):
+                        if row['budget'] == 0 and row['Media_Histórica'] > 0:
+                            return "⚠️ Sin Presupuesto"
+                        elif row['Media_Histórica'] > row['budget'] * 1.1:
+                            return "🔴 Irrealista"
+                        elif row['Media_Histórica'] < row['budget'] * 0.5 and row['budget'] > 0:
+                            return "🔵 Muy Holgado"
+                        else:
+                            return "✅ OK"
+                    
+                    df_prev['Estado'] = df_prev.apply(get_estado, axis=1)
+                    
+                    # Formatear y Mostrar
+                    df_display = df_prev[['emoji', 'name', 'budget', 'Gastado_Mes', 'Media_Histórica', 'Estado']].rename(
+                        columns={
+                            'emoji': 'Ico', 
+                            'name': 'Categoría', 
+                            'budget': 'Presupuesto (€)', 
+                            'Gastado_Mes': 'Gastado Este Mes (€)',
+                            'Media_Histórica': 'Media Histórica (€)',
+                            'Estado': 'Evaluación'
+                        }
+                    )
+                    
+                    # Redondeo limpio para visualización
+                    df_display['Presupuesto (€)'] = df_display['Presupuesto (€)'].round(2)
+                    df_display['Gastado Este Mes (€)'] = df_display['Gastado Este Mes (€)'].round(2)
+                    df_display['Media Histórica (€)'] = df_display['Media Histórica (€)'].round(2)
+                    
+                    st.dataframe(df_display, use_container_width=True, hide_index=True)
+            else:
+                st.info("Aún no tienes gastos para calcular la media histórica.")
+        else: 
+            st.info("Añade movimientos de gasto para comparar tu plan con tu realidad histórica.")
 
     # --- D. MENSUAL ---
     elif selected == "Mensual":
