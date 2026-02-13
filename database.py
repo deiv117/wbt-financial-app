@@ -126,15 +126,14 @@ def upsert_profile(user_data):
             "profile_color": user_data.get('profile_color', '#636EFA'),
             "initial_balance": user_data.get('initial_balance', 0),
             "base_salary": user_data.get('base_salary', 0),
-            "other_fixed_income": user_data.get('other_fixed_income', 0), # NUEVO
+            "other_fixed_income": user_data.get('other_fixed_income', 0),
+            "other_income_frequency": user_data.get('other_income_frequency', 1), # <--- NUEVO
             "payments_per_year": user_data.get('payments_per_year', 12),
             "updated_at": datetime.now().isoformat()
         }
         supabase.table('profiles').update(update_data).eq('id', user_data['id']).execute()
 
         # 2. GESTIÓN DEL HISTORIAL (La Máquina del Tiempo)
-        # Comprobamos si ya existe un registro para HOY (o el mes actual) para no duplicar
-        # Si no, insertamos uno nuevo para que conste el cambio de sueldo desde hoy.
         today = datetime.now().strftime("%Y-%m-%d")
         
         # Insertamos el nuevo registro histórico
@@ -142,6 +141,7 @@ def upsert_profile(user_data):
             "user_id": user_data['id'],
             "base_salary": user_data.get('base_salary', 0),
             "other_fixed_income": user_data.get('other_fixed_income', 0),
+            "other_income_frequency": user_data.get('other_income_frequency', 1), # <--- NUEVO
             "valid_from": today
         }
         supabase.table('income_history').insert(history_data).execute()
@@ -150,7 +150,7 @@ def upsert_profile(user_data):
     except Exception as e:
         st.error(f"Error actualizando perfil: {e}")
         return False
-
+        
 def get_historical_income(user_id, target_date):
     """Busca cuánto cobraba el usuario en una fecha específica"""
     try:
