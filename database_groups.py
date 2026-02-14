@@ -121,3 +121,30 @@ def delete_group(group_id):
     except Exception as e:
         print(f"Error borrando grupo: {e}")
         return False
+
+def get_group_info(group_id):
+    """Obtiene los datos y configuración general de un grupo"""
+    try:
+        res = supabase.table("groups").select("*").eq("id", group_id).execute()
+        return res.data[0] if res.data else None
+    except Exception as e:
+        print(f"Error obteniendo info del grupo: {e}")
+        return None
+
+def remove_group_member(group_id, target_user_id):
+    """Elimina a un usuario de la tabla de miembros activos del grupo"""
+    try:
+        supabase.table("group_members").delete().eq("group_id", group_id).eq("user_id", target_user_id).execute()
+        return True
+    except Exception as e:
+        print(f"Error eliminando miembro: {e}")
+        return False
+
+def update_group_setting(group_id, setting_name, value):
+    """Actualiza un ajuste específico del grupo"""
+    try:
+        supabase.table("groups").update({setting_name: value}).eq("id", group_id).execute()
+        return True
+    except Exception as e:
+        print(f"Error actualizando ajuste: {e}")
+        return False
