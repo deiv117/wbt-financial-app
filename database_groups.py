@@ -185,3 +185,45 @@ def update_group_details(group_id, name, emoji, color):
     except Exception as e:
         st.error(f"🛑 Error DB (Actualizando Grupo): {e}")
         return False, str(e)
+
+def add_shared_expense(group_id, movement_data, member_ids):
+    """
+    Crea un movimiento personal y lo vincula como gasto compartido.
+    movement_data: dict con {user_id, description, amount, category, type}
+    member_ids: lista de IDs de usuarios que participan en el gasto
+    """
+    try:
+        # 1. Insertar el movimiento en tu cuenta personal
+        res_mov = supabase.table("movements").insert(movement_data).execute()
+        
+        if res_mov.data:
+            mov_id = res_mov.data[0]['id']
+            
+            # 2. Registrar el gasto en el grupo vinculado a ese movimiento
+            expense_data = {
+                "group_id": group_id,
+                "movement_id": mov_id,
+                "paid_by": movement_data['user_id'],
+                "description": movement_data['description'],
+                "total_amount": movement_data['amount']
+            }
+            res_exp = supabase.table("group_expenses").insert(expense_data).execute()
+            
+            if res_exp.data:
+                exp_id = res_exp.data[0]['id']
+                # 3. Calcular y crear los repartos
+                cuota = movement_data['amount'] / len(member_ids)
+                splits = [
+                    {
+                        "expense_id": exp_id,
+                        "user_id": mid,
+                        "amount_owed": cuota
+                    } for mid in member_ids
+                ]
+                supabase.table("group_expense_splits").insert(splits).execute()
+                return True, "Gasto personal y compartido guardado"
+        
+        return False, "Error al procesar el gasto"
+    except Exception as e:
+        st.error(f"Error en add_shared_expense: {e}")
+        return False, str(e)
