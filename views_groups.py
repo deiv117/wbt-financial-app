@@ -6,7 +6,7 @@ from database_groups import (create_group, get_user_groups, delete_group,
                              get_my_invitations, send_invitation, respond_invitation,
                              get_group_members)
 
-# Reutilizamos la importación de iconos
+# Reutilizamos la importación de iconos para los encabezados principales
 BOOTSTRAP_ICONS_LINK = '<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.5/font/bootstrap-icons.css">'
 
 def render_header(icon_name, text):
@@ -65,14 +65,18 @@ def invitar_usuario_dialog(group_id, group_name):
 def render_single_group(group_id, group_name, user_id):
     """Esta es la pantalla interior cuando entras a un grupo"""
     
-    # Botón para volver atrás (AHORA CON CALLBACK)
-    st.button("⬅️ Volver a mis grupos", on_click=cerrar_grupo_callback)
+    # Botón para volver atrás con Material Design
+    st.button(":material/arrow_back: Volver a mis grupos", on_click=cerrar_grupo_callback)
 
     render_header("collection", f"{group_name}")
     st.divider()
 
-    # Pestañas de gestión del grupo
-    tab_resumen, tab_gastos, tab_miembros = st.tabs(["📊 Resumen de Deudas", "💸 Gastos Compartidos", "👥 Miembros"])
+    # Pestañas de gestión del grupo con iconos Material
+    tab_resumen, tab_gastos, tab_miembros = st.tabs([
+        ":material/analytics: Resumen de Deudas", 
+        ":material/receipt_long: Gastos Compartidos", 
+        ":material/group: Miembros"
+    ])
 
     with tab_resumen:
         st.write("Aquí pondremos la calculadora de deudas (Quién le debe a quién).")
@@ -125,12 +129,15 @@ def render_groups(user_id, user_email):
     render_header("people", "Grupos Compartidos")
     st.caption("Gestiona gastos compartidos con amigos, pareja o compañeros de piso.")
     
-    # Sistema de pestañas para Mis Grupos e Invitaciones
-    tab_mis_grupos, tab_invitaciones = st.tabs(["📂 Mis Grupos", "✉️ Invitaciones"])
+    # Sistema de pestañas para Mis Grupos e Invitaciones con Material Design
+    tab_mis_grupos, tab_invitaciones = st.tabs([
+        ":material/folder_shared: Mis Grupos", 
+        ":material/mail: Invitaciones"
+    ])
 
     with tab_mis_grupos:
         # --- CREAR NUEVO GRUPO ---
-        with st.expander("➕ Crear Nuevo Grupo", expanded=False):
+        with st.expander(":material/add_circle: Crear Nuevo Grupo", expanded=False):
             with st.form("new_group_v2", clear_on_submit=True):
                 col1, col2 = st.columns([3, 1])
                 g_name = col1.text_input("Nombre del grupo")
@@ -167,9 +174,9 @@ def render_groups(user_id, user_email):
                         rol_badge = "👑 Admin" if es_admin else "👤 Miembro"
                         st.caption(f"Rol: {rol_badge}")
                         
-                        # Al hacer clic, se ejecuta 'abrir_grupo_callback' enviando el ID y el Nombre
+                        # Botón Abrir con Material Design
                         st.button(
-                            "Abrir Grupo ➡️", 
+                            ":material/arrow_forward: Abrir Grupo", 
                             key=f"open_{group['id']}", 
                             use_container_width=True, 
                             type="primary",
@@ -179,7 +186,7 @@ def render_groups(user_id, user_email):
 
                         c_inv, c_del = st.columns([1, 1])
                         with c_inv:
-                            if st.button("Invitar 👤", key=f"inv_btn_{group['id']}", use_container_width=True):
+                            if st.button(":material/person_add: Invitar", key=f"inv_btn_{group['id']}", use_container_width=True):
                                 invitar_usuario_dialog(group['id'], group['name'])
                         with c_del:
                             if es_admin:
@@ -200,11 +207,11 @@ def render_groups(user_id, user_email):
                     st.write(f"Te han invitado a este grupo.")
                     
                     ca, cr = st.columns(2)
-                    if ca.button("Aceptar ✅", key=f"acc_{inv['id']}", use_container_width=True):
+                    if ca.button(":material/check: Aceptar", key=f"acc_{inv['id']}", use_container_width=True):
                         if respond_invitation(inv['id'], inv['group_id'], user_id, True):
                             st.success("¡Bienvenido al grupo!")
                             st.rerun()
-                    if cr.button("Rechazar ❌", key=f"rej_{inv['id']}", use_container_width=True):
+                    if cr.button(":material/close: Rechazar", key=f"rej_{inv['id']}", use_container_width=True):
                         if respond_invitation(inv['id'], inv['group_id'], user_id, False):
                             st.info("Invitación rechazada.")
                             st.rerun()
