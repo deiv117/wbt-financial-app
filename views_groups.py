@@ -120,13 +120,21 @@ def render_single_group(group_id, group_name, user_id):
                 invitar_usuario_dialog(group_id, nombre)
         
         if miembros:
-            for m in miembros:
+            # --- NUEVO DISEÑO: GRID DE 3 COLUMNAS ---
+            cols = st.columns(3)
+            
+            for index, m in enumerate(miembros):
+                col = cols[index % 3] # Asignamos la tarjeta a la columna correspondiente
+                
                 prof = m.get('profiles')
                 if isinstance(prof, list) and len(prof) > 0: prof = prof[0]
                 if not prof: prof = {}
                 
-                name = prof.get('name', 'Usuario')
-                last_name = prof.get('lastname', '')
+                # Limpiamos los espacios conflictivos para que el Markdown funcione siempre
+                name_raw = prof.get('name', 'Usuario')
+                lastname_raw = prof.get('lastname', '')
+                full_name = " ".join(f"{name_raw} {lastname_raw}".split()) 
+                
                 color = prof.get('profile_color', '#636EFA')
                 avatar = prof.get('avatar_url')
                 
@@ -134,26 +142,30 @@ def render_single_group(group_id, group_name, user_id):
                 is_member_admin = m['user_id'] == admin_id
                 rol_badge = "👑 Admin" if is_member_admin else "👤 Miembro"
                 
-                with st.container(border=True):
-                    c1, c2, c3 = st.columns([1, 4, 1], vertical_alignment="center")
-                    with c1:
-                        if avatar:
-                            st.image(avatar, width=50)
-                        else:
-                            st.markdown(f"""
-                                <div style="width: 50px; height: 50px; background-color: {color}; 
-                                            border-radius: 50%; display: flex; align-items: center; 
-                                            justify-content: center; color: white; font-weight: bold; font-size: 20px;">
-                                    {name[0].upper() if name else '?'}
-                                </div>
-                            """, unsafe_allow_html=True)
-                    with c2:
-                        estado_extra = " ⏳ *(Pidiendo salir)*" if m.get('leave_status') == 'pending' else ""
-                        st.markdown(f"**{name} {last_name}** {estado_extra}")
-                        st.caption(f"{rol_badge} {'**(Tú)**' if is_current_user else ''}")
-                    with c3:
+                with col:
+                    with st.container(border=True):
+                        c1, c2 = st.columns([1, 2.5], vertical_alignment="center")
+                        with c1:
+                            if avatar:
+                                st.image(avatar, width=45)
+                            else:
+                                st.markdown(f"""
+                                    <div style="width: 45px; height: 45px; background-color: {color}; 
+                                                border-radius: 50%; display: flex; align-items: center; 
+                                                justify-content: center; color: white; font-weight: bold; font-size: 18px;">
+                                        {full_name[0].upper() if full_name else '?'}
+                                    </div>
+                                """, unsafe_allow_html=True)
+                        with c2:
+                            estado_extra = " ⏳ *(Saliendo)*" if m.get('leave_status') == 'pending' else ""
+                            # Imprimimos el nombre formateado limpiamente
+                            st.markdown(f"**{full_name}**{estado_extra}")
+                            st.caption(f"{rol_badge} {'**(Tú)**' if is_current_user else ''}")
+                        
+                        # Si es admin, ponemos el botón de borrar abajo del todo de la tarjeta
                         if es_admin and not is_current_user:
-                            if st.button(":material/delete:", key=f"kick_{m['user_id']}", help="Eliminar miembro", type="secondary"):
+                            st.write("") # Espaciador invisible
+                            if st.button(":material/person_remove: Expulsar", key=f"kick_{m['user_id']}", use_container_width=True):
                                 if remove_group_member(group_id, m['user_id']):
                                     st.toast("Usuario eliminado")
                                     st.rerun()
@@ -204,9 +216,13 @@ def render_single_group(group_id, group_name, user_id):
                     for p in pendientes:
                         p_prof = p.get('profiles', {})
                         if isinstance(p_prof, list) and len(p_prof) > 0: p_prof = p_prof[0]
-                        p_name = p_prof.get('name', 'Un usuario')
+                        
+                        p_name_raw = p_prof.get('name', 'Un usuario')
+                        p_last_raw = p_prof.get('lastname', '')
+                        p_full_name = " ".join(f"{p_name_raw} {p_last_raw}".split()) 
+                        
                         with st.container(border=True):
-                            st.write(f"**{p_name}** ha solicitado salir.")
+                            st.write(f"**{p_full_name}** ha solicitado salir.")
                             c_yes, c_no = st.columns(2)
                             if c_yes.button("Aprobar salida", key=f"app_{p['user_id']}", type="primary", use_container_width=True):
                                 resolve_leave_request(group_id, p['user_id'], True)
