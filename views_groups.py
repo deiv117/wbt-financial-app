@@ -143,23 +143,25 @@ def render_single_group(group_id, group_name, user_id):
                 rol_badge = "👑 Admin" if is_member_admin else "👤 Miembro"
                 
                 with col:
-                    with st.container(border=True):
-                        c1, c2 = st.columns([1, 2.5], vertical_alignment="center")
+                    # Usamos un contenedor con altura fija para asegurar uniformidad
+                    with st.container(border=True, height=180):
+                        c1, c2 = st.columns([1.2, 2], vertical_alignment="center")
                         with c1:
+                            # Imagen del doble de tamaño (90px)
                             if avatar:
-                                st.image(avatar, width=45)
+                                st.image(avatar, width=90)
                             else:
                                 st.markdown(f"""
-                                    <div style="width: 45px; height: 45px; background-color: {color}; 
+                                    <div style="width: 90px; height: 90px; background-color: {color}; 
                                                 border-radius: 50%; display: flex; align-items: center; 
-                                                justify-content: center; color: white; font-weight: bold; font-size: 18px;">
+                                                justify-content: center; color: white; font-weight: bold; font-size: 36px;">
                                         {full_name[0].upper() if full_name else '?'}
                                     </div>
                                 """, unsafe_allow_html=True)
                         with c2:
                             estado_extra = " ⏳ *(Saliendo)*" if m.get('leave_status') == 'pending' else ""
                             # Imprimimos el nombre formateado limpiamente
-                            st.markdown(f"**{full_name}**{estado_extra}")
+                            st.markdown(f"### {full_name}{estado_extra}")
                             st.caption(f"{rol_badge} {'**(Tú)**' if is_current_user else ''}")
                         
                         # Si es admin, ponemos el botón de borrar abajo del todo de la tarjeta
