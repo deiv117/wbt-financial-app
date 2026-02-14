@@ -2,11 +2,12 @@
 import streamlit as st
 import time
 from streamlit_option_menu import option_menu
-# IMPORTANTE: Añadimos TODAS las funciones necesarias de database_groups sin abreviar
+# IMPORTANTE: Añadimos update_group_details a las importaciones
 from database_groups import (
     create_group, get_user_groups, delete_group, 
     get_my_invitations, send_invitation, respond_invitation,
-    get_group_members, get_group_info, remove_group_member, update_group_setting
+    get_group_members, get_group_info, remove_group_member, 
+    update_group_setting, update_group_details
 )
 
 # Reutilizamos la importación de iconos para los encabezados principales
@@ -44,6 +45,9 @@ def confirmar_borrar_grupo(group_id):
     with col_si:
         if st.button(":material/delete: Sí, Eliminar", type="primary", use_container_width=True):
             delete_group(group_id)
+            # Si estábamos dentro del grupo que acabamos de borrar, limpiamos la sesión
+            if st.session_state.get('current_group_id') == group_id:
+                cerrar_grupo_callback()
             st.rerun()
     with col_no:
         if st.button("Cancelar", use_container_width=True):
@@ -80,12 +84,16 @@ def render_single_group(group_id, group_name, user_id):
     es_admin = group_info['created_by'] == user_id
     allow_leaving = group_info.get('allow_leaving', True)
 
-    render_header("collection", f"{group_name}")
+    # Mostramos el encabezado con el emoji actualizado
+    emoji = group_info.get('emoji', '👥')
+    nombre = group_info.get('name', group_name)
+    render_header("collection", f"{emoji} {nombre}")
+    
     if es_admin:
         st.caption("👑 Eres el administrador de este grupo")
     st.divider()
 
-    # Añadimos la pestaña de Ajustes
+    # Pestañas
     selected_tab = option_menu(
         menu_title=None,
         options=["Resumen", "Gastos", "Miembros", "Ajustes"],
@@ -107,12 +115,19 @@ def render_single_group(group_id, group_name, user_id):
         st.write("Aquí pondremos la lista de tickets y un botón para añadir un gasto.")
 
     elif selected_tab == "Miembros":
-        render_subheader("people", "Miembros del Grupo")
+        # Botón para invitar directamente desde la pestaña miembros
+        col_tit, col_btn = st.columns([3, 1])
+        with col_tit:
+            render_subheader("people", "Miembros del Grupo")
+        with col_btn:
+            if st.button(":material/person_add: Invitar", use_container_width=True):
+                invitar_usuario_dialog(group_id, nombre)
+
         miembros = get_group_members(group_id)
         
         if miembros:
             for m in miembros:
-                prof = m.get('profiles') or {} # Protegemos por si falla el JOIN
+                prof = m.get('profiles') or {}
                 name = prof.get('name', 'Usuario Pendiente')
                 color = prof.get('profile_color', '#636EFA')
                 is_current_user = m['user_id'] == user_id
@@ -132,7 +147,6 @@ def render_single_group(group_id, group_name, user_id):
                         if is_current_user:
                             st.caption("(Tú)")
                     with c3:
-                        # Si eres admin y no eres tú mismo, puedes expulsar
                         if es_admin and not is_current_user:
                             if st.button(":material/person_remove:", key=f"kick_{m['user_id']}", help="Eliminar del grupo"):
                                 if remove_group_member(group_id, m['user_id']):
@@ -144,22 +158,53 @@ def render_single_group(group_id, group_name, user_id):
         
         with st.container(border=True):
             if es_admin:
+                # 1. EDITAR INFO DEL GRUPO
+                st.write("**Editar Información del Grupo**")
+                with st.form("edit_group_form"):
+                    col1, col2 = st.columns([3, 1])
+                    new_name = col1.text_input("Nombre del grupo", value=nombre)
+                    new_emoji = col2.text_input("Emoji", value=emoji)
+                    new_color = st.color_picker("Color", value=group_info.get('color', '#636EFA'))
+                    
+                    if st.form_submit_button("Guardar Cambios", use_container_width=True):
+                        if new_name.strip():
+                            ok, msg = update_group_details(group_id, new_name, new_emoji, new_color)
+                            if ok:
+                                st.session_state.current_group_name = new_name # Actualizamos la memoria
+                                st.success("Grupo actualizado correctamente")
+                                time.sleep(1)
+                                st.rerun()
+                            else:
+                                st.error(msg)
+                        else:
+                            st.error("El nombre no puede estar vacío")
+
+                st.divider()
+
+                # 2. PERMISOS
                 st.write("**Permisos de los miembros**")
                 nuevo_allow = st.toggle("Permitir a los miembros abandonar el grupo por su cuenta", value=allow_leaving)
-                
                 if nuevo_allow != allow_leaving:
                     update_group_setting(group_id, "allow_leaving", nuevo_allow)
                     st.toast("Ajuste guardado")
                     time.sleep(0.5)
                     st.rerun()
+
+                st.divider()
+
+                # 3. ZONA PELIGROSA
+                st.write("**Zona Peligrosa**")
+                if st.button(":material/delete: Eliminar Grupo Definitivamente", type="primary"):
+                    confirmar_borrar_grupo(group_id)
+
             else:
                 st.write("**Opciones de Miembro**")
                 if allow_leaving:
                     st.info("Puedes abandonar este grupo en cualquier momento. El histórico de tus gastos se mantendrá.")
                     if st.button(":material/logout: Abandonar Grupo", type="primary"):
                         if remove_group_member(group_id, user_id):
-                            cerrar_grupo_callback() # Limpiamos la sesión
-                            st.rerun() # Recargamos para ir al menú principal
+                            cerrar_grupo_callback() 
+                            st.rerun() 
                 else:
                     st.warning("🔒 El administrador ha bloqueado la opción de abandonar el grupo voluntariamente.")
 
@@ -167,7 +212,6 @@ def render_single_group(group_id, group_name, user_id):
 # --- FUNCIÓN PRINCIPAL ENRUTADORA ---
 def render_groups(user_id, user_email):
     
-    # 1. SEMÁFORO: Si hay un grupo seleccionado, mostramos SU pantalla y detenemos la ejecución
     current_group_id = st.session_state.get('current_group_id')
     current_group_name = st.session_state.get('current_group_name', 'Grupo')
 
@@ -175,11 +219,9 @@ def render_groups(user_id, user_email):
         render_single_group(current_group_id, current_group_name, user_id)
         return
 
-    # 2. SI NO HAY GRUPO: Mostramos la vista general (Lista e Invitaciones)
     render_header("people", "Grupos Compartidos")
     st.caption("Gestiona gastos compartidos con amigos, pareja o compañeros de piso.")
     
-    # Menú horizontal principal
     main_tab = option_menu(
         menu_title=None,
         options=["Mis Grupos", "Invitaciones"],
@@ -195,7 +237,6 @@ def render_groups(user_id, user_email):
     )
 
     if main_tab == "Mis Grupos":
-        # --- CREAR NUEVO GRUPO ---
         with st.expander(":material/add_circle: Crear Nuevo Grupo", expanded=False):
             with st.form("new_group_v2", clear_on_submit=True):
                 col1, col2 = st.columns([3, 1])
@@ -214,8 +255,6 @@ def render_groups(user_id, user_email):
                         st.error("El nombre es obligatorio.")
 
         st.divider()
-
-        # --- LISTADO DE MIS GRUPOS ---
         render_subheader("collection", "Mis Grupos")
         my_groups = get_user_groups(user_id)
         
@@ -228,12 +267,10 @@ def render_groups(user_id, user_email):
                 with col:
                     with st.container(border=True):
                         st.markdown(f"### {group.get('emoji', '👥')} {group['name']}")
-                        
                         es_admin = group['created_by'] == user_id
                         rol_badge = "👑 Admin" if es_admin else "👤 Miembro"
                         st.caption(f"Rol: {rol_badge}")
                         
-                        # Botón Abrir con Material Design
                         st.button(
                             ":material/arrow_forward: Abrir Grupo", 
                             key=f"open_{group['id']}", 
