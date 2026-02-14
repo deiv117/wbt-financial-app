@@ -5,7 +5,7 @@ from streamlit_option_menu import option_menu  # <-- Importamos el menú persona
 # IMPORTANTE: Añadimos todas las funciones necesarias de database_groups
 from database_groups import (create_group, get_user_groups, delete_group, 
                              get_my_invitations, send_invitation, respond_invitation,
-                             get_group_members)
+                             get_group_members, get_group_info, remove_group_member, update_group_setting))
 
 # Reutilizamos la importación de iconos para los encabezados principales
 BOOTSTRAP_ICONS_LINK = '<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.5/font/bootstrap-icons.css">'
@@ -66,17 +66,27 @@ def invitar_usuario_dialog(group_id, group_name):
 def render_single_group(group_id, group_name, user_id):
     """Esta es la pantalla interior cuando entras a un grupo"""
     
-    # Botón para volver atrás con Material Design
     st.button(":material/arrow_back: Volver a mis grupos", on_click=cerrar_grupo_callback)
 
+    # Obtenemos la info del grupo para saber quién es el admin y los ajustes
+    group_info = get_group_info(group_id)
+    if not group_info:
+        st.error("Error al cargar la información del grupo.")
+        return
+
+    es_admin = group_info['created_by'] == user_id
+    allow_leaving = group_info.get('allow_leaving', True)
+
     render_header("collection", f"{group_name}")
+    if es_admin:
+        st.caption("👑 Eres el administrador de este grupo")
     st.divider()
 
-    # Menú horizontal con el mismo estilo que en Movimientos
+    # Añadimos la pestaña de Ajustes
     selected_tab = option_menu(
         menu_title=None,
-        options=["Resumen", "Gastos", "Miembros"],
-        icons=["graph-up", "receipt", "people"],
+        options=["Resumen", "Gastos", "Miembros", "Ajustes"],
+        icons=["graph-up", "receipt", "people", "gear"],
         orientation="horizontal",
         default_index=0,
         styles={
@@ -89,11 +99,9 @@ def render_single_group(group_id, group_name, user_id):
 
     if selected_tab == "Resumen":
         st.write("Aquí pondremos la calculadora de deudas (Quién le debe a quién).")
-        # ¡Próximo paso!
 
     elif selected_tab == "Gastos":
         st.write("Aquí pondremos la lista de tickets y un botón para añadir un gasto.")
-        # ¡Próximo paso!
 
     elif selected_tab == "Miembros":
         render_subheader("people", "Miembros del Grupo")
@@ -101,15 +109,14 @@ def render_single_group(group_id, group_name, user_id):
         
         if miembros:
             for m in miembros:
-                prof = m.get('profiles', {})
-                name = prof.get('name', 'Usuario Desconocido')
+                prof = m.get('profiles') or {} # Protegemos por si falla el JOIN
+                name = prof.get('name', 'Usuario Pendiente')
                 color = prof.get('profile_color', '#636EFA')
+                is_current_user = m['user_id'] == user_id
                 
-                # Diseño en forma de tarjeta para cada miembro
                 with st.container(border=True):
-                    c1, c2 = st.columns([1, 4])
+                    c1, c2, c3 = st.columns([1, 3, 1])
                     with c1:
-                        # Un pequeño círculo con la inicial
                         st.markdown(f"""
                             <div style="width: 40px; height: 40px; background-color: {color}; 
                                         border-radius: 50%; display: flex; align-items: center; 
@@ -119,8 +126,40 @@ def render_single_group(group_id, group_name, user_id):
                         """, unsafe_allow_html=True)
                     with c2:
                         st.markdown(f"**{name}** {prof.get('lastname', '')}")
-                        if m['user_id'] == user_id:
+                        if is_current_user:
                             st.caption("(Tú)")
+                    with c3:
+                        # Si eres admin y no eres tú mismo, puedes expulsar
+                        if es_admin and not is_current_user:
+                            if st.button(":material/person_remove:", key=f"kick_{m['user_id']}", help="Eliminar del grupo"):
+                                if remove_group_member(group_id, m['user_id']):
+                                    st.toast(f"Usuario eliminado")
+                                    st.rerun()
+
+    elif selected_tab == "Ajustes":
+        render_subheader("gear", "Configuración del Grupo")
+        
+        with st.container(border=True):
+            if es_admin:
+                st.write("**Permisos de los miembros**")
+                # Toggle para permitir/bloquear salidas
+                nuevo_allow = st.toggle("Permitir a los miembros abandonar el grupo por su cuenta", value=allow_leaving)
+                
+                if nuevo_allow != allow_leaving:
+                    update_group_setting(group_id, "allow_leaving", nuevo_allow)
+                    st.toast("Ajuste guardado")
+                    time.sleep(0.5)
+                    st.rerun()
+            else:
+                st.write("**Opciones de Miembro**")
+                if allow_leaving:
+                    st.info("Puedes abandonar este grupo en cualquier momento. El histórico de tus gastos se mantendrá.")
+                    if st.button(":material/logout: Abandonar Grupo", type="primary"):
+                        if remove_group_member(group_id, user_id):
+                            cerrar_grupo_callback() # Limpiamos la sesión
+                            st.rerun() # Recargamos para ir al menú principal
+                else:
+                    st.warning("🔒 El administrador ha bloqueado la opción de abandonar el grupo voluntariamente.")
 
 
 # --- FUNCIÓN PRINCIPAL ENRUTADORA ---
