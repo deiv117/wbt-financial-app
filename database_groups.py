@@ -95,17 +95,37 @@ def get_user_groups(user_id):
         return []
 
 def get_group_members(group_id):
-    """Obtiene la lista de usuarios que pertenecen a un grupo específico"""
+    """Obtiene la lista de usuarios. Actualizada para traer el leave_status"""
     try:
-        # Hacemos un JOIN con la tabla profiles para traernos su nombre y color
         res = supabase.table("group_members") \
-            .select("user_id, profiles(name, lastname, avatar_url, profile_color)") \
+            .select("user_id, leave_status, profiles(name, lastname, avatar_url, profile_color)") \
             .eq("group_id", group_id) \
             .execute()
         return res.data or []
     except Exception as e:
-        print(f"Error obteniendo miembros del grupo: {e}")
+        print(f"Error obteniendo miembros: {e}")
         return []
+
+def request_leave_group(group_id, user_id):
+    """El usuario solicita salir del grupo"""
+    try:
+        supabase.table("group_members").update({"leave_status": "pending"}).eq("group_id", group_id).eq("user_id", user_id).execute()
+        return True
+    except Exception as e:
+        return False
+
+def resolve_leave_request(group_id, target_user_id, approve=True):
+    """El admin aprueba o rechaza la solicitud de salida"""
+    try:
+        if approve:
+            # Si aprueba, lo borramos de la tabla
+            supabase.table("group_members").delete().eq("group_id", group_id).eq("user_id", target_user_id).execute()
+        else:
+            # Si rechaza, le quitamos el estado 'pending'
+            supabase.table("group_members").update({"leave_status": "none"}).eq("group_id", group_id).eq("user_id", target_user_id).execute()
+        return True
+    except Exception as e:
+        return False
 
 def delete_group(group_id):
     """
