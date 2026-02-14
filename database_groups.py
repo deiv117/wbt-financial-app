@@ -148,3 +148,16 @@ def update_group_setting(group_id, setting_name, value):
     except Exception as e:
         print(f"Error actualizando ajuste: {e}")
         return False
+
+def update_group_details(group_id, name, emoji, color):
+    """Actualiza el nombre, emoji y color del grupo"""
+    try:
+        supabase.table("groups").update({
+            "name": name,
+            "emoji": emoji,
+            "color": color
+        }).eq("id", group_id).execute()
+        return True, "Grupo actualizado correctamente"
+    except Exception as e:
+        print(f"Error actualizando grupo: {e}")
+        return False, str(e)
