@@ -2,12 +2,13 @@
 import streamlit as st
 import time
 from streamlit_option_menu import option_menu
-# IMPORTANTE: Añadimos update_group_details a las importaciones
+# IMPORTANTE: Añadimos las nuevas funciones a las importaciones
 from database_groups import (
     create_group, get_user_groups, delete_group, 
     get_my_invitations, send_invitation, respond_invitation,
     get_group_members, get_group_info, remove_group_member, 
-    update_group_setting, update_group_details
+    update_group_setting, update_group_details,
+    request_leave_group, resolve_leave_request
 )
 
 # Reutilizamos la importación de iconos para los encabezados principales
@@ -82,7 +83,7 @@ def render_single_group(group_id, group_name, user_id):
         return
 
     es_admin = group_info['created_by'] == user_id
-    allow_leaving = group_info.get('allow_leaving', True)
+    allow_leaving = bool(group_info.get('allow_leaving', True))
 
     # Mostramos el encabezado con el emoji actualizado
     emoji = group_info.get('emoji', '👥')
@@ -108,6 +109,9 @@ def render_single_group(group_id, group_name, user_id):
         }
     )
 
+    # Obtenemos los miembros una sola vez para usarlos en las pestañas
+    miembros = get_group_members(group_id)
+
     if selected_tab == "Resumen":
         st.write("Aquí pondremos la calculadora de deudas (Quién le debe a quién).")
 
@@ -122,12 +126,14 @@ def render_single_group(group_id, group_name, user_id):
         with col_btn:
             if st.button(":material/person_add: Invitar", use_container_width=True):
                 invitar_usuario_dialog(group_id, nombre)
-
-        miembros = get_group_members(group_id)
         
         if miembros:
             for m in miembros:
-                prof = m.get('profiles') or {}
+                # FIX ANTI-BUGS: Parseamos el perfil por si Supabase lo envía como lista o dict
+                prof = m.get('profiles')
+                if isinstance(prof, list) and len(prof) > 0: prof = prof[0]
+                if not prof: prof = {}
+                
                 name = prof.get('name', 'Usuario Pendiente')
                 color = prof.get('profile_color', '#636EFA')
                 is_current_user = m['user_id'] == user_id
@@ -143,7 +149,8 @@ def render_single_group(group_id, group_name, user_id):
                             </div>
                         """, unsafe_allow_html=True)
                     with c2:
-                        st.markdown(f"**{name}** {prof.get('lastname', '')}")
+                        estado_extra = " *(Pidiendo salir)*" if m.get('leave_status') == 'pending' else ""
+                        st.markdown(f"**{name}** {prof.get('lastname', '')}{estado_extra}")
                         if is_current_user:
                             st.caption("(Tú)")
                     with c3:
@@ -158,7 +165,28 @@ def render_single_group(group_id, group_name, user_id):
         
         with st.container(border=True):
             if es_admin:
-                # 1. EDITAR INFO DEL GRUPO
+                # 1. SOLICITUDES PENDIENTES DE SALIDA
+                pendientes = [m for m in miembros if m.get('leave_status') == 'pending']
+                if pendientes:
+                    st.error("**⚠️ Solicitudes para abandonar el grupo**")
+                    for p in pendientes:
+                        p_prof = p.get('profiles')
+                        if isinstance(p_prof, list) and len(p_prof) > 0: p_prof = p_prof[0]
+                        if not p_prof: p_prof = {}
+                        p_name = p_prof.get('name', 'Un usuario')
+                        
+                        with st.container(border=True):
+                            st.write(f"**{p_name}** ha solicitado salir del grupo.")
+                            c_yes, c_no = st.columns(2)
+                            if c_yes.button("Aprobar salida", key=f"app_{p['user_id']}", type="primary", use_container_width=True):
+                                resolve_leave_request(group_id, p['user_id'], True)
+                                st.rerun()
+                            if c_no.button("Rechazar", key=f"rej_{p['user_id']}", use_container_width=True):
+                                resolve_leave_request(group_id, p['user_id'], False)
+                                st.rerun()
+                    st.divider()
+
+                # 2. EDITAR INFO DEL GRUPO
                 st.write("**Editar Información del Grupo**")
                 with st.form("edit_group_form"):
                     col1, col2 = st.columns([3, 1])
@@ -181,7 +209,7 @@ def render_single_group(group_id, group_name, user_id):
 
                 st.divider()
 
-                # 2. PERMISOS
+                # 3. PERMISOS
                 st.write("**Permisos de los miembros**")
                 nuevo_allow = st.toggle("Permitir a los miembros abandonar el grupo por su cuenta", value=allow_leaving)
                 if nuevo_allow != allow_leaving:
@@ -192,7 +220,7 @@ def render_single_group(group_id, group_name, user_id):
 
                 st.divider()
 
-                # 3. ZONA PELIGROSA
+                # 4. ZONA PELIGROSA
                 st.write("**Zona Peligrosa**")
                 if st.button(":material/delete: Eliminar Grupo Definitivamente", type="primary"):
                     confirmar_borrar_grupo(group_id)
@@ -206,7 +234,17 @@ def render_single_group(group_id, group_name, user_id):
                             cerrar_grupo_callback() 
                             st.rerun() 
                 else:
-                    st.warning("🔒 El administrador ha bloqueado la opción de abandonar el grupo voluntariamente.")
+                    mi_estado = next((m.get('leave_status') for m in miembros if m['user_id'] == user_id), 'none')
+                    
+                    if mi_estado == 'pending':
+                        st.info("⏳ Has solicitado abandonar el grupo. Esperando aprobación del administrador.")
+                    else:
+                        st.warning("🔒 El administrador ha bloqueado la opción de abandonar el grupo voluntariamente.")
+                        if st.button("Solicitar abandonar el grupo", type="primary"):
+                            request_leave_group(group_id, user_id)
+                            st.success("Solicitud enviada al administrador")
+                            time.sleep(1)
+                            st.rerun()
 
 
 # --- FUNCIÓN PRINCIPAL ENRUTADORA ---
