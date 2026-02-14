@@ -260,11 +260,9 @@ def render_dashboard(df_all, current_cats, user_id):
                         miembros = get_group_members(shared_group_id)
                         
                         st.write("Selecciona quién participa en este gasto:")
-                        # Usamos columnas para que los checkboxes no ocupen tanto espacio vertical
                         cols_miembros = st.columns(3)
                         for idx, m in enumerate(miembros):
                             prof = m.get('profiles') or {}
-                            # Fix para el nombre (mismo que usamos en la vista de miembros)
                             if isinstance(prof, list): prof = prof[0] if prof else {}
                             m_nombre = prof.get('name', 'Usuario')
                             
@@ -274,40 +272,63 @@ def render_dashboard(df_all, current_cats, user_id):
                         
                         if participantes_ids:
                             cuota = qty / len(participantes_ids)
-                            st.info(f"Reparto: **{cuota:.2f}€** por persona ({len(participantes_ids)} personas)")
+                            st.info(f"Reparto: **{cuota:.2f}€** por persona")
                 else:
-                    st.caption("No tienes grupos creados para compartir gastos.")
-            
+                    st.caption("No tienes grupos creados.")
+
             st.divider()
             if st.form_submit_button("Guardar Movimiento", use_container_width=True):
                 if sel != "Selecciona...":
                     cat_sel = next(c for c in f_cs if f"{c.get('emoji', '📁')} {c['name']}" == sel)
-                    
-                    # Preparar datos para el movimiento personal
                     mov_data = {
-                        "user_id": user_id, 
-                        "quantity": qty, 
-                        "type": t_type, 
-                        "category_id": cat_sel['id'], 
-                        "date": str(f_mov), 
-                        "notes": concepto
+                        "user_id": user_id, "quantity": qty, "type": t_type, 
+                        "category_id": cat_sel['id'], "date": str(f_mov), "notes": concepto
                     }
 
-                    # Lógica de guardado dual
                     if shared_group_id and participantes_ids:
-                        # Si es compartido, usamos la nueva función que guarda AMBAS cosas
-                        from database_groups import add_shared_expense
                         ok, msg = add_shared_expense(shared_group_id, mov_data, participantes_ids)
-                        if ok: st.toast("✅ Gasto personal y compartido guardado")
+                        if ok: st.toast("✅ Gasto compartido guardado")
                         else: st.error(msg)
                     else:
-                        # Si no es compartido, guardamos normal como antes
                         save_input(mov_data)
                         st.toast("✅ Movimiento guardado")
                     
                     time.sleep(1)
                     st.rerun()
 
+        # --- RECUPERACIÓN DE LOS ÚLTIMOS 10 MOVIMIENTOS ---
+        st.divider()
+        st.subheader("Últimos movimientos")
+        
+        # Asumiendo que df_all es tu DataFrame con todos los movimientos del usuario
+        if not df_all.empty:
+            # Ordenamos por fecha y nos quedamos con los 10 más recientes
+            df_rec = df_all.sort_values('date', ascending=False).head(10)
+            
+            for _, i in df_rec.iterrows():
+                with st.container(border=True):
+                    col_info, col_btn = st.columns([4, 1])
+                    with col_info:
+                        color_q = "red" if i['type'] == 'Gasto' else "green"
+                        signo = "-" if i['type'] == 'Gasto' else "+"
+                        # Mostramos Categoría y Cantidad
+                        st.markdown(f"**{i['cat_display']}** &nbsp;|&nbsp; :{color_q}[**{signo}{i['quantity']:.2f}€**]")
+                        # Mostramos Fecha y Notas
+                        fecha_str = i['date'].strftime('%d/%m/%Y') if hasattr(i['date'], 'strftime') else i['date']
+                        st.caption(f"📅 {fecha_str} &nbsp;|&nbsp; 📝 _{i['notes'] or 'Sin concepto'}_")
+                    
+                    with col_btn:
+                        cb_e, cb_d = st.columns(2)
+                        with cb_e:
+                            if st.button(":material/edit:", key=f"e_dash_{i['id']}", use_container_width=True): 
+                                editar_movimiento_dialog(i, current_cats)
+                        with cb_d:
+                            if st.button(":material/delete:", key=f"d_dash_{i['id']}", type="primary", use_container_width=True): 
+                                # Función de borrado que deberías tener definida
+                                confirmar_borrar_movimiento(i['id'])
+        else:
+            st.info("Aún no tienes movimientos registrados.")
+          
     # --- B. HISTORIAL ---
     elif selected == "Historial":
         render_subheader("clock-history", "Historial Completo")
