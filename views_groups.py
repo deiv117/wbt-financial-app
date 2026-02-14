@@ -10,7 +10,6 @@ from database_groups import (
     request_leave_group, resolve_leave_request
 )
 
-# Reutilizamos la importación de iconos para los encabezados principales
 BOOTSTRAP_ICONS_LINK = '<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.5/font/bootstrap-icons.css">'
 
 def render_header(icon_name, text):
@@ -21,20 +20,16 @@ def render_subheader(icon_name, text):
 
 # --- CALLBACKS DE NAVEGACIÓN ---
 def abrir_grupo_callback(g_id, g_name):
-    """Guarda los datos del grupo antes de que la página recargue"""
     st.session_state.current_group_id = g_id
     st.session_state.current_group_name = g_name
 
 def cerrar_grupo_callback():
-    """Limpia los datos para volver al menú principal"""
     st.session_state.current_group_id = None
     st.session_state.current_group_name = None
 
-# Modal de seguridad para borrar un grupo
 @st.dialog("Eliminar Grupo")
 def confirmar_borrar_grupo(group_id):
     st.markdown(f'{BOOTSTRAP_ICONS_LINK}<p style="font-size:16px;"><i class="bi bi-question-circle" style="color:#636EFA;"></i> ¿Estás seguro de que quieres eliminar este grupo?</p>', unsafe_allow_html=True)
-    
     st.markdown("""
         <div style="color: #842029; background-color: #f8d7da; border: 1px solid #f5c2c7; padding: 10px; border-radius: 5px; margin-bottom: 20px;">
             <i class="bi bi-exclamation-triangle-fill"></i> Se borrará el grupo para TODOS los miembros. Esta acción no se puede deshacer.
@@ -70,8 +65,6 @@ def invitar_usuario_dialog(group_id, group_name):
 
 # --- VISTA INTERIOR DEL GRUPO ---
 def render_single_group(group_id, group_name, user_id):
-    """Esta es la pantalla interior cuando entras a un grupo"""
-    
     st.button(":material/arrow_back: Volver a mis grupos", on_click=cerrar_grupo_callback)
 
     group_info = get_group_info(group_id)
@@ -79,7 +72,8 @@ def render_single_group(group_id, group_name, user_id):
         st.error("Error al cargar la información del grupo.")
         return
 
-    es_admin = group_info['created_by'] == user_id
+    admin_id = group_info['created_by']
+    es_admin = admin_id == user_id
     allow_leaving = bool(group_info.get('allow_leaving', True))
 
     emoji = group_info.get('emoji', '👥')
@@ -126,49 +120,53 @@ def render_single_group(group_id, group_name, user_id):
                 if isinstance(prof, list) and len(prof) > 0: prof = prof[0]
                 if not prof: prof = {}
                 
-                name = prof.get('name', 'Usuario Pendiente')
+                name = prof.get('name', 'Usuario')
+                last_name = prof.get('lastname', '')
                 color = prof.get('profile_color', '#636EFA')
+                avatar = prof.get('avatar_url')
+                
                 is_current_user = m['user_id'] == user_id
+                is_member_admin = m['user_id'] == admin_id
+                rol_badge = "👑 Admin" if is_member_admin else "👤 Miembro"
                 
                 with st.container(border=True):
-                    c1, c2, c3 = st.columns([1, 3, 1])
+                    # Usamos vertical_alignment para que la papelera quede centrada con el texto
+                    c1, c2, c3 = st.columns([1, 4, 1], vertical_alignment="center")
                     with c1:
-                        st.markdown(f"""
-                            <div style="width: 40px; height: 40px; background-color: {color}; 
-                                        border-radius: 50%; display: flex; align-items: center; 
-                                        justify-content: center; color: white; font-weight: bold;">
-                                {name[0].upper() if name else '?'}
-                            </div>
-                        """, unsafe_allow_html=True)
+                        if avatar:
+                            st.image(avatar, width=50)
+                        else:
+                            st.markdown(f"""
+                                <div style="width: 50px; height: 50px; background-color: {color}; 
+                                            border-radius: 50%; display: flex; align-items: center; 
+                                            justify-content: center; color: white; font-weight: bold; font-size: 20px;">
+                                    {name[0].upper() if name else '?'}
+                                </div>
+                            """, unsafe_allow_html=True)
                     with c2:
-                        estado_extra = " *(Pidiendo salir)*" if m.get('leave_status') == 'pending' else ""
-                        st.markdown(f"**{name}** {prof.get('lastname', '')}{estado_extra}")
-                        if is_current_user:
-                            st.caption("(Tú)")
+                        estado_extra = " ⏳ *(Pidiendo salir)*" if m.get('leave_status') == 'pending' else ""
+                        st.markdown(f"**{name} {last_name}** {estado_extra}")
+                        st.caption(f"{rol_badge} {'**(Tú)**' if is_current_user else ''}")
                     with c3:
                         if es_admin and not is_current_user:
-                            if st.button(":material/person_remove:", key=f"kick_{m['user_id']}", help="Eliminar del grupo"):
+                            if st.button(":material/delete:", key=f"kick_{m['user_id']}", help="Eliminar miembro", type="secondary"):
                                 if remove_group_member(group_id, m['user_id']):
                                     st.toast("Usuario eliminado")
                                     st.rerun()
 
     elif selected_tab == "Ajustes":
         render_subheader("gear", "Configuración del Grupo")
-        
         with st.container(border=True):
             if es_admin:
-                # 1. SOLICITUDES PENDIENTES DE SALIDA
                 pendientes = [m for m in miembros if m.get('leave_status') == 'pending']
                 if pendientes:
                     st.error("**⚠️ Solicitudes para abandonar el grupo**")
                     for p in pendientes:
-                        p_prof = p.get('profiles')
+                        p_prof = p.get('profiles', {})
                         if isinstance(p_prof, list) and len(p_prof) > 0: p_prof = p_prof[0]
-                        if not p_prof: p_prof = {}
                         p_name = p_prof.get('name', 'Un usuario')
-                        
                         with st.container(border=True):
-                            st.write(f"**{p_name}** ha solicitado salir del grupo.")
+                            st.write(f"**{p_name}** ha solicitado salir.")
                             c_yes, c_no = st.columns(2)
                             if c_yes.button("Aprobar salida", key=f"app_{p['user_id']}", type="primary", use_container_width=True):
                                 resolve_leave_request(group_id, p['user_id'], True)
@@ -178,8 +176,7 @@ def render_single_group(group_id, group_name, user_id):
                                 st.rerun()
                     st.divider()
 
-                # 2. AJUSTES DEL GRUPO (Formulario unificado)
-                st.write("**Ajustes del Grupo**")
+                st.write("**Ajustes Generales**")
                 with st.form("edit_group_form"):
                     col1, col2 = st.columns([3, 1])
                     new_name = col1.text_input("Nombre del grupo", value=nombre)
@@ -188,20 +185,17 @@ def render_single_group(group_id, group_name, user_id):
                     
                     st.divider()
                     st.write("**Permisos de los miembros**")
-                    # Metemos el toggle dentro del formulario
                     nuevo_allow = st.toggle("Permitir a los miembros abandonar el grupo por su cuenta", value=allow_leaving)
                     
                     if st.form_submit_button("Guardar Cambios", use_container_width=True):
                         if new_name.strip():
-                            # Actualizamos los detalles visuales
                             ok, msg = update_group_details(group_id, new_name, new_emoji, new_color)
-                            # Actualizamos el permiso (ya no entra en bucle porque se ejecuta con el botón)
-                            update_group_setting(group_id, "allow_leaving", nuevo_allow)
-                            
+                            # Forzamos que se guarde como booleano en la BD
+                            update_group_setting(group_id, "allow_leaving", bool(nuevo_allow))
                             if ok:
                                 st.session_state.current_group_name = new_name
-                                st.success("Ajustes guardados correctamente")
-                                time.sleep(1)
+                                st.success("Ajustes guardados")
+                                time.sleep(0.5)
                                 st.rerun()
                             else:
                                 st.error(msg)
@@ -209,8 +203,6 @@ def render_single_group(group_id, group_name, user_id):
                             st.error("El nombre no puede estar vacío")
 
                 st.divider()
-
-                # 3. ZONA PELIGROSA
                 st.write("**Zona Peligrosa**")
                 if st.button(":material/delete: Eliminar Grupo Definitivamente", type="primary"):
                     confirmar_borrar_grupo(group_id)
@@ -225,21 +217,17 @@ def render_single_group(group_id, group_name, user_id):
                             st.rerun() 
                 else:
                     mi_estado = next((m.get('leave_status') for m in miembros if m['user_id'] == user_id), 'none')
-                    
                     if mi_estado == 'pending':
-                        st.info("⏳ Has solicitado abandonar el grupo. Esperando aprobación del administrador.")
+                        st.info("⏳ Has solicitado abandonar el grupo. Esperando aprobación.")
                     else:
-                        st.warning("🔒 El administrador ha bloqueado la opción de abandonar el grupo voluntariamente.")
+                        st.warning("🔒 El administrador ha bloqueado la opción de abandonar voluntariamente.")
                         if st.button("Solicitar abandonar el grupo", type="primary"):
                             request_leave_group(group_id, user_id)
-                            st.success("Solicitud enviada al administrador")
-                            time.sleep(1)
                             st.rerun()
 
 
 # --- FUNCIÓN PRINCIPAL ENRUTADORA ---
 def render_groups(user_id, user_email):
-    
     current_group_id = st.session_state.get('current_group_id')
     current_group_name = st.session_state.get('current_group_name', 'Grupo')
 
@@ -333,7 +321,8 @@ def render_groups(user_id, user_email):
                     ca, cr = st.columns(2)
                     if ca.button(":material/check: Aceptar", key=f"acc_{inv['id']}", use_container_width=True):
                         if respond_invitation(inv['id'], inv['group_id'], user_id, True):
-                            st.success("¡Bienvenido al grupo!")
+                            # SOLUCIÓN REDIRECT: Guardamos el estado y forzamos recarga
+                            abrir_grupo_callback(inv['group_id'], g_info.get('name', 'Grupo'))
                             st.rerun()
                     if cr.button(":material/close: Rechazar", key=f"rej_{inv['id']}", use_container_width=True):
                         if respond_invitation(inv['id'], inv['group_id'], user_id, False):
