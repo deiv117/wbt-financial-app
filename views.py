@@ -11,6 +11,10 @@ from datetime import datetime, timedelta
 from database import (save_input, delete_input, get_categories, delete_category, 
                       upsert_profile, save_category, update_input, upload_avatar, 
                       change_password, get_historical_income)
+
+# --- NUEVAS IMPORTACIONES PARA GESTIÓN DE GRUPOS Y GASTOS ---
+from database_groups import (get_user_groups, get_group_members, add_shared_expense)
+
 from components import editar_movimiento_dialog, editar_categoria_dialog, crear_categoria_dialog
 
 # --- ESTILOS CSS GLOBALES Y LIBRERÍA DE ICONOS ---
@@ -237,37 +241,72 @@ def render_dashboard(df_all, current_cats, user_id):
             f_cs = [c for c in current_cats if c.get('type') == t_type]
             sel = st.selectbox("Categoría", ["Selecciona..."] + [f"{c.get('emoji', '📁')} {c['name']}" for c in f_cs])
             concepto = st.text_input("Concepto")
+
+            # --- SECCIÓN GASTO COMPARTIDO ---
+            shared_group_id = None
+            participantes_ids = []
             
+            if t_type == "Gasto":
+                st.divider()
+                st.markdown("##### 👥 Gasto Compartido")
+                mis_grupos = get_user_groups(user_id)
+                
+                if mis_grupos:
+                    opciones_grupos = {g['name']: g['id'] for g in mis_grupos}
+                    sel_grupo = st.selectbox("¿Vincular a un grupo?", ["No compartir"] + list(opciones_grupos.keys()))
+                    
+                    if sel_grupo != "No compartir":
+                        shared_group_id = opciones_grupos[sel_grupo]
+                        miembros = get_group_members(shared_group_id)
+                        
+                        st.write("Selecciona quién participa en este gasto:")
+                        # Usamos columnas para que los checkboxes no ocupen tanto espacio vertical
+                        cols_miembros = st.columns(3)
+                        for idx, m in enumerate(miembros):
+                            prof = m.get('profiles') or {}
+                            # Fix para el nombre (mismo que usamos en la vista de miembros)
+                            if isinstance(prof, list): prof = prof[0] if prof else {}
+                            m_nombre = prof.get('name', 'Usuario')
+                            
+                            with cols_miembros[idx % 3]:
+                                if st.checkbox(f"{m_nombre}", value=True, key=f"p_{m['user_id']}"):
+                                    participantes_ids.append(m['user_id'])
+                        
+                        if participantes_ids:
+                            cuota = qty / len(participantes_ids)
+                            st.info(f"Reparto: **{cuota:.2f}€** por persona ({len(participantes_ids)} personas)")
+                else:
+                    st.caption("No tienes grupos creados para compartir gastos.")
+            
+            st.divider()
             if st.form_submit_button("Guardar Movimiento", use_container_width=True):
                 if sel != "Selecciona...":
                     cat_sel = next(c for c in f_cs if f"{c.get('emoji', '📁')} {c['name']}" == sel)
-                    save_input({
-                        "user_id": user_id, "quantity": qty, "type": t_type, 
-                        "category_id": cat_sel['id'], "date": str(f_mov), "notes": concepto
-                    })
+                    
+                    # Preparar datos para el movimiento personal
+                    mov_data = {
+                        "user_id": user_id, 
+                        "quantity": qty, 
+                        "type": t_type, 
+                        "category_id": cat_sel['id'], 
+                        "date": str(f_mov), 
+                        "notes": concepto
+                    }
+
+                    # Lógica de guardado dual
+                    if shared_group_id and participantes_ids:
+                        # Si es compartido, usamos la nueva función que guarda AMBAS cosas
+                        from database_groups import add_shared_expense
+                        ok, msg = add_shared_expense(shared_group_id, mov_data, participantes_ids)
+                        if ok: st.toast("✅ Gasto personal y compartido guardado")
+                        else: st.error(msg)
+                    else:
+                        # Si no es compartido, guardamos normal como antes
+                        save_input(mov_data)
+                        st.toast("✅ Movimiento guardado")
+                    
+                    time.sleep(1)
                     st.rerun()
-        
-        st.divider()
-        st.subheader("Últimos movimientos")
-        df_rec = df_all.sort_values('date', ascending=False).head(10) if not df_all.empty else pd.DataFrame()
-        
-        for _, i in df_rec.iterrows():
-            with st.container(border=True):
-                col_info, col_btn = st.columns([4, 1])
-                with col_info:
-                    color_q = "red" if i['type'] == 'Gasto' else "green"
-                    signo = "-" if i['type'] == 'Gasto' else "+"
-                    st.markdown(f"**{i['cat_display']}** &nbsp;|&nbsp; :{color_q}[**{signo}{i['quantity']:.2f}€**]")
-                    st.caption(f"📅 {i['date'].strftime('%d/%m/%Y')} &nbsp;|&nbsp; 📝 _{i['notes'] or 'Sin concepto'}_")
-                
-                with col_btn:
-                    cb_e, cb_d = st.columns(2)
-                    with cb_e:
-                        if st.button(":material/edit:", key=f"e_dash_{i['id']}", use_container_width=True): 
-                            editar_movimiento_dialog(i, current_cats)
-                    with cb_d:
-                        if st.button(":material/delete:", key=f"d_dash_{i['id']}", type="primary", use_container_width=True): 
-                            confirmar_borrar_movimiento(i['id'])
 
     # --- B. HISTORIAL ---
     elif selected == "Historial":
