@@ -101,18 +101,18 @@ def main():
         # --- BARRA LATERAL ---
         from database_groups import get_invitations_count
                 
-                # Obtenemos el email (usando la lógica segura que pusimos ayer)
-                session_user = st.session_state.supabase_client.auth.get_user()
-                try:
-                    user_email = session_user.user.email
-                except AttributeError:
-                    user_email = session_user.data.user.email if hasattr(session_user, 'data') else None
+         # Obtenemos el email (usando la lógica segura que pusimos ayer)
+        session_user = st.session_state.supabase_client.auth.get_user()
+        try:
+            user_email = session_user.user.email
+        except AttributeError:
+            user_email = session_user.data.user.email if hasattr(session_user, 'data') else None
         
-                # Contamos las invitaciones
-                n_invites = get_invitations_count(user_email) if user_email else 0
+        # Contamos las invitaciones
+        n_invites = get_invitations_count(user_email) if user_email else 0
                 
-                # Personalizamos la etiqueta del menú
-                label_grupos = f"Grupos {'🔴' if n_invites > 0 else ''}"
+        # Personalizamos la etiqueta del menú
+        label_grupos = f"Grupos {'🔴' if n_invites > 0 else ''}"
       
         with st.sidebar:
             avatar_url = user_profile.get('avatar_url')
