@@ -99,6 +99,21 @@ def main():
             recovery_dialog()
         
         # --- BARRA LATERAL ---
+        from database_groups import get_invitations_count
+                
+                # Obtenemos el email (usando la lógica segura que pusimos ayer)
+                session_user = st.session_state.supabase_client.auth.get_user()
+                try:
+                    user_email = session_user.user.email
+                except AttributeError:
+                    user_email = session_user.data.user.email if hasattr(session_user, 'data') else None
+        
+                # Contamos las invitaciones
+                n_invites = get_invitations_count(user_email) if user_email else 0
+                
+                # Personalizamos la etiqueta del menú
+                label_grupos = f"Grupos {'🔴' if n_invites > 0 else ''}"
+      
         with st.sidebar:
             avatar_url = user_profile.get('avatar_url')
             p_color = user_profile.get('profile_color', '#636EFA')
@@ -119,8 +134,8 @@ def main():
 
             selected = option_menu(
                 menu_title=None,
-                options=["Resumen", "Movimientos", "Categorías", "Grupos", "Importar", "Perfil"], # <-- Añadido "Grupos"
-                icons=["house", "wallet2", "list-task", "people", "cloud-upload", "person-gear"], # <-- Añadido "people"
+                options=["Resumen", "Movimientos", "Categorías", label_grupos, "Importar", "Perfil"], # <-- Usamos la variable
+                icons=["house", "wallet2", "list-task", "people", "cloud-upload", "person-gear"],
                 default_index=0,
                 styles={
                     "container": {"padding": "0!important", "background-color": "transparent"},
@@ -140,17 +155,7 @@ def main():
         if selected == "Resumen": render_main_dashboard(df_all, user_profile)
         elif selected == "Movimientos": render_dashboard(df_all, current_cats, user_id)
         elif selected == "Categorías": render_categories(current_cats)
-        elif selected == "Grupos": 
-            # Obtenemos el usuario actual de la sesión de Supabase de forma segura
-            session_user = st.session_state.supabase_client.auth.get_user()
-            
-            # Extraemos el email manejando si la respuesta es un objeto o un diccionario
-            try:
-                user_email = session_user.user.email
-            except AttributeError:
-                # Por si la versión de la librería devuelve los datos de otra forma
-                user_email = session_user.data.user.email if hasattr(session_user, 'data') else None
-            
+        elif selected == label_grupos:  # <--- Usamos la variable, tenga bolita o no
             if user_email:
                 render_groups(user_id, user_email)
             else:
