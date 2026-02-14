@@ -4,7 +4,7 @@ import time
 # IMPORTANTE: Añadimos todas las funciones necesarias de database_groups
 from database_groups import (create_group, get_user_groups, delete_group, 
                              get_my_invitations, send_invitation, respond_invitation,
-                             get_group_members) # <-- Añadido get_group_members
+                             get_group_members)
 
 # Reutilizamos la importación de iconos
 BOOTSTRAP_ICONS_LINK = '<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.5/font/bootstrap-icons.css">'
@@ -14,6 +14,17 @@ def render_header(icon_name, text):
 
 def render_subheader(icon_name, text):
     st.markdown(f'{BOOTSTRAP_ICONS_LINK}<h3><i class="bi bi-{icon_name}"></i> {text}</h3>', unsafe_allow_html=True)
+
+# --- CALLBACKS DE NAVEGACIÓN ---
+def abrir_grupo_callback(g_id, g_name):
+    """Guarda los datos del grupo antes de que la página recargue"""
+    st.session_state.current_group_id = g_id
+    st.session_state.current_group_name = g_name
+
+def cerrar_grupo_callback():
+    """Limpia los datos para volver al menú principal"""
+    st.session_state.current_group_id = None
+    st.session_state.current_group_name = None
 
 # Modal de seguridad para borrar un grupo
 @st.dialog("Eliminar Grupo")
@@ -50,16 +61,12 @@ def invitar_usuario_dialog(group_id, group_name):
         else:
             st.warning("Introduce un email válido.")
 
-
-# --- NUEVA FUNCIÓN: VISTA INTERIOR DEL GRUPO ---
+# --- VISTA INTERIOR DEL GRUPO ---
 def render_single_group(group_id, group_name, user_id):
     """Esta es la pantalla interior cuando entras a un grupo"""
     
-    # Botón para volver atrás
-    if st.button("⬅️ Volver a mis grupos"):
-        st.session_state.current_group_id = None
-        st.session_state.current_group_name = None
-        st.rerun()
+    # Botón para volver atrás (AHORA CON CALLBACK)
+    st.button("⬅️ Volver a mis grupos", on_click=cerrar_grupo_callback)
 
     render_header("collection", f"{group_name}")
     st.divider()
@@ -160,11 +167,15 @@ def render_groups(user_id, user_email):
                         rol_badge = "👑 Admin" if es_admin else "👤 Miembro"
                         st.caption(f"Rol: {rol_badge}")
                         
-                        # Al hacer clic, guardamos el ID en la sesión para que el semáforo de arriba nos deje pasar
-                        if st.button("Abrir Grupo ➡️", key=f"open_{group['id']}", use_container_width=True, type="primary"):
-                            st.session_state.current_group_id = group['id']
-                            st.session_state.current_group_name = group['name']
-                            st.rerun() # <-- Forzamos recarga para entrar inmediatamente
+                        # Al hacer clic, se ejecuta 'abrir_grupo_callback' enviando el ID y el Nombre
+                        st.button(
+                            "Abrir Grupo ➡️", 
+                            key=f"open_{group['id']}", 
+                            use_container_width=True, 
+                            type="primary",
+                            on_click=abrir_grupo_callback,
+                            args=(group['id'], group['name'])
+                        )
 
                         c_inv, c_del = st.columns([1, 1])
                         with c_inv:
