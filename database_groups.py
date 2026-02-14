@@ -94,6 +94,19 @@ def get_user_groups(user_id):
         print(f"Error obteniendo grupos: {e}")
         return []
 
+def get_group_members(group_id):
+    """Obtiene la lista de usuarios que pertenecen a un grupo específico"""
+    try:
+        # Hacemos un JOIN con la tabla profiles para traernos su nombre y color
+        res = supabase.table("group_members") \
+            .select("user_id, profiles(name, lastname, avatar_url, profile_color)") \
+            .eq("group_id", group_id) \
+            .execute()
+        return res.data or []
+    except Exception as e:
+        print(f"Error obteniendo miembros del grupo: {e}")
+        return []
+
 def delete_group(group_id):
     """
     Elimina un grupo. 
