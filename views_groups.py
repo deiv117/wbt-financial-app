@@ -2,7 +2,6 @@
 import streamlit as st
 import time
 from streamlit_option_menu import option_menu
-# IMPORTANTE: Añadimos las nuevas funciones a las importaciones
 from database_groups import (
     create_group, get_user_groups, delete_group, 
     get_my_invitations, send_invitation, respond_invitation,
@@ -46,7 +45,6 @@ def confirmar_borrar_grupo(group_id):
     with col_si:
         if st.button(":material/delete: Sí, Eliminar", type="primary", use_container_width=True):
             delete_group(group_id)
-            # Si estábamos dentro del grupo que acabamos de borrar, limpiamos la sesión
             if st.session_state.get('current_group_id') == group_id:
                 cerrar_grupo_callback()
             st.rerun()
@@ -76,7 +74,6 @@ def render_single_group(group_id, group_name, user_id):
     
     st.button(":material/arrow_back: Volver a mis grupos", on_click=cerrar_grupo_callback)
 
-    # Obtenemos la info del grupo para saber quién es el admin y los ajustes
     group_info = get_group_info(group_id)
     if not group_info:
         st.error("Error al cargar la información del grupo.")
@@ -85,7 +82,6 @@ def render_single_group(group_id, group_name, user_id):
     es_admin = group_info['created_by'] == user_id
     allow_leaving = bool(group_info.get('allow_leaving', True))
 
-    # Mostramos el encabezado con el emoji actualizado
     emoji = group_info.get('emoji', '👥')
     nombre = group_info.get('name', group_name)
     render_header("collection", f"{emoji} {nombre}")
@@ -94,7 +90,6 @@ def render_single_group(group_id, group_name, user_id):
         st.caption("👑 Eres el administrador de este grupo")
     st.divider()
 
-    # Pestañas
     selected_tab = option_menu(
         menu_title=None,
         options=["Resumen", "Gastos", "Miembros", "Ajustes"],
@@ -109,7 +104,6 @@ def render_single_group(group_id, group_name, user_id):
         }
     )
 
-    # Obtenemos los miembros una sola vez para usarlos en las pestañas
     miembros = get_group_members(group_id)
 
     if selected_tab == "Resumen":
@@ -119,7 +113,6 @@ def render_single_group(group_id, group_name, user_id):
         st.write("Aquí pondremos la lista de tickets y un botón para añadir un gasto.")
 
     elif selected_tab == "Miembros":
-        # Botón para invitar directamente desde la pestaña miembros
         col_tit, col_btn = st.columns([3, 1])
         with col_tit:
             render_subheader("people", "Miembros del Grupo")
@@ -129,7 +122,6 @@ def render_single_group(group_id, group_name, user_id):
         
         if miembros:
             for m in miembros:
-                # FIX ANTI-BUGS: Parseamos el perfil por si Supabase lo envía como lista o dict
                 prof = m.get('profiles')
                 if isinstance(prof, list) and len(prof) > 0: prof = prof[0]
                 if not prof: prof = {}
@@ -186,20 +178,29 @@ def render_single_group(group_id, group_name, user_id):
                                 st.rerun()
                     st.divider()
 
-                # 2. EDITAR INFO DEL GRUPO
-                st.write("**Editar Información del Grupo**")
+                # 2. AJUSTES DEL GRUPO (Formulario unificado)
+                st.write("**Ajustes del Grupo**")
                 with st.form("edit_group_form"):
                     col1, col2 = st.columns([3, 1])
                     new_name = col1.text_input("Nombre del grupo", value=nombre)
                     new_emoji = col2.text_input("Emoji", value=emoji)
                     new_color = st.color_picker("Color", value=group_info.get('color', '#636EFA'))
                     
+                    st.divider()
+                    st.write("**Permisos de los miembros**")
+                    # Metemos el toggle dentro del formulario
+                    nuevo_allow = st.toggle("Permitir a los miembros abandonar el grupo por su cuenta", value=allow_leaving)
+                    
                     if st.form_submit_button("Guardar Cambios", use_container_width=True):
                         if new_name.strip():
+                            # Actualizamos los detalles visuales
                             ok, msg = update_group_details(group_id, new_name, new_emoji, new_color)
+                            # Actualizamos el permiso (ya no entra en bucle porque se ejecuta con el botón)
+                            update_group_setting(group_id, "allow_leaving", nuevo_allow)
+                            
                             if ok:
-                                st.session_state.current_group_name = new_name # Actualizamos la memoria
-                                st.success("Grupo actualizado correctamente")
+                                st.session_state.current_group_name = new_name
+                                st.success("Ajustes guardados correctamente")
                                 time.sleep(1)
                                 st.rerun()
                             else:
@@ -209,18 +210,7 @@ def render_single_group(group_id, group_name, user_id):
 
                 st.divider()
 
-                # 3. PERMISOS
-                st.write("**Permisos de los miembros**")
-                nuevo_allow = st.toggle("Permitir a los miembros abandonar el grupo por su cuenta", value=allow_leaving)
-                if nuevo_allow != allow_leaving:
-                    update_group_setting(group_id, "allow_leaving", nuevo_allow)
-                    st.toast("Ajuste guardado")
-                    time.sleep(0.5)
-                    st.rerun()
-
-                st.divider()
-
-                # 4. ZONA PELIGROSA
+                # 3. ZONA PELIGROSA
                 st.write("**Zona Peligrosa**")
                 if st.button(":material/delete: Eliminar Grupo Definitivamente", type="primary"):
                     confirmar_borrar_grupo(group_id)
