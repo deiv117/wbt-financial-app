@@ -35,6 +35,20 @@ def get_my_invitations(email):
     except:
         return []
 
+def get_invitations_count(email):
+    """Cuenta cuántas invitaciones pendientes tiene el usuario"""
+    try:
+        # Usamos count="exact" para que Supabase nos devuelva el número sin traer todos los datos
+        res = supabase.table("group_invitations") \
+            .select("id", count="exact") \
+            .eq("invited_email", email.lower().strip()) \
+            .eq("status", "pending") \
+            .execute()
+        return res.count if res.count else 0
+    except Exception as e:
+        print(f"Error contando invitaciones: {e}")
+        return 0
+
 def respond_invitation(invitation_id, group_id, user_id, accept=True):
     try:
         status = "accepted" if accept else "rejected"
