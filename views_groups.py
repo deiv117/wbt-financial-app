@@ -3,7 +3,8 @@ import streamlit as st
 import time
 # IMPORTANTE: Añadimos todas las funciones necesarias de database_groups
 from database_groups import (create_group, get_user_groups, delete_group, 
-                             get_my_invitations, send_invitation, respond_invitation)
+                             get_my_invitations, send_invitation, respond_invitation,
+                             get_group_members) # <-- Añadido get_group_members
 
 # Reutilizamos la importación de iconos
 BOOTSTRAP_ICONS_LINK = '<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.5/font/bootstrap-icons.css">'
@@ -49,7 +50,71 @@ def invitar_usuario_dialog(group_id, group_name):
         else:
             st.warning("Introduce un email válido.")
 
+
+# --- NUEVA FUNCIÓN: VISTA INTERIOR DEL GRUPO ---
+def render_single_group(group_id, group_name, user_id):
+    """Esta es la pantalla interior cuando entras a un grupo"""
+    
+    # Botón para volver atrás
+    if st.button("⬅️ Volver a mis grupos"):
+        st.session_state.current_group_id = None
+        st.session_state.current_group_name = None
+        st.rerun()
+
+    render_header("collection", f"{group_name}")
+    st.divider()
+
+    # Pestañas de gestión del grupo
+    tab_resumen, tab_gastos, tab_miembros = st.tabs(["📊 Resumen de Deudas", "💸 Gastos Compartidos", "👥 Miembros"])
+
+    with tab_resumen:
+        st.write("Aquí pondremos la calculadora de deudas (Quién le debe a quién).")
+        # ¡Próximo paso!
+
+    with tab_gastos:
+        st.write("Aquí pondremos la lista de tickets y un botón para añadir un gasto.")
+        # ¡Próximo paso!
+
+    with tab_miembros:
+        render_subheader("people", "Miembros del Grupo")
+        miembros = get_group_members(group_id)
+        
+        if miembros:
+            for m in miembros:
+                prof = m.get('profiles', {})
+                name = prof.get('name', 'Usuario Desconocido')
+                color = prof.get('profile_color', '#636EFA')
+                
+                # Diseño en forma de tarjeta para cada miembro
+                with st.container(border=True):
+                    c1, c2 = st.columns([1, 4])
+                    with c1:
+                        # Un pequeño círculo con la inicial
+                        st.markdown(f"""
+                            <div style="width: 40px; height: 40px; background-color: {color}; 
+                                        border-radius: 50%; display: flex; align-items: center; 
+                                        justify-content: center; color: white; font-weight: bold;">
+                                {name[0].upper() if name else '?'}
+                            </div>
+                        """, unsafe_allow_html=True)
+                    with c2:
+                        st.markdown(f"**{name}** {prof.get('lastname', '')}")
+                        if m['user_id'] == user_id:
+                            st.caption("(Tú)")
+
+
+# --- FUNCIÓN PRINCIPAL ENRUTADORA ---
 def render_groups(user_id, user_email):
+    
+    # 1. SEMÁFORO: Si hay un grupo seleccionado, mostramos SU pantalla y detenemos la ejecución
+    current_group_id = st.session_state.get('current_group_id')
+    current_group_name = st.session_state.get('current_group_name', 'Grupo')
+
+    if current_group_id:
+        render_single_group(current_group_id, current_group_name, user_id)
+        return # <-- Esto evita que se pinte la lista de abajo
+
+    # 2. SI NO HAY GRUPO: Mostramos la vista general (Lista e Invitaciones)
     render_header("people", "Grupos Compartidos")
     st.caption("Gestiona gastos compartidos con amigos, pareja o compañeros de piso.")
     
@@ -57,7 +122,7 @@ def render_groups(user_id, user_email):
     tab_mis_grupos, tab_invitaciones = st.tabs(["📂 Mis Grupos", "✉️ Invitaciones"])
 
     with tab_mis_grupos:
-        # --- 1. CREAR NUEVO GRUPO ---
+        # --- CREAR NUEVO GRUPO ---
         with st.expander("➕ Crear Nuevo Grupo", expanded=False):
             with st.form("new_group_v2", clear_on_submit=True):
                 col1, col2 = st.columns([3, 1])
@@ -77,7 +142,7 @@ def render_groups(user_id, user_email):
 
         st.divider()
 
-        # --- 2. LISTADO DE MIS GRUPOS ---
+        # --- LISTADO DE MIS GRUPOS ---
         render_subheader("collection", "Mis Grupos")
         my_groups = get_user_groups(user_id)
         
@@ -88,7 +153,6 @@ def render_groups(user_id, user_email):
             for index, group in enumerate(my_groups):
                 col = cols[index % 3]
                 with col:
-                    # Aplicamos un estilo sutil usando el color del grupo
                     with st.container(border=True):
                         st.markdown(f"### {group.get('emoji', '👥')} {group['name']}")
                         
@@ -96,11 +160,11 @@ def render_groups(user_id, user_email):
                         rol_badge = "👑 Admin" if es_admin else "👤 Miembro"
                         st.caption(f"Rol: {rol_badge}")
                         
-                        # Botonera de la tarjeta
+                        # Al hacer clic, guardamos el ID en la sesión para que el semáforo de arriba nos deje pasar
                         if st.button("Abrir Grupo ➡️", key=f"open_{group['id']}", use_container_width=True, type="primary"):
                             st.session_state.current_group_id = group['id']
                             st.session_state.current_group_name = group['name']
-                            st.toast(f"Abriendo {group['name']}...")
+                            st.rerun() # <-- Forzamos recarga para entrar inmediatamente
 
                         c_inv, c_del = st.columns([1, 1])
                         with c_inv:
@@ -119,7 +183,6 @@ def render_groups(user_id, user_email):
             st.write("No tienes invitaciones pendientes.")
         else:
             for inv in invites:
-                # El JOIN de Supabase trae los datos del grupo dentro de una sub-llave
                 g_info = inv.get('groups', {})
                 with st.container(border=True):
                     st.markdown(f"**{g_info.get('emoji', '👥')} {g_info.get('name', 'Grupo')}**")
