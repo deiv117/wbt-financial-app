@@ -112,7 +112,7 @@ def main():
         n_invites = get_invitations_count(user_email) if user_email else 0
                 
         # Personalizamos la etiqueta del menú
-        label_grupos = f"Grupos {'🔴' if n_invites > 0 else ''}"
+        label_grupos = "Grupos <span style='color: #ff2b2b; font-size: 0.7em; vertical-align: top;'>●</span>" if n_invites > 0 else "Grupos"
       
         with st.sidebar:
             avatar_url = user_profile.get('avatar_url')
