@@ -1,6 +1,7 @@
 # views_groups.py
 import streamlit as st
 import time
+from streamlit_option_menu import option_menu  # <-- Importamos el menú personalizado
 # IMPORTANTE: Añadimos todas las funciones necesarias de database_groups
 from database_groups import (create_group, get_user_groups, delete_group, 
                              get_my_invitations, send_invitation, respond_invitation,
@@ -71,22 +72,30 @@ def render_single_group(group_id, group_name, user_id):
     render_header("collection", f"{group_name}")
     st.divider()
 
-    # Pestañas de gestión del grupo con iconos Material
-    tab_resumen, tab_gastos, tab_miembros = st.tabs([
-        ":material/analytics: Resumen de Deudas", 
-        ":material/receipt_long: Gastos Compartidos", 
-        ":material/group: Miembros"
-    ])
+    # Menú horizontal con el mismo estilo que en Movimientos
+    selected_tab = option_menu(
+        menu_title=None,
+        options=["Resumen", "Gastos", "Miembros"],
+        icons=["graph-up", "receipt", "people"],
+        orientation="horizontal",
+        default_index=0,
+        styles={
+            "container": {"padding": "0!important", "background-color": "transparent"},
+            "icon": {"color": "orange", "font-size": "18px"}, 
+            "nav-link": {"font-size": "16px", "text-align": "center", "margin": "0px", "--hover-color": "#eee"},
+            "nav-link-selected": {"background-color": "#636EFA"},
+        }
+    )
 
-    with tab_resumen:
+    if selected_tab == "Resumen":
         st.write("Aquí pondremos la calculadora de deudas (Quién le debe a quién).")
         # ¡Próximo paso!
 
-    with tab_gastos:
+    elif selected_tab == "Gastos":
         st.write("Aquí pondremos la lista de tickets y un botón para añadir un gasto.")
         # ¡Próximo paso!
 
-    with tab_miembros:
+    elif selected_tab == "Miembros":
         render_subheader("people", "Miembros del Grupo")
         miembros = get_group_members(group_id)
         
@@ -129,13 +138,22 @@ def render_groups(user_id, user_email):
     render_header("people", "Grupos Compartidos")
     st.caption("Gestiona gastos compartidos con amigos, pareja o compañeros de piso.")
     
-    # Sistema de pestañas para Mis Grupos e Invitaciones con Material Design
-    tab_mis_grupos, tab_invitaciones = st.tabs([
-        ":material/folder_shared: Mis Grupos", 
-        ":material/mail: Invitaciones"
-    ])
+    # Menú horizontal principal
+    main_tab = option_menu(
+        menu_title=None,
+        options=["Mis Grupos", "Invitaciones"],
+        icons=["folder-fill", "envelope-paper"],
+        orientation="horizontal",
+        default_index=0,
+        styles={
+            "container": {"padding": "0!important", "background-color": "transparent"},
+            "icon": {"color": "orange", "font-size": "18px"}, 
+            "nav-link": {"font-size": "16px", "text-align": "center", "margin": "0px", "--hover-color": "#eee"},
+            "nav-link-selected": {"background-color": "#636EFA"},
+        }
+    )
 
-    with tab_mis_grupos:
+    if main_tab == "Mis Grupos":
         # --- CREAR NUEVO GRUPO ---
         with st.expander(":material/add_circle: Crear Nuevo Grupo", expanded=False):
             with st.form("new_group_v2", clear_on_submit=True):
@@ -193,7 +211,7 @@ def render_groups(user_id, user_email):
                                 if st.button(":material/delete:", key=f"del_btn_{group['id']}", type="secondary", use_container_width=True):
                                     confirmar_borrar_grupo(group['id'])
 
-    with tab_invitaciones:
+    elif main_tab == "Invitaciones":
         render_subheader("envelope", "Invitaciones Pendientes")
         invites = get_my_invitations(user_email)
         
