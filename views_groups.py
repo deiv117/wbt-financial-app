@@ -84,9 +84,16 @@ def render_single_group(group_id, group_name, user_id):
         st.caption("👑 Eres el administrador de este grupo")
     st.divider()
 
+    # 1. Obtenemos los miembros ANTES de dibujar el menú para saber si hay notificaciones
+    miembros = get_group_members(group_id)
+    pendientes = [m for m in miembros if m.get('leave_status') == 'pending']
+    
+    # 2. Lógica de la bolita roja
+    label_ajustes = "Ajustes 🔴" if (es_admin and pendientes) else "Ajustes"
+
     selected_tab = option_menu(
         menu_title=None,
-        options=["Resumen", "Gastos", "Miembros", "Ajustes"],
+        options=["Resumen", "Gastos", "Miembros", label_ajustes],
         icons=["graph-up", "receipt", "people", "gear"],
         orientation="horizontal",
         default_index=0,
@@ -97,8 +104,6 @@ def render_single_group(group_id, group_name, user_id):
             "nav-link-selected": {"background-color": "#636EFA"},
         }
     )
-
-    miembros = get_group_members(group_id)
 
     if selected_tab == "Resumen":
         st.write("Aquí pondremos la calculadora de deudas (Quién le debe a quién).")
@@ -130,7 +135,6 @@ def render_single_group(group_id, group_name, user_id):
                 rol_badge = "👑 Admin" if is_member_admin else "👤 Miembro"
                 
                 with st.container(border=True):
-                    # Usamos vertical_alignment para que la papelera quede centrada con el texto
                     c1, c2, c3 = st.columns([1, 4, 1], vertical_alignment="center")
                     with c1:
                         if avatar:
@@ -153,29 +157,14 @@ def render_single_group(group_id, group_name, user_id):
                                 if remove_group_member(group_id, m['user_id']):
                                     st.toast("Usuario eliminado")
                                     st.rerun()
+        else:
+            st.warning("No se ha podido cargar la lista de miembros.")
 
-    elif selected_tab == "Ajustes":
+    elif selected_tab == label_ajustes:
         render_subheader("gear", "Configuración del Grupo")
         with st.container(border=True):
             if es_admin:
-                pendientes = [m for m in miembros if m.get('leave_status') == 'pending']
-                if pendientes:
-                    st.error("**⚠️ Solicitudes para abandonar el grupo**")
-                    for p in pendientes:
-                        p_prof = p.get('profiles', {})
-                        if isinstance(p_prof, list) and len(p_prof) > 0: p_prof = p_prof[0]
-                        p_name = p_prof.get('name', 'Un usuario')
-                        with st.container(border=True):
-                            st.write(f"**{p_name}** ha solicitado salir.")
-                            c_yes, c_no = st.columns(2)
-                            if c_yes.button("Aprobar salida", key=f"app_{p['user_id']}", type="primary", use_container_width=True):
-                                resolve_leave_request(group_id, p['user_id'], True)
-                                st.rerun()
-                            if c_no.button("Rechazar", key=f"rej_{p['user_id']}", use_container_width=True):
-                                resolve_leave_request(group_id, p['user_id'], False)
-                                st.rerun()
-                    st.divider()
-
+                # 1. AJUSTES GENERALES (Formulario)
                 st.write("**Ajustes Generales**")
                 with st.form("edit_group_form"):
                     col1, col2 = st.columns([3, 1])
@@ -190,7 +179,6 @@ def render_single_group(group_id, group_name, user_id):
                     if st.form_submit_button("Guardar Cambios", use_container_width=True):
                         if new_name.strip():
                             ok, msg = update_group_details(group_id, new_name, new_emoji, new_color)
-                            # Forzamos que se guarde como booleano en la BD
                             update_group_setting(group_id, "allow_leaving", bool(nuevo_allow))
                             if ok:
                                 st.session_state.current_group_name = new_name
@@ -203,11 +191,32 @@ def render_single_group(group_id, group_name, user_id):
                             st.error("El nombre no puede estar vacío")
 
                 st.divider()
+
+                # 2. ZONA PELIGROSA
                 st.write("**Zona Peligrosa**")
                 if st.button(":material/delete: Eliminar Grupo Definitivamente", type="primary"):
                     confirmar_borrar_grupo(group_id)
 
+                # 3. SOLICITUDES DE SALIDA (Abajo del todo)
+                if pendientes:
+                    st.divider()
+                    st.error("**⚠️ Solicitudes pendientes para abandonar el grupo**")
+                    for p in pendientes:
+                        p_prof = p.get('profiles', {})
+                        if isinstance(p_prof, list) and len(p_prof) > 0: p_prof = p_prof[0]
+                        p_name = p_prof.get('name', 'Un usuario')
+                        with st.container(border=True):
+                            st.write(f"**{p_name}** ha solicitado salir.")
+                            c_yes, c_no = st.columns(2)
+                            if c_yes.button("Aprobar salida", key=f"app_{p['user_id']}", type="primary", use_container_width=True):
+                                resolve_leave_request(group_id, p['user_id'], True)
+                                st.rerun()
+                            if c_no.button("Rechazar", key=f"rej_{p['user_id']}", use_container_width=True):
+                                resolve_leave_request(group_id, p['user_id'], False)
+                                st.rerun()
+
             else:
+                # VISTA DE MIEMBRO
                 st.write("**Opciones de Miembro**")
                 if allow_leaving:
                     st.info("Puedes abandonar este grupo en cualquier momento. El histórico de tus gastos se mantendrá.")
@@ -321,7 +330,6 @@ def render_groups(user_id, user_email):
                     ca, cr = st.columns(2)
                     if ca.button(":material/check: Aceptar", key=f"acc_{inv['id']}", use_container_width=True):
                         if respond_invitation(inv['id'], inv['group_id'], user_id, True):
-                            # SOLUCIÓN REDIRECT: Guardamos el estado y forzamos recarga
                             abrir_grupo_callback(inv['group_id'], g_info.get('name', 'Grupo'))
                             st.rerun()
                     if cr.button(":material/close: Rechazar", key=f"rej_{inv['id']}", use_container_width=True):
