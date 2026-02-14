@@ -1,11 +1,13 @@
 # views_groups.py
 import streamlit as st
 import time
-from streamlit_option_menu import option_menu  # <-- Importamos el menú personalizado
-# IMPORTANTE: Añadimos todas las funciones necesarias de database_groups
-from database_groups import (create_group, get_user_groups, delete_group, 
-                             get_my_invitations, send_invitation, respond_invitation,
-                             get_group_members, get_group_info, remove_group_member, update_group_setting))
+from streamlit_option_menu import option_menu
+# IMPORTANTE: Añadimos TODAS las funciones necesarias de database_groups sin abreviar
+from database_groups import (
+    create_group, get_user_groups, delete_group, 
+    get_my_invitations, send_invitation, respond_invitation,
+    get_group_members, get_group_info, remove_group_member, update_group_setting
+)
 
 # Reutilizamos la importación de iconos para los encabezados principales
 BOOTSTRAP_ICONS_LINK = '<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.5/font/bootstrap-icons.css">'
@@ -61,6 +63,7 @@ def invitar_usuario_dialog(group_id, group_name):
             else: st.error(msg)
         else:
             st.warning("Introduce un email válido.")
+
 
 # --- VISTA INTERIOR DEL GRUPO ---
 def render_single_group(group_id, group_name, user_id):
@@ -133,7 +136,7 @@ def render_single_group(group_id, group_name, user_id):
                         if es_admin and not is_current_user:
                             if st.button(":material/person_remove:", key=f"kick_{m['user_id']}", help="Eliminar del grupo"):
                                 if remove_group_member(group_id, m['user_id']):
-                                    st.toast(f"Usuario eliminado")
+                                    st.toast("Usuario eliminado")
                                     st.rerun()
 
     elif selected_tab == "Ajustes":
@@ -142,7 +145,6 @@ def render_single_group(group_id, group_name, user_id):
         with st.container(border=True):
             if es_admin:
                 st.write("**Permisos de los miembros**")
-                # Toggle para permitir/bloquear salidas
                 nuevo_allow = st.toggle("Permitir a los miembros abandonar el grupo por su cuenta", value=allow_leaving)
                 
                 if nuevo_allow != allow_leaving:
@@ -171,7 +173,7 @@ def render_groups(user_id, user_email):
 
     if current_group_id:
         render_single_group(current_group_id, current_group_name, user_id)
-        return # <-- Esto evita que se pinte la lista de abajo
+        return
 
     # 2. SI NO HAY GRUPO: Mostramos la vista general (Lista e Invitaciones)
     render_header("people", "Grupos Compartidos")
