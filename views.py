@@ -232,7 +232,8 @@ def render_dashboard(df_all, current_cats, user_id):
     if selected == "Nueva":
         render_subheader("plus-circle", "Añadir Transacción")
         
-        with st.form("nuevo_movimiento_form", clear_on_submit=True):
+        # ELIMINAMOS EL FORMULARIO PARA QUE SEA 100% DINÁMICO
+        with st.container(border=True):
             c1, c2, c3 = st.columns(3)
             qty = c1.number_input("Cantidad (€)", min_value=0.0, step=0.01)
             t_type = c2.selectbox("Tipo", ["Gasto", "Ingreso"])
@@ -277,32 +278,47 @@ def render_dashboard(df_all, current_cats, user_id):
                     st.caption("No tienes grupos creados.")
 
             st.divider()
-            if st.form_submit_button("Guardar Movimiento", use_container_width=True):
+            
+            # BOTÓN PRINCIPAL
+            if st.button("Guardar Movimiento", type="primary", use_container_width=True):
                 if sel != "Selecciona...":
                     cat_sel = next(c for c in f_cs if f"{c.get('emoji', '📁')} {c['name']}" == sel)
+                    
                     mov_data = {
-                        "user_id": user_id, "quantity": qty, "type": t_type, 
-                        "category_id": cat_sel['id'], "date": str(f_mov), "notes": concepto
+                        "user_id": user_id, 
+                        "quantity": qty, 
+                        "type": t_type, 
+                        "category_id": cat_sel['id'], 
+                        "date": str(f_mov), 
+                        "notes": concepto
                     }
 
                     if shared_group_id and participantes_ids:
+                        # Gasto Compartido
                         ok, msg = add_shared_expense(shared_group_id, mov_data, participantes_ids)
-                        if ok: st.toast("✅ Gasto compartido guardado")
-                        else: st.error(msg)
+                        if ok: 
+                            st.success("✅ Gasto compartido guardado en el grupo")
+                            time.sleep(1)
+                            st.rerun()
+                        else: 
+                            st.error(f"❌ Error DB: {msg}")
                     else:
-                        save_input(mov_data)
-                        st.toast("✅ Movimiento guardado")
-                    
-                    time.sleep(1)
-                    st.rerun()
+                        # Gasto Personal Normal
+                        try:
+                            save_input(mov_data)
+                            st.success("✅ Movimiento personal guardado")
+                            time.sleep(1)
+                            st.rerun()
+                        except Exception as e:
+                            st.error(f"❌ Error DB: {e}")
+                else:
+                    st.warning("⚠️ Debes seleccionar una categoría.")
 
         # --- RECUPERACIÓN DE LOS ÚLTIMOS 10 MOVIMIENTOS ---
         st.divider()
         st.subheader("Últimos movimientos")
         
-        # Asumiendo que df_all es tu DataFrame con todos los movimientos del usuario
         if not df_all.empty:
-            # Ordenamos por fecha y nos quedamos con los 10 más recientes
             df_rec = df_all.sort_values('date', ascending=False).head(10)
             
             for _, i in df_rec.iterrows():
@@ -311,9 +327,7 @@ def render_dashboard(df_all, current_cats, user_id):
                     with col_info:
                         color_q = "red" if i['type'] == 'Gasto' else "green"
                         signo = "-" if i['type'] == 'Gasto' else "+"
-                        # Mostramos Categoría y Cantidad
                         st.markdown(f"**{i['cat_display']}** &nbsp;|&nbsp; :{color_q}[**{signo}{i['quantity']:.2f}€**]")
-                        # Mostramos Fecha y Notas
                         fecha_str = i['date'].strftime('%d/%m/%Y') if hasattr(i['date'], 'strftime') else i['date']
                         st.caption(f"📅 {fecha_str} &nbsp;|&nbsp; 📝 _{i['notes'] or 'Sin concepto'}_")
                     
@@ -324,7 +338,6 @@ def render_dashboard(df_all, current_cats, user_id):
                                 editar_movimiento_dialog(i, current_cats)
                         with cb_d:
                             if st.button(":material/delete:", key=f"d_dash_{i['id']}", type="primary", use_container_width=True): 
-                                # Función de borrado que deberías tener definida
                                 confirmar_borrar_movimiento(i['id'])
         else:
             st.info("Aún no tienes movimientos registrados.")
