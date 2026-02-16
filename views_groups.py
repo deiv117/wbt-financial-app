@@ -325,16 +325,18 @@ def render_single_group(group_id, group_name, user_id):
                             # 1. Sacamos la inicial de forma segura
                             inicial = full_name[0].upper() if full_name else "?"
                             
-                            # 2. Usamos HTML para AMBOS casos, así garantizamos que los márgenes y formas sean idénticos
+                            # 2. Usamos HTML para AMBOS casos. 
+                            # HEMOS CAMBIADO EL PADDING: "10px 0 25px 0" significa: 
+                            # 10px arriba, 0 derecha, 25px abajo, 0 izquierda.
                             if avatar:
                                 st.markdown(f'''
-                                    <div style="padding: 10px 0;">
+                                    <div style="padding: 10px 0 25px 0;">
                                         <img src="{avatar}" style="width: 90px; height: 90px; object-fit: cover; border-radius: 16px; box-shadow: 0 4px 6px rgba(0,0,0,0.1);">
                                     </div>
                                 ''', unsafe_allow_html=True)
                             else:
                                 st.markdown(f'''
-                                    <div style="padding: 10px 0;">
+                                    <div style="padding: 10px 0 25px 0;">
                                         <div style="width: 90px; height: 90px; background-color: {color}; border-radius: 16px; 
                                                     display: flex; align-items: center; justify-content: center; 
                                                     color: white; font-weight: bold; font-size: 36px; box-shadow: 0 4px 6px rgba(0,0,0,0.1);">
