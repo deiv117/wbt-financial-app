@@ -637,9 +637,14 @@ def render_profile(user_id, p_data):
             name_safe = raw_name if raw_name and raw_name.strip() else 'Usuario'
             initial = name_safe[0].upper()
             
-            # OBTENCIÓN SEGURA DE AMBOS COLORES
-            p_color = p_data.get('profile_color') or '#636EFA'
-            i_color = p_data.get('icon_color') or '#FFA500' # Naranja por defecto
+            # OBTENCIÓN SEGURA DE AMBOS COLORES CON VALIDACIÓN FORMATO
+            p_color = p_data.get('profile_color')
+            if not isinstance(p_color, str) or not p_color.startswith('#') or len(p_color) != 7:
+                p_color = '#636EFA'
+                
+            i_color = p_data.get('icon_color')
+            if not isinstance(i_color, str) or not i_color.startswith('#') or len(i_color) != 7:
+                i_color = '#FFA500' # Naranja por defecto
 
             if avatar_url: st.image(avatar_url, width=150)
             else:
@@ -658,7 +663,8 @@ def render_profile(user_id, p_data):
                 
                 n_social = st.toggle("Modo Social", value=p_data.get('social_active', False))
                 
-                if st.form_submit_button(":material/save: Guardar Datos"):
+                # AÑADIDO: BOTÓN DE SUBMIT QUE FALTABA
+                if st.form_submit_button(":material/save: Guardar Datos", type="primary"):
                     final_avatar = avatar_url
                     if uploaded_file:
                         new_url = upload_avatar(uploaded_file, user_id)
