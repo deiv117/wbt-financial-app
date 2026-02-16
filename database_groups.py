@@ -187,52 +187,50 @@ def update_group_details(group_id, name, emoji, color):
         return False, str(e)
 
 def add_shared_expense(group_id, movement_data, member_ids):
-    """
-    Versión reforzada: Inserta el movimiento personal y vincula el gasto de grupo.
-    """
+    """Inserta el movimiento personal y vincula el gasto de grupo con chivato de errores."""
+    import streamlit as st
     try:
-        # 1. Insertar en 'movements' (Asegúrate de que los nombres de columnas coinciden con tu DB)
-        # Nota: Usamos 'quantity' o 'amount' según lo que use tu save_input original
-        res_mov = supabase.table("movements").insert({
-            "user_id": movement_data['user_id'],
-            "quantity": movement_data['quantity'], # O 'amount'
-            "type": movement_data['type'],
-            "category_id": movement_data['category_id'],
-            "date": movement_data['date'],
-            "notes": movement_data['notes']
-        }).execute()
+        # 1. Guardar primero tu movimiento personal
+        res_mov = supabase.table("movements").insert(movement_data).execute()
         
-        if res_mov.data:
-            mov_id = res_mov.data[0]['id']
+        if not res_mov.data:
+            return False, "La base de datos no devolvió el ID del movimiento"
             
-            # 2. Insertar en 'group_expenses'
-            expense_data = {
-                "group_id": group_id,
-                "movement_id": mov_id,
-                "paid_by": movement_data['user_id'],
-                "description": movement_data['notes'],
-                "total_amount": movement_data['quantity']
-            }
-            res_exp = supabase.table("group_expenses").insert(expense_data).execute()
-            
-            if res_exp.data:
-                exp_id = res_exp.data[0]['id']
-                # 3. Crear los repartos (Splits)
-                cuota = movement_data['quantity'] / len(member_ids)
-                splits = []
-                for mid in member_ids:
-                    splits.append({
-                        "expense_id": exp_id,
-                        "user_id": mid,
-                        "amount_owed": cuota,
-                        "is_settled": False
-                    })
-                supabase.table("group_expense_splits").insert(splits).execute()
-                return True, "Gasto guardado en personal y grupo"
+        mov_id = res_mov.data[0]['id']
         
-        return False, "Error al insertar movimiento"
+        # 2. Registrar el ticket en el Grupo
+        expense_data = {
+            "group_id": group_id,
+            "movement_id": mov_id,
+            "paid_by": movement_data['user_id'],
+            # Usamos .get() por seguridad según los nombres de tu tabla personal
+            "description": movement_data.get('notes', 'Gasto compartido'), 
+            "total_amount": movement_data.get('quantity', 0)
+        }
+        res_exp = supabase.table("group_expenses").insert(expense_data).execute()
+        
+        if not res_exp.data:
+            return False, "Error al crear el ticket de grupo en group_expenses"
+            
+        exp_id = res_exp.data[0]['id']
+        
+        # 3. Crear los repartos (A quién le toca pagar qué)
+        cuota = movement_data.get('quantity', 0) / len(member_ids)
+        splits = []
+        for mid in member_ids:
+            splits.append({
+                "expense_id": exp_id,
+                "user_id": mid,
+                "amount_owed": cuota,
+                "is_settled": False
+            })
+            
+        supabase.table("group_expense_splits").insert(splits).execute()
+        return True, "Gasto compartido registrado"
+        
     except Exception as e:
-        st.error(f"Error en add_shared_expense: {e}")
+        # Si algo explota en Supabase, te lo pinta en rojo
+        st.error(f"🛑 Error Técnico DB: {e}") 
         return False, str(e)
 
 def get_group_expenses(group_id):
