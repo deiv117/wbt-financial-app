@@ -264,15 +264,15 @@ def add_shared_expense(group_id, movement_data, member_ids):
         return False, str(e)
 
 def get_group_expenses(group_id):
-    """Obtiene el historial de gastos del grupo uniendo perfiles y repartos"""
+    """Obtiene el historial de gastos del grupo y sus repartos (sin cruzar perfiles)"""
     import streamlit as st
     client = get_supabase_client()
     try:
         res = client.table("group_expenses") \
-            .select("*, profiles(name), group_expense_splits(user_id, amount_owed)") \
+            .select("*, group_expense_splits(user_id, amount_owed)") \
             .eq("group_id", group_id) \
             .order("date", desc=True) \
-            .execute() # <-- Fíjate en el desc=True
+            .execute() 
         return res.data or []
     except Exception as e:
         st.error(f"🛑 Error DB (Cargando Historial de Gastos): {e}")
@@ -373,7 +373,7 @@ def get_pending_balances(group_id):
     client = get_supabase_client()
     try:
         res = client.table("group_expense_splits") \
-            .select("amount_owed, user_id, is_settled, group_expenses!inner(group_id, paid_by)") \
+            .select("amount_owed, is_settled, user_id, group_expenses!inner(group_id, paid_by)") \
             .eq("group_expenses.group_id", group_id) \
             .eq("is_settled", False) \
             .execute()
