@@ -105,19 +105,21 @@ def editar_movimiento_dialog(mov_data, current_cats):
     import streamlit as st
     import time
     from datetime import datetime
+    # Importamos lo necesario de grupos
     from database_groups import get_user_groups, get_group_members, update_shared_expense, get_expense_participants
     
-    # 1. Identificadores únicos y limpios
+    # 1. Identificadores únicos
     m_id = str(mov_data.get('id', 'unknown'))
     u_id = str(mov_data.get('user_id', 'unknown'))
     c_grp = mov_data.get('group_id')
     
-    # Definimos px (el prefijo) para que Streamlit no se queje de IDs duplicados
-    px = f"edit_{m_id}_"
+    # PREFIJO ÚNICO (DNI de los elementos de esta ventana)
+    px = f"v_ed_{m_id}_"
     
+    # 2. Cargar participantes previos si existían
     c_parts = get_expense_participants(m_id) if c_grp else []
     
-    # --- FORMULARIO ---
+    # --- INTERFAZ DEL FORMULARIO ---
     n_qty = st.number_input("Cantidad (€)", value=float(mov_data.get('quantity', 0.0)), min_value=0.0, step=0.01, key=f"{px}qty")
     
     t_idx = 0 if mov_data.get('type') == 'Gasto' else 1
@@ -175,6 +177,7 @@ def editar_movimiento_dialog(mov_data, current_cats):
                     if isinstance(prof, list): prof = prof[0] if prof else {}
                     m_n = prof.get('name', 'Usuario')
                     
+                    # Verificamos si ya participaba
                     checked = True
                     if new_g_id == c_grp and c_parts:
                         checked = m['user_id'] in c_parts
@@ -184,7 +187,30 @@ def editar_movimiento_dialog(mov_data, current_cats):
                             new_p_ids.append(m['user_id'])
                 
                 if new_p_ids:
-                    st.info(f"Cuota: **{(n_qty/len(new_p_ids)):.2f}€** por persona")
+                    st.info(f"Cuota: **{(n_qty/len(new_p_ids)):.2f}€** / pers.")
+
+    # --- BOTÓN DE GUARDADO ---
+    if st.button("Guardar Cambios", type="primary", use_container_width=True, key=f"{px}btn_save"):
+        if s_cat:
+            cat_obj = next(c for c in f_cs if f"{c.get('emoji', '📁')} {c['name']}" == s_cat)
+            
+            payload = {
+                "user_id": u_id,
+                "quantity": n_qty,
+                "type": n_type,
+                "category_id": cat_obj['id'],
+                "date": str(n_date),
+                "notes": n_notes
+            }
+            
+            ok, msg = update_shared_expense(m_id, payload, new_g_id, new_p_ids)
+            
+            if ok:
+                st.toast("✅ Gasto actualizado")
+                time.sleep(1)
+                st.rerun()
+            else:
+                st.error(f"Error: {msg}")
     
     # --- BOTÓN GUARDAR (Con la variable px corregida) ---
     if st.button("Guardar Cambios", type="primary", use_container_width=True, key=f"{px}btn_save"):
