@@ -240,7 +240,7 @@ def add_shared_expense(group_id, movement_data, member_ids):
         return False, str(e)
 
 def get_group_expenses(group_id):
-    """Obtiene el historial de gastos compartidos de un grupo"""
+    """Obtiene el historial de gastos del grupo uniendo perfiles y repartos"""
     try:
         res = supabase.table("group_expenses") \
             .select("*, profiles(name), group_expense_splits(user_id, amount_owed)") \
