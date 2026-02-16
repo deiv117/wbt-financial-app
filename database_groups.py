@@ -443,3 +443,50 @@ def get_locked_movements():
         return {r['movement_id'] for r in res.data if r.get('movement_id')}
     except:
         return set()
+
+def request_settlement(group_id, debtor_id, creditor_id):
+    """El deudor pulsa el botón para avisar de que ha pagado"""
+    client = get_supabase_client()
+    try:
+        # Buscamos los splits donde el deudor le debe al acreedor
+        res = client.table("group_expense_splits") \
+            .select("expense_id, group_expenses!inner(group_id, paid_by)") \
+            .eq("user_id", debtor_id) \
+            .eq("group_expenses.group_id", group_id) \
+            .eq("group_expenses.paid_by", creditor_id) \
+            .eq("is_settled", False).execute()
+        
+        for r in res.data:
+            client.table("group_expense_splits").update({"settlement_requested": True}) \
+                .eq("expense_id", r['expense_id']).eq("user_id", debtor_id).execute()
+        return True
+    except Exception as e:
+        print(f"Error requesting settlement: {e}")
+        return False
+
+def get_settlement_requests(group_id):
+    """Devuelve las parejas (deudor, acreedor) que están pendientes de confirmación"""
+    client = get_supabase_client()
+    try:
+        res = client.table("group_expense_splits") \
+            .select("user_id, group_expenses!inner(paid_by)") \
+            .eq("group_expenses.group_id", group_id) \
+            .eq("is_settled", False) \
+            .eq("settlement_requested", True).execute()
+        # Set de tuplas (debtor_id, creditor_id)
+        return set((r['user_id'], r['group_expenses']['paid_by']) for r in res.data)
+    except:
+        return set()
+
+def check_pending_confirmations(user_id):
+    """Devuelve los IDs de los grupos donde el usuario tiene pagos esperando a ser confirmados"""
+    client = get_supabase_client()
+    try:
+        res = client.table("group_expense_splits") \
+            .select("group_expenses!inner(group_id, paid_by)") \
+            .eq("group_expenses.paid_by", user_id) \
+            .eq("is_settled", False) \
+            .eq("settlement_requested", True).execute()
+        return set(r['group_expenses']['group_id'] for r in res.data)
+    except:
+        return set()
