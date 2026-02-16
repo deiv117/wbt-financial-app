@@ -10,7 +10,7 @@ from database_groups import (
     update_group_setting, update_group_details,
     request_leave_group, resolve_leave_request,
     check_pending_confirmations, get_settlement_requests, request_settlement,
-    add_external_member, settle_external_debt_admin # <-- IMPORTACIONES NUEVAS
+    add_external_member, settle_external_debt_admin 
 )
 
 BOOTSTRAP_ICONS_LINK = '<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.5/font/bootstrap-icons.css">'
@@ -302,6 +302,56 @@ def render_single_group(group_id, group_name, user_id):
         from database_groups import get_group_expenses, delete_group_expense, get_locked_movements
         from components import editar_movimiento_dialog
         
+        # --- AQUÍ ESTÁ LA LÓGICA ACTUALIZADA PARA AÑADIR GASTOS ---
+        with st.expander("➕ Añadir Gasto", expanded=False):
+             with st.form("add_expense_form"):
+                 desc = st.text_input("Descripción", placeholder="Ej: Cena en el italiano")
+                 amount = st.number_input("Cantidad (€)", min_value=0.01, step=0.01)
+                 
+                 st.write("¿Quién participa?")
+                 cols_miembros = st.columns(3)
+                 participantes = []
+                 for idx, m in enumerate(miembros):
+                     # Diferenciamos si es externo o normal para sacar su nombre e ID
+                     if m.get('is_external'):
+                         m_nombre = f"👻 {m.get('external_name', 'Invitado')}"
+                         m_id = f"ext_{m['id']}" # Usamos su ID de tabla con prefijo
+                     else:
+                         prof = m.get('profiles') or {}
+                         if isinstance(prof, list): prof = prof[0] if prof else {}
+                         m_nombre = prof.get('name', 'Usuario')
+                         m_id = m['user_id']
+                     
+                     with cols_miembros[idx % 3]:
+                         if st.checkbox(m_nombre, value=True, key=f"add_p_{m_id}"):
+                             participantes.append(m_id)
+                             
+                 if st.form_submit_button("Guardar Gasto"):
+                     if not desc or amount <= 0:
+                         st.error("Rellena la descripción y cantidad.")
+                     elif not participantes:
+                         st.error("Selecciona al menos un participante.")
+                     else:
+                         # La función add_shared_expense debe estar preparada en database_groups.py
+                         # para manejar los prefijos 'ext_'
+                         from database_groups import add_shared_expense
+                         
+                         mov_data = {
+                             "user_id": user_id,
+                             "quantity": amount,
+                             "type": "Gasto",
+                             "date": time.strftime("%Y-%m-%d"),
+                             "notes": desc
+                         }
+                         ok, msg = add_shared_expense(group_id, mov_data, participantes)
+                         if ok:
+                             st.success("✅ Gasto añadido")
+                             st.rerun()
+                         else:
+                             st.error(msg)
+                             
+        st.divider()
+
         gastos = get_group_expenses(group_id)
         locked_movs = get_locked_movements()
         
@@ -354,7 +404,6 @@ def render_single_group(group_id, group_name, user_id):
                                         st.rerun()
 
     elif selected_tab == "Miembros":
-        # --- MODIFICADO PARA INCLUIR EL BOTÓN DE INVITADO ---
         col_tit, col_btn1, col_btn2 = st.columns([2, 1, 1])
         with col_tit:
             render_subheader("people", "Miembros")
