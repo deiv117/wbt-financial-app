@@ -111,18 +111,19 @@ def render_single_group(group_id, group_name, user_id):
     elif selected_tab == "Gastos":
         render_subheader("receipt", "Historial de Gastos")
         
-        # Necesitas asegurarte de importar delete_group_expense arriba en el archivo
-        from database_groups import get_group_expenses, delete_group_expense 
+        # Asegúrate de tener estas importaciones
+        from database_groups import get_group_expenses, delete_group_expense
+        from components import editar_movimiento_dialog
         
         gastos = get_group_expenses(group_id)
         
         if not gastos:
-            st.info("Aún no hay gastos registrados en este grupo. ¡Añade uno desde tu Dashboard!")
+            st.info("Aún no hay gastos registrados en este grupo.")
         else:
             for g in gastos:
                 with st.container(border=True):
-                    # Añadimos una cuarta columna pequeñita para el botón de borrar
-                    col1, col2, col3, col_btn = st.columns([2, 1.5, 1.5, 0.5], vertical_alignment="center")
+                    # Añadimos espacio para dos botones en la última columna
+                    col1, col2, col3, col_btns = st.columns([2, 1.5, 1.5, 0.8], vertical_alignment="center")
                     
                     with col1:
                         st.markdown(f"**{g['description']}**")
@@ -131,21 +132,40 @@ def render_single_group(group_id, group_name, user_id):
                     
                     with col2:
                         st.markdown(f"### {g['total_amount']:.2f}€")
-                        st.caption("Total del ticket")
+                        st.caption("Total ticket")
                         
                     with col3:
                         mi_parte = next((s['amount_owed'] for s in g.get('group_expense_splits', []) if s['user_id'] == user_id), 0)
                         st.markdown(f"**Tu parte: {mi_parte:.2f}€**")
-                        st.caption("A repartir")
+                        st.caption("Cuota")
                         
-                    with col_btn:
-                        # LÓGICA DE PERMISOS: Solo Admin o el Pagador pueden borrar
+                    with col_btns:
+                        # Solo el Admin o el que pagó pueden editar/borrar
                         if es_admin or g['paid_by'] == user_id:
-                            if st.button("🗑️", key=f"del_gexp_{g['id']}", help="Eliminar gasto"):
-                                if delete_group_expense(g['id'], g.get('movement_id')):
-                                    st.toast("✅ Gasto eliminado del grupo y de tu cuenta")
-                                    time.sleep(1)
-                                    st.rerun()
+                            btn_edit, btn_del = st.columns(2)
+                            
+                            with btn_edit:
+                                # Preparamos los datos tal cual los espera el diálogo
+                                # (mapeando 'total_amount' a 'quantity' y 'description' a 'notes')
+                                mov_compatible = {
+                                    "id": g['movement_id'],
+                                    "user_id": g['paid_by'],
+                                    "quantity": g['total_amount'],
+                                    "type": "Gasto",
+                                    "category_id": g.get('category_id'), # Si lo guardamos en la tabla
+                                    "date": g['date'],
+                                    "notes": g['description'],
+                                    "group_id": g['group_id']
+                                }
+                                if st.button("✏️", key=f"ed_g_{g['id']}", help="Editar"):
+                                    editar_movimiento_dialog(mov_compatible, current_cats)
+                            
+                            with btn_del:
+                                if st.button("🗑️", key=f"dl_g_{g['id']}", type="primary", help="Borrar"):
+                                    if delete_group_expense(g['id'], g.get('movement_id')):
+                                        st.toast("✅ Gasto eliminado")
+                                        time.sleep(1)
+                                        st.rerun()
 
     elif selected_tab == "Miembros":
         col_tit, col_btn = st.columns([3, 1])
