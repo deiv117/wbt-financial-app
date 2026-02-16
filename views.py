@@ -20,40 +20,30 @@ from components import editar_movimiento_dialog, editar_categoria_dialog, crear_
 # --- ESTILOS CSS GLOBALES Y LIBRERÍA DE ICONOS ---
 BOOTSTRAP_ICONS_LINK = '<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.5/font/bootstrap-icons.css">'
 
-CUSTOM_CSS = """
-<style>
-@import url("https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.5/font/bootstrap-icons.css");
-
-h1 .bi, h3 .bi, h5 .bi { vertical-align: -3px; margin-right: 10px; color: #636EFA; }
-
-div[data-testid="stButton"] button:has(span:contains("edit")) {
-    border-color: #FFC107 !important; color: #FFC107 !important; background-color: rgba(255, 193, 7, 0.1) !important; border-radius: 8px;
-}
-div[data-testid="stButton"] button:has(span:contains("edit")):hover {
-    background-color: #FFC107 !important; color: #000000 !important; border-color: #FFC107 !important; transform: scale(1.02);
-}
-
-div[data-testid="stButton"] button:has(span:contains("delete")) {
-    border-color: #FF4B4B !important; color: #FF4B4B !important; background-color: rgba(255, 75, 75, 0.1) !important; border-radius: 8px;
-}
-div[data-testid="stButton"] button:has(span:contains("delete")):hover {
-    background-color: #FF4B4B !important; color: #FFFFFF !important; border-color: #FF4B4B !important; transform: scale(1.02);
-}
-
-div[data-testid="stVerticalBlockBorderWrapper"]:has(div[data-testid="stMetric"]) {
-    min-height: 130px; display: flex; flex-direction: column; justify-content: center;
-}
-</style>
-"""
+def get_dynamic_css():
+    # Sacamos el color de la sesión (por defecto azul si no hay)
+    p_color = st.session_state.user.get('profile_color', '#636EFA') if 'user' in st.session_state and st.session_state.user else '#636EFA'
+    return f"""
+    <style>
+    @import url("https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.5/font/bootstrap-icons.css");
+    h1 .bi, h3 .bi, h5 .bi {{ vertical-align: -3px; margin-right: 10px; color: {p_color}; }}
+    div[data-testid="stButton"] button:has(span:contains("edit")) {{ border-color: #FFC107 !important; color: #FFC107 !important; background-color: rgba(255, 193, 7, 0.1) !important; border-radius: 8px; }}
+    div[data-testid="stButton"] button:has(span:contains("edit")):hover {{ background-color: #FFC107 !important; color: #000000 !important; border-color: #FFC107 !important; transform: scale(1.02); }}
+    div[data-testid="stButton"] button:has(span:contains("delete")) {{ border-color: #FF4B4B !important; color: #FF4B4B !important; background-color: rgba(255, 75, 75, 0.1) !important; border-radius: 8px; }}
+    div[data-testid="stButton"] button:has(span:contains("delete")):hover {{ background-color: #FF4B4B !important; color: #FFFFFF !important; border-color: #FF4B4B !important; transform: scale(1.02); }}
+    div[data-testid="stVerticalBlockBorderWrapper"]:has(div[data-testid="stMetric"]) {{ min-height: 130px; display: flex; flex-direction: column; justify-content: center; }}
+    </style>
+    """
 
 def render_header(icon_name, text):
-    st.markdown(f'{BOOTSTRAP_ICONS_LINK}<h1><i class="bi bi-{icon_name}"></i> {text}</h1>', unsafe_allow_html=True)
+    st.markdown(get_dynamic_css(), unsafe_allow_html=True)
+    st.markdown(f'<h1><i class="bi bi-{icon_name}"></i> {text}</h1>', unsafe_allow_html=True)
 
 def render_subheader(icon_name, text):
-    st.markdown(f'{BOOTSTRAP_ICONS_LINK}<h3><i class="bi bi-{icon_name}"></i> {text}</h3>', unsafe_allow_html=True)
+    st.markdown(f'<h3><i class="bi bi-{icon_name}"></i> {text}</h3>', unsafe_allow_html=True)
 
 def render_small_header(icon_name, text):
-    st.markdown(f'{BOOTSTRAP_ICONS_LINK}<h5><i class="bi bi-{icon_name}"></i> {text}</h5>', unsafe_allow_html=True)
+    st.markdown(f'<h5><i class="bi bi-{icon_name}"></i> {text}</h5>', unsafe_allow_html=True)
 
 @st.dialog("Eliminar Movimiento")
 def confirmar_borrar_movimiento(id_mov):
