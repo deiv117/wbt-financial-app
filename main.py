@@ -22,42 +22,23 @@ st.set_page_config(
 init_db()
 st.markdown(get_custom_css(), unsafe_allow_html=True)
 
-# CSS para eliminar definitivamente los iconos de la derecha y el footer
+# CSS Extra para ocultar el padding superior excesivo y menús por defecto
 st.markdown("""
     <style>
-        /* 1. Ajuste de padding general */
+        /* 1. Ajuste padding general para que no haya tanto espacio en blanco arriba */
         .block-container {
             padding-top: 2rem !important; 
         } 
-
-        /* 2. OCULTAR TODA LA BARRA DE HERRAMIENTAS DE LA DERECHA */
-        /* Intentamos con todos los selectores posibles conocidos */
-        [data-testid="stHeaderActionElements"], 
-        .st-emotion-cache-12fmjuu, 
-        .st-emotion-cache-15ec669, 
-        .st-emotion-cache-v068m5,
-        [data-testid="stToolbar"] {
+        
+        /* 2. Ocultar SOLO los botones de la derecha (Deploy, GitHub, 3 puntos) */
+        header [data-testid="stHeaderActionElements"],
+        #MainMenu {
             display: none !important;
-            visibility: hidden !important;
         }
         
-        /* 3. OCULTAR EL MENÚ DE LOS 3 PUNTOS */
-        #MainMenu, [data-testid="stIconMaterialMenu"] {
-            display: none !important;
-            visibility: hidden !important;
-        }
-
-        /* 4. OCULTAR FOOTER */
+        /* 3. Ocultar FOOTER (Made with Streamlit) */
         footer {
             display: none !important;
-        }
-
-        /* 🛟 5. PROTECCIÓN DEL BOTÓN LATERAL (IMPORTANTE) */
-        /* Si después de esto no ves la flecha para abrir el sidebar, 
-           comenta la línea de abajo o usa la tecla ']' */
-        [data-testid="collapsedControl"] {
-            visibility: visible !important;
-            display: flex !important;
         }
     </style>
 """, unsafe_allow_html=True)
