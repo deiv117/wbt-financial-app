@@ -123,11 +123,12 @@ def editar_movimiento_dialog(mov_data, categorias_disponibles):
     
     if st.button("Guardar Cambios"):
         cat_obj = next(c for c in f_cs if f"{c.get('emoji', '📁')} {c['name']}" == n_sel_cat)
-        update_input(mov_data['id'], {
-            "quantity": n_qty, 
-            "date": str(n_date), 
-            "type": n_type,
-            "category_id": cat_obj['id'], 
+        update_input({
+            "id": mov_data['id'],
+            "quantity": n_qty,
+            "type": n_type, # Asegúrate de que tu variable se llame así
+            "category_id": cat_sel['id'],
+            "date": str(n_date),
             "notes": n_notes
         })
         st.rerun()
