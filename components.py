@@ -213,6 +213,30 @@ def editar_movimiento_dialog(mov_data, current_cats):
                 st.error(f"Error: {msg}")
     
     # --- GUARDAR Y ACTUALIZAR ---
+    # 🔑 Y por supuesto, le damos una key única al botón principal
+    if st.button("Guardar Cambios", type="primary", use_container_width=True, key=f"btn_save_{mov_id}"):
+        if sel_cat:
+            cat_obj = next(c for c in f_cs if f"{c.get('emoji', '📁')} {c['name']}" == sel_cat)
+            
+            new_mov_data = {
+                "user_id": user_id,
+                "quantity": n_qty,
+                "type": n_type,
+                "category_id": cat_obj['id'],
+                "date": str(n_date),
+                "notes": n_notes
+            }
+            
+            ok, msg = update_shared_expense(mov_id, new_mov_data, new_shared_group_id, new_participantes_ids)
+            
+            if ok:
+                st.toast("✅ Gasto actualizado correctamente")
+                time.sleep(1)
+                st.rerun()
+            else:
+                st.error(f"Error: {msg}")
+    
+    # --- GUARDAR Y ACTUALIZAR ---
     if st.button("Guardar Cambios", type="primary", use_container_width=True):
         if sel_cat:
             cat_obj = next(c for c in f_cs if f"{c.get('emoji', '📁')} {c['name']}" == sel_cat)
