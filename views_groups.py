@@ -9,7 +9,8 @@ from database_groups import (
     get_group_members, get_group_info, get_group_expenses, remove_group_member, 
     update_group_setting, update_group_details,
     request_leave_group, resolve_leave_request,
-    check_pending_confirmations, get_settlement_requests, request_settlement
+    check_pending_confirmations, get_settlement_requests, request_settlement,
+    add_external_member, settle_external_debt_admin # <-- IMPORTACIONES NUEVAS
 )
 
 BOOTSTRAP_ICONS_LINK = '<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.5/font/bootstrap-icons.css">'
@@ -74,6 +75,21 @@ def invitar_usuario_dialog(group_id, group_name):
         else:
             st.warning("Introduce un email válido.")
 
+# --- NUEVO DIÁLOGO PARA USUARIOS EXTERNOS ---
+@st.dialog("Añadir Miembro Invitado")
+def add_guest_dialog(group_id):
+    st.write("Añade a un amigo que no use la app. Podrás incluirlo en los gastos y gestionar sus pagos manualmente.")
+    nombre_invitado = st.text_input("Nombre del amigo")
+    if st.button("Crear Miembro Invitado", type="primary", use_container_width=True):
+        if nombre_invitado:
+            ok, msg = add_external_member(group_id, nombre_invitado)
+            if ok:
+                st.success(msg)
+                time.sleep(1)
+                st.rerun()
+            else: st.error(msg)
+        else:
+            st.warning("Introduce un nombre.")
 
 # --- VISTA INTERIOR DEL GRUPO ---
 
@@ -93,7 +109,7 @@ def saldar_deuda_dialog(group_id, creditor_id, debtor_id, debtor_name, amount):
         else:
             st.error(msg)
 
-# NUEVO DIÁLOGO 2: PARA EL QUE PAGA EL DINERO (DEUDOR)
+# DIÁLOGO 2: PARA EL QUE PAGA EL DINERO (DEUDOR)
 @st.dialog("💸 Registrar Pago de Deuda")
 def avisar_pago_dialog(group_id, debtor_id, creditor_id, creditor_name, amount):
     st.write(f"Vas a avisar a **{creditor_name}** de que le has pagado **{amount:.2f}€**.")
@@ -117,7 +133,6 @@ def avisar_pago_dialog(group_id, debtor_id, creditor_id, creditor_name, amount):
         cat_obj = next((c for c in gasto_cats if f"{c.get('emoji', '📁')} {c['name']}" == sel_cat), None)
         
         if cat_obj:
-            # 1. Registramos tu salida de dinero en tu cuenta personal
             save_input({
                 "user_id": debtor_id, 
                 "quantity": amount, 
@@ -127,7 +142,6 @@ def avisar_pago_dialog(group_id, debtor_id, creditor_id, creditor_name, amount):
                 "notes": concepto
             })
             
-            # 2. Le mandamos el aviso al acreedor
             if request_settlement(group_id, debtor_id, creditor_id):
                 st.toast("✅ Gasto registrado y aviso enviado.")
                 time.sleep(1)
@@ -155,16 +169,13 @@ def render_single_group(group_id, group_name, user_id):
         st.caption("👑 Eres el administrador de este grupo")
     st.divider()
 
-    # Chequeos de notificaciones
     miembros = get_group_members(group_id)
     pendientes = [m for m in miembros if m.get('leave_status') == 'pending']
     notificaciones_cobro = check_pending_confirmations(user_id)
     
-    # Lógica de las bolitas rojas
     label_ajustes = "Ajustes 🔴" if (es_admin and pendientes) else "Ajustes"
     label_resumen = "Resumen 🔴" if group_id in notificaciones_cobro else "Resumen"
 
-    # --- OBTENCIÓN DE COLORES SEGURA ---
     p_color = (st.session_state.user.get('profile_color') or '#636EFA') if 'user' in st.session_state and st.session_state.user else '#636EFA'
     i_color = (st.session_state.user.get('icon_color') or '#FFA500') if 'user' in st.session_state and st.session_state.user else '#FFA500'
 
@@ -176,9 +187,9 @@ def render_single_group(group_id, group_name, user_id):
         default_index=0,
         styles={
             "container": {"padding": "0!important", "background-color": "transparent"},
-            "icon": {"color": i_color, "font-size": "18px"}, # APLICADO COLOR ICONO
+            "icon": {"color": i_color, "font-size": "18px"}, 
             "nav-link": {"font-size": "16px", "text-align": "center", "margin": "0px", "--hover-color": "#eee"},
-            "nav-link-selected": {"background-color": p_color}, # APLICADO COLOR PRINCIPAL
+            "nav-link-selected": {"background-color": p_color}, 
         }
     )
 
@@ -190,12 +201,22 @@ def render_single_group(group_id, group_name, user_id):
         gastos_totales = get_group_expenses(group_id)
         peticiones_activas = get_settlement_requests(group_id)
         
+        # --- LÓGICA DE NOMBRES ACTUALIZADA PARA EXTERNOS ---
         nombres = {}
+        es_externo_dict = {} # Diccionario para saber rápido si un ID es externo
+        
         for m in miembros:
-            prof = m.get('profiles')
-            if isinstance(prof, list) and len(prof) > 0: prof = prof[0]
-            elif not prof: prof = {}
-            nombres[m['user_id']] = prof.get('name', 'Usuario')
+            if m.get('is_external'):
+                # Usamos un ID virtual para los externos (ej: ext_123)
+                fake_id = f"ext_{m['id']}" 
+                nombres[fake_id] = m.get('external_name', 'Invitado')
+                es_externo_dict[fake_id] = True
+            else:
+                prof = m.get('profiles')
+                if isinstance(prof, list) and len(prof) > 0: prof = prof[0]
+                elif not prof: prof = {}
+                nombres[m['user_id']] = prof.get('name', 'Usuario')
+                es_externo_dict[m['user_id']] = False
         
         if not gastos_totales:
             st.info("Añade gastos para ver las estadísticas del grupo.")
@@ -204,6 +225,7 @@ def render_single_group(group_id, group_name, user_id):
             gastado_por_persona = {}
             for g in gastos_totales:
                 pid = g['paid_by']
+                # Si el paid_by empieza por ext_, es un externo
                 nom = nombres.get(pid, 'Desconocido')
                 gastado_por_persona[nom] = gastado_por_persona.get(nom, 0) + g['total_amount']
 
@@ -229,6 +251,7 @@ def render_single_group(group_id, group_name, user_id):
                     a_nombre = nombres.get(a_id, "Alguien")
                     
                     pago_solicitado = (de_id, a_id) in peticiones_activas
+                    es_deudor_externo = es_externo_dict.get(de_id, False)
                     
                     if de_id == user_id:
                         texto_deuda = f"👉 **Tú** debes pagar **{p['amount']:.2f}€** a **{a_nombre}**"
@@ -242,23 +265,37 @@ def render_single_group(group_id, group_name, user_id):
                         c1.markdown(texto_deuda)
                         
                         with c2:
-                            if de_id == user_id: # ERES EL DEUDOR
-                                if pago_solicitado:
-                                    st.caption("⏳ Esperando que confirmen tu pago")
+                            # --- LÓGICA PARA DEUDORES EXTERNOS ---
+                            if es_deudor_externo:
+                                if es_admin:
+                                    if st.button("Saldar (Soy Admin) ✅", key=f"ext_{de_id}_{a_id}", use_container_width=True):
+                                        ok, msg = settle_external_debt_admin(group_id, de_nombre, a_id)
+                                        if ok:
+                                            st.toast(f"✅ {msg}")
+                                            time.sleep(1)
+                                            st.rerun()
+                                        else: st.error(msg)
                                 else:
-                                    # BOTÓN QUE ABRE EL NUEVO DIÁLOGO
-                                    if st.button("💸 Ya lo he pagado", key=f"pay_{de_id}_{a_id}", use_container_width=True):
-                                        avisar_pago_dialog(group_id, de_id, a_id, a_nombre, p['amount'])
-                                            
-                            elif a_id == user_id: # ERES EL ACREEDOR
-                                if pago_solicitado:
-                                    if st.button("✅ Confirmar cobro", key=f"conf_{de_id}_{a_id}", type="primary", use_container_width=True):
-                                        saldar_deuda_dialog(group_id, a_id, de_id, de_nombre, p['amount'])
-                                else:
-                                    st.caption("Esperando pago...")
+                                    st.caption("Solo el Admin puede confirmar")
+                            
+                            # --- LÓGICA NORMAL ---
                             else:
-                                if pago_solicitado: st.caption("⏳ Procesando pago")
-                                else: st.caption("Pendiente")
+                                if de_id == user_id: # ERES EL DEUDOR
+                                    if pago_solicitado:
+                                        st.caption("⏳ Esperando confirmación")
+                                    else:
+                                        if st.button("💸 Ya lo he pagado", key=f"pay_{de_id}_{a_id}", use_container_width=True):
+                                            avisar_pago_dialog(group_id, de_id, a_id, a_nombre, p['amount'])
+                                                
+                                elif a_id == user_id: # ERES EL ACREEDOR
+                                    if pago_solicitado:
+                                        if st.button("✅ Confirmar cobro", key=f"conf_{de_id}_{a_id}", type="primary", use_container_width=True):
+                                            saldar_deuda_dialog(group_id, a_id, de_id, de_nombre, p['amount'])
+                                    else:
+                                        st.caption("Esperando pago...")
+                                else:
+                                    if pago_solicitado: st.caption("⏳ Procesando pago")
+                                    else: st.caption("Pendiente")
 
     elif selected_tab == "Gastos":
         render_subheader("receipt", "Historial de Gastos")
@@ -280,7 +317,18 @@ def render_single_group(group_id, group_name, user_id):
                     with col1:
                         candado_str = "🔒 " if is_locked else ""
                         st.markdown(f"**{candado_str}{g['description']}**")
-                        pagador = g.get('profiles', {}).get('name', 'Alguien')
+                        # Buscamos el nombre del pagador, incluso si es externo
+                        pagador = "Alguien"
+                        for m in miembros:
+                            if m.get('is_external') and f"ext_{m['id']}" == g['paid_by']:
+                                pagador = m.get('external_name')
+                                break
+                            elif not m.get('is_external') and m['user_id'] == g['paid_by']:
+                                prof = m.get('profiles', {})
+                                if isinstance(prof, list) and len(prof)>0: prof = prof[0]
+                                pagador = prof.get('name', 'Alguien')
+                                break
+
                         st.caption(f"Pagado por: {pagador} | 📅 {g['date']}")
                     with col2:
                         st.markdown(f"### {g['total_amount']:.2f}€")
@@ -306,40 +354,51 @@ def render_single_group(group_id, group_name, user_id):
                                         st.rerun()
 
     elif selected_tab == "Miembros":
-        col_tit, col_btn = st.columns([3, 1])
+        # --- MODIFICADO PARA INCLUIR EL BOTÓN DE INVITADO ---
+        col_tit, col_btn1, col_btn2 = st.columns([2, 1, 1])
         with col_tit:
-            render_subheader("people", "Miembros del Grupo")
-        with col_btn:
+            render_subheader("people", "Miembros")
+        with col_btn1:
             if st.button(":material/person_add: Invitar", use_container_width=True):
                 invitar_usuario_dialog(group_id, nombre)
+        with col_btn2:
+            if es_admin:
+                if st.button(":material/person_add_alt_1: Invitado", help="Añadir alguien sin cuenta", use_container_width=True):
+                    add_guest_dialog(group_id)
         
         if miembros:
             cols = st.columns(3)
             for index, m in enumerate(miembros):
                 col = cols[index % 3] 
-                prof = m.get('profiles')
-                if isinstance(prof, list) and len(prof) > 0: prof = prof[0]
-                if not prof: prof = {}
                 
-                name_raw = prof.get('name', 'Usuario')
-                lastname_raw = prof.get('lastname', '')
-                full_name = " ".join(f"{name_raw} {lastname_raw}".split()) 
-                
-                color = prof.get('profile_color', '#636EFA')
-                avatar = prof.get('avatar_url')
-                
-                is_current_user = m['user_id'] == user_id
-                is_member_admin = m['user_id'] == admin_id
-                rol_badge = "👑 Admin" if is_member_admin else "👤 Miembro"
+                # --- IDENTIFICACIÓN DE USUARIOS EXTERNOS ---
+                is_external = m.get('is_external', False)
+                if is_external:
+                    full_name = m.get('external_name', 'Invitado')
+                    color = '#888888' # Gris para externos
+                    avatar = None
+                    rol_badge = "👻 Invitado"
+                    is_current_user = False
+                else:
+                    prof = m.get('profiles')
+                    if isinstance(prof, list) and len(prof) > 0: prof = prof[0]
+                    if not prof: prof = {}
+                    
+                    name_raw = prof.get('name', 'Usuario')
+                    lastname_raw = prof.get('lastname', '')
+                    full_name = " ".join(f"{name_raw} {lastname_raw}".split()) 
+                    color = prof.get('profile_color', '#636EFA')
+                    avatar = prof.get('avatar_url')
+                    
+                    is_current_user = m['user_id'] == user_id
+                    is_member_admin = m['user_id'] == admin_id
+                    rol_badge = "👑 Admin" if is_member_admin else "👤 Miembro"
                 
                 with col:
                     with st.container(border=True):
                         c1, c2 = st.columns([1.2, 2], vertical_alignment="center")
                         with c1:
-                            # 1. Sacamos la inicial de forma segura
                             inicial = full_name[0].upper() if full_name else "?"
-                            
-                            # 2. Usamos HTML para AMBOS casos. 
                             if avatar:
                                 st.markdown(f'''
                                     <div style="padding: 10px 0 25px 0;">
@@ -363,8 +422,11 @@ def render_single_group(group_id, group_name, user_id):
                         
                         if es_admin and not is_current_user:
                             st.write("") 
-                            if st.button(":material/person_remove: Expulsar", key=f"kick_{m['user_id']}", use_container_width=True):
-                                if remove_group_member(group_id, m['user_id']): st.rerun()
+                            # Si es externo, borramos usando su ID de la tabla group_members
+                            user_id_to_kick = m['id'] if is_external else m['user_id']
+                            if st.button(":material/person_remove: Expulsar", key=f"kick_{user_id_to_kick}", use_container_width=True):
+                                if remove_group_member(group_id, user_id_to_kick, is_external): 
+                                    st.rerun()
 
     elif selected_tab == label_ajustes:
         render_subheader("gear", "Configuración del Grupo")
@@ -443,10 +505,8 @@ def render_groups(user_id, user_email):
     render_header("people", "Grupos Compartidos")
     st.caption("Gestiona gastos compartidos con amigos, pareja o compañeros de piso.")
     
-    # Comprobar notificaciones globales para el usuario
     notif_groups = check_pending_confirmations(user_id)
     
-    # --- OBTENCIÓN DE COLORES SEGURA ---
     p_color = (st.session_state.user.get('profile_color') or '#636EFA') if 'user' in st.session_state and st.session_state.user else '#636EFA'
     i_color = (st.session_state.user.get('icon_color') or '#FFA500') if 'user' in st.session_state and st.session_state.user else '#FFA500'
 
@@ -458,9 +518,9 @@ def render_groups(user_id, user_email):
         default_index=0,
         styles={
             "container": {"padding": "0!important", "background-color": "transparent"},
-            "icon": {"color": i_color, "font-size": "18px"}, # APLICADO COLOR ICONO
+            "icon": {"color": i_color, "font-size": "18px"}, 
             "nav-link": {"font-size": "16px", "text-align": "center", "margin": "0px", "--hover-color": "#eee"},
-            "nav-link-selected": {"background-color": p_color}, # APLICADO COLOR PRINCIPAL
+            "nav-link-selected": {"background-color": p_color}, 
         }
     )
 
@@ -492,7 +552,6 @@ def render_groups(user_id, user_email):
                 col = cols[index % 3]
                 with col:
                     with st.container(border=True):
-                        # Notificación en el título si hay pagos pendientes
                         nombre_display = f"{group.get('emoji', '👥')} {group['name']}"
                         if group['id'] in notif_groups:
                             nombre_display += " 🔴"
