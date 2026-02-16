@@ -261,10 +261,9 @@ def get_group_expenses(group_id):
         res = client.table("group_expenses") \
             .select("*, profiles(name), group_expense_splits(user_id, amount_owed)") \
             .eq("group_id", group_id) \
-            .order("date", ascending=False) \
-            .execute()
+            .order("date", desc=True) \
+            .execute() # <-- Fíjate en el desc=True
         return res.data or []
     except Exception as e:
-        # ¡AHORA SÍ VEREMOS EL ERROR SI FALLA!
         st.error(f"🛑 Error DB (Cargando Historial de Gastos): {e}")
         return []
