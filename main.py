@@ -22,31 +22,38 @@ st.markdown(get_custom_css(), unsafe_allow_html=True)
 # CSS Extra para ocultar el padding superior excesivo de Streamlit y ocultar menús por defecto
 st.markdown("""
     <style>
-        /* 1. Ajuste padding general (Usando selectores seguros) */
+        /* 1. Ajuste padding general */
         .block-container {
             padding-top: 2rem !important; 
         } 
-        [data-testid="stSidebar"] > div:first-child {
-            padding-top: 1rem !important;
-        }
-
-        /* 2. OCULTAR MENÚ SUPERIOR DERECHO (Deploy, Github, 3 puntos) */
-        [data-testid="stToolbar"], .stDeployButton, #MainMenu {
-            visibility: hidden !important;
+        
+        /* 2. Ocultar la parte DERECHA del header (Deploy, Github, 3 puntos) */
+        [data-testid="stToolbar"], 
+        [data-testid="stHeaderActionElements"], 
+        .stDeployButton, 
+        #MainMenu {
             display: none !important;
+            visibility: hidden !important;
         }
         
-        /* 3. OCULTAR FOOTER (Made with Streamlit) */
+        /* 3. Ocultar FOOTER */
         footer {
-            visibility: hidden !important;
             display: none !important;
         }
 
-        /* 🛟 4. ESCUDO PROTECTOR: Asegurar que el botón de abrir sidebar SIEMPRE se vea */
-        [data-testid="collapsedControl"] {
-            visibility: visible !important;
+        /* 🛟 4. ESCUDO PROTECTOR SUPREMO: Botón del menú lateral SIEMPRE visible */
+        [data-testid="collapsedControl"],
+        [data-testid="stSidebarCollapsedControl"] {
             display: flex !important;
-            z-index: 99999 !important;
+            visibility: visible !important;
+            opacity: 1 !important;
+            z-index: 999999 !important;
+        }
+        
+        /* Asegurar que el header en sí no bloquee el botón */
+        [data-testid="stHeader"] {
+            background-color: transparent !important;
+            z-index: 999998 !important;
         }
     </style>
 """, unsafe_allow_html=True)
