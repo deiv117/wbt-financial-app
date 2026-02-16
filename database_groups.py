@@ -234,3 +234,16 @@ def add_shared_expense(group_id, movement_data, member_ids):
     except Exception as e:
         st.error(f"Error en add_shared_expense: {e}")
         return False, str(e)
+
+def get_group_expenses(group_id):
+    """Obtiene el historial de gastos compartidos de un grupo"""
+    try:
+        res = supabase.table("group_expenses") \
+            .select("*, profiles(name), group_expense_splits(user_id, amount_owed)") \
+            .eq("group_id", group_id) \
+            .order("date", ascending=False) \
+            .execute()
+        return res.data or []
+    except Exception as e:
+        print(f"Error obteniendo gastos del grupo: {e}")
+        return []
