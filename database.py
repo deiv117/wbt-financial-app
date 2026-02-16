@@ -280,8 +280,13 @@ def update_input(data):
 def delete_input(mov_id):
     client = get_supabase_client()
     try:
+        # 1. Primero buscamos si este movimiento estaba en algún grupo y lo borramos de allí
+        client.table('group_expenses').delete().eq('movement_id', mov_id).execute()
+        
+        # 2. Luego borramos el movimiento personal original
         client.table('user_imputs').delete().eq('id', mov_id).execute()
     except Exception as e:
+        import streamlit as st
         st.error(f"Error delete input: {e}")
 
 def get_transactions(user_uuid):
