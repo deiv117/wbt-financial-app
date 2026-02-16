@@ -15,7 +15,7 @@ from database_groups import (
 BOOTSTRAP_ICONS_LINK = '<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.5/font/bootstrap-icons.css">'
 
 def get_dynamic_css():
-    p_color = st.session_state.user.get('profile_color', '#636EFA') if 'user' in st.session_state and st.session_state.user else '#636EFA'
+    p_color = (st.session_state.user.get('profile_color') or '#636EFA') if 'user' in st.session_state and st.session_state.user else '#636EFA'
     return f"""
     <style>
     @import url("https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.5/font/bootstrap-icons.css");
@@ -164,6 +164,10 @@ def render_single_group(group_id, group_name, user_id):
     label_ajustes = "Ajustes 🔴" if (es_admin and pendientes) else "Ajustes"
     label_resumen = "Resumen 🔴" if group_id in notificaciones_cobro else "Resumen"
 
+    # --- OBTENCIÓN DE COLORES SEGURA ---
+    p_color = (st.session_state.user.get('profile_color') or '#636EFA') if 'user' in st.session_state and st.session_state.user else '#636EFA'
+    i_color = (st.session_state.user.get('icon_color') or '#FFA500') if 'user' in st.session_state and st.session_state.user else '#FFA500'
+
     selected_tab = option_menu(
         menu_title=None,
         options=[label_resumen, "Gastos", "Miembros", label_ajustes],
@@ -172,9 +176,9 @@ def render_single_group(group_id, group_name, user_id):
         default_index=0,
         styles={
             "container": {"padding": "0!important", "background-color": "transparent"},
-            "icon": {"color": "orange", "font-size": "18px"}, 
+            "icon": {"color": i_color, "font-size": "18px"}, # APLICADO COLOR ICONO
             "nav-link": {"font-size": "16px", "text-align": "center", "margin": "0px", "--hover-color": "#eee"},
-            "nav-link-selected": {"background-color": st.session_state.user.get('profile_color', '#636EFA')},
+            "nav-link-selected": {"background-color": p_color}, # APLICADO COLOR PRINCIPAL
         }
     )
 
@@ -336,8 +340,6 @@ def render_single_group(group_id, group_name, user_id):
                             inicial = full_name[0].upper() if full_name else "?"
                             
                             # 2. Usamos HTML para AMBOS casos. 
-                            # HEMOS CAMBIADO EL PADDING: "10px 0 25px 0" significa: 
-                            # 10px arriba, 0 derecha, 25px abajo, 0 izquierda.
                             if avatar:
                                 st.markdown(f'''
                                     <div style="padding: 10px 0 25px 0;">
@@ -444,6 +446,10 @@ def render_groups(user_id, user_email):
     # Comprobar notificaciones globales para el usuario
     notif_groups = check_pending_confirmations(user_id)
     
+    # --- OBTENCIÓN DE COLORES SEGURA ---
+    p_color = (st.session_state.user.get('profile_color') or '#636EFA') if 'user' in st.session_state and st.session_state.user else '#636EFA'
+    i_color = (st.session_state.user.get('icon_color') or '#FFA500') if 'user' in st.session_state and st.session_state.user else '#FFA500'
+
     main_tab = option_menu(
         menu_title=None,
         options=["Mis Grupos", "Invitaciones"],
@@ -452,9 +458,9 @@ def render_groups(user_id, user_email):
         default_index=0,
         styles={
             "container": {"padding": "0!important", "background-color": "transparent"},
-            "icon": {"color": "orange", "font-size": "18px"}, 
+            "icon": {"color": i_color, "font-size": "18px"}, # APLICADO COLOR ICONO
             "nav-link": {"font-size": "16px", "text-align": "center", "margin": "0px", "--hover-color": "#eee"},
-            "nav-link-selected": {"background-color": st.session_state.user.get('profile_color', '#636EFA')},
+            "nav-link-selected": {"background-color": p_color}, # APLICADO COLOR PRINCIPAL
         }
     )
 
