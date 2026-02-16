@@ -287,8 +287,9 @@ def delete_input(mov_id):
 def get_transactions(user_uuid):
     client = get_supabase_client()
     try:
+        # Añadimos groups(name, emoji) al JOIN
         response = client.table('user_imputs') \
-            .select('*, user_categories(name, emoji, budget)') \
+            .select('*, user_categories(name, emoji, budget), groups(name, emoji)') \
             .eq('user_id', user_uuid) \
             .execute()
         
@@ -298,11 +299,20 @@ def get_transactions(user_uuid):
         flat_data = []
         for row in data:
             cat = row.get('user_categories') or {}
+            grp = row.get('groups') or {} # Extraemos info del grupo
+            
             flat_row = row.copy()
             del flat_row['user_categories']
+            if 'groups' in flat_row: del flat_row['groups']
+            
             flat_row['cat_name'] = cat.get('name', 'General')
             flat_row['cat_emoji'] = cat.get('emoji', '📁')
             flat_row['budget'] = cat.get('budget', 0)
+            
+            # Guardamos los datos del grupo en la fila
+            flat_row['group_name'] = grp.get('name', None)
+            flat_row['group_emoji'] = grp.get('emoji', '👥')
+            
             flat_data.append(flat_row)
             
         df = pd.DataFrame(flat_data)
@@ -311,6 +321,7 @@ def get_transactions(user_uuid):
             df['cat_display'] = df.apply(lambda x: f"{x['cat_emoji']} {x['cat_name']}", axis=1)
         return df
     except Exception as e:
+        print(f"Error cargando transacciones: {e}")
         return pd.DataFrame()
 
 def recalculate_category_budgets(user_id, new_total_income):
