@@ -78,13 +78,15 @@ def delete_group(group_id):
 # ==========================================
 
 def get_group_members(group_id):
-    """Obtiene la lista de usuarios con chivato de errores"""
     client = get_supabase_client()
     try:
-        res = client.table("group_members").select("user_id, leave_status, profiles(name, lastname, avatar_url, profile_color)").eq("group_id", group_id).execute()
-        return res.data or []
+        # AQUÍ ESTÁ LA MAGIA: Le decimos que traiga las nuevas columnas (id, is_external, external_name)
+        res = client.table("group_members") \
+            .select("id, user_id, leave_status, is_external, external_name, profiles(*)") \
+            .eq("group_id", group_id).execute()
+        return res.data
     except Exception as e:
-        st.error(f"🛑 Error DB (Leyendo Miembros): {e}")
+        print(f"Error getting group members: {e}")
         return []
 
 def remove_group_member(group_id, target_user_id):
