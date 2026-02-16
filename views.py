@@ -17,6 +17,9 @@ from database_groups import (get_user_groups, get_group_members, add_shared_expe
 
 from components import editar_movimiento_dialog, editar_categoria_dialog, crear_categoria_dialog
 
+from database_groups import get_locked_movements
+        locked_movs = get_locked_movements()
+
 # --- ESTILOS CSS GLOBALES Y LIBRERÍA DE ICONOS ---
 BOOTSTRAP_ICONS_LINK = '<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.5/font/bootstrap-icons.css">'
 
@@ -348,13 +351,14 @@ def render_dashboard(df_all, current_cats, user_id):
                         st.caption(f"📅 {fecha_str} &nbsp;|&nbsp; 📝 _{i['notes'] or 'Sin concepto'}_")
                     
                     with col_btn:
-                        cb_e, cb_d = st.columns(2)
-                        with cb_e:
-                            if st.button(":material/edit:", key=f"e_dash_{i['id']}", use_container_width=True): 
-                                editar_movimiento_dialog(i, current_cats)
-                        with cb_d:
-                            if st.button(":material/delete:", key=f"d_dash_{i['id']}", type="primary", use_container_width=True): 
-                                confirmar_borrar_movimiento(i['id'])
+                            cb_e, cb_d = st.columns(2)
+                            is_locked = i['id'] in locked_movs # Comprobamos si tiene candado
+                            with cb_e:
+                                if st.button(":material/edit:", key=f"e_dash_{i['id']}", disabled=is_locked, use_container_width=True, help="Bloqueado por deudas saldadas"): 
+                                    editar_movimiento_dialog(i, current_cats)
+                            with cb_d:
+                                if st.button(":material/delete:", key=f"d_dash_{i['id']}", type="primary", use_container_width=True): 
+                                    confirmar_borrar_movimiento(i['id'])
         else:
             st.info("Aún no tienes movimientos registrados.")
           
