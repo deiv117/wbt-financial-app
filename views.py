@@ -123,16 +123,17 @@ def render_main_dashboard(df_all, user_profile):
         deuda_delta = "Al día"
         delta_color = "off" # Gris neutral
 
-    # --- TARJETAS CON ALTURA FIJA (height=130) ---
+    # --- TARJETAS CON ALTURA AUTOMÁTICA (Igualadas por contenido) ---
     k1, k2, k3 = st.columns(3)
     with k1:
-        with st.container(border=True, height=130):
-            st.metric(label="💰 Patrimonio Neto", value=f"{saldo_total:,.2f}€", delta=" ", delta_color="off", help="Saldo Inicial + Ingresos - Gastos")
+        with st.container(border=True):
+            # Usamos un guion "-" en el delta para que la tarjeta crezca igual que las demás
+            st.metric(label="💰 Patrimonio Neto", value=f"{saldo_total:,.2f}€", delta="-", delta_color="off", help="Saldo Inicial + Ingresos - Gastos")
     with k2:
-        with st.container(border=True, height=130):
+        with st.container(border=True):
             st.metric(label=f"📅 Ahorro {datetime.now().strftime('%B')}", value=f"{ahorro_mes:,.2f}€", delta=f"{ahorro_mes:,.2f}€")
     with k3:
-        with st.container(border=True, height=130):
+        with st.container(border=True):
             st.metric(label="👥 Grupos (Balance)", value=deuda_str, delta=deuda_delta, delta_color=delta_color)
 
     st.divider()
