@@ -232,16 +232,21 @@ def render_dashboard(df_all, current_cats, user_id):
     if selected == "Nueva":
         render_subheader("plus-circle", "Añadir Transacción")
         
-        # ELIMINAMOS EL FORMULARIO PARA QUE SEA 100% DINÁMICO
+        # --- CONTROL DE ESTADO DEL FORMULARIO ---
+        if 'f_qty' not in st.session_state: st.session_state.f_qty = 0.0
+        if 'f_concept' not in st.session_state: st.session_state.f_concept = ""
+
         with st.container(border=True):
             c1, c2, c3 = st.columns(3)
-            qty = c1.number_input("Cantidad (€)", min_value=0.0, step=0.01)
+            # Usamos las keys de session_state
+            qty = c1.number_input("Cantidad (€)", min_value=0.0, step=0.01, key='f_qty')
             t_type = c2.selectbox("Tipo", ["Gasto", "Ingreso"])
             f_mov = c3.date_input("Fecha", datetime.now())
             
             f_cs = [c for c in current_cats if c.get('type') == t_type]
             sel = st.selectbox("Categoría", ["Selecciona..."] + [f"{c.get('emoji', '📁')} {c['name']}" for c in f_cs])
-            concepto = st.text_input("Concepto")
+            # Usamos la key para el concepto
+            concepto = st.text_input("Concepto", key='f_concept')
 
             # --- SECCIÓN GASTO COMPARTIDO ---
             shared_group_id = None
@@ -254,6 +259,7 @@ def render_dashboard(df_all, current_cats, user_id):
                 
                 if mis_grupos:
                     opciones_grupos = {g['name']: g['id'] for g in mis_grupos}
+                    # NO limpiamos esto para que recuerde el grupo si añades varios seguidos
                     sel_grupo = st.selectbox("¿Vincular a un grupo?", ["No compartir"] + list(opciones_grupos.keys()))
                     
                     if sel_grupo != "No compartir":
@@ -278,8 +284,6 @@ def render_dashboard(df_all, current_cats, user_id):
                     st.caption("No tienes grupos creados.")
 
             st.divider()
-            
-            # BOTÓN PRINCIPAL
             if st.button("Guardar Movimiento", type="primary", use_container_width=True):
                 if sel != "Selecciona...":
                     cat_sel = next(c for c in f_cs if f"{c.get('emoji', '📁')} {c['name']}" == sel)
@@ -293,24 +297,27 @@ def render_dashboard(df_all, current_cats, user_id):
                         "notes": concepto
                     }
 
+                    exito = False
                     if shared_group_id and participantes_ids:
-                        # Gasto Compartido
                         ok, msg = add_shared_expense(shared_group_id, mov_data, participantes_ids)
                         if ok: 
-                            st.success("✅ Gasto compartido guardado en el grupo")
-                            time.sleep(1)
-                            st.rerun()
-                        else: 
-                            st.error(f"❌ Error DB: {msg}")
+                            st.success("✅ Gasto compartido guardado")
+                            exito = True
+                        else: st.error(f"❌ Error DB: {msg}")
                     else:
-                        # Gasto Personal Normal
                         try:
                             save_input(mov_data)
                             st.success("✅ Movimiento personal guardado")
-                            time.sleep(1)
-                            st.rerun()
+                            exito = True
                         except Exception as e:
                             st.error(f"❌ Error DB: {e}")
+                    
+                    # SI HAY ÉXITO, LIMPIAMOS LOS INPUTS Y RECARGAMOS
+                    if exito:
+                        st.session_state.f_qty = 0.0
+                        st.session_state.f_concept = ""
+                        time.sleep(1)
+                        st.rerun()
                 else:
                     st.warning("⚠️ Debes seleccionar una categoría.")
 
