@@ -386,21 +386,34 @@ def render_dashboard(df_all, current_cats, user_id):
                 st.markdown("---")
                 df_page = df_h.iloc[start_idx:end_idx]
                 
-                for _, i in df_page.iterrows():
+                for _, i in df_sel.iterrows():
                     with st.container(border=True):
                         col_info, col_btn = st.columns([4, 1])
                         with col_info:
                             color_q = "red" if i['type'] == 'Gasto' else "green"
                             signo = "-" if i['type'] == 'Gasto' else "+"
-                            st.markdown(f"**{i['cat_display']}** &nbsp;|&nbsp; :{color_q}[**{signo}{i['quantity']:.2f}€**]")
-                            st.caption(f"📅 {i['date'].strftime('%d/%m/%Y')} &nbsp;|&nbsp; 📝 _{i['notes'] or 'Sin concepto'}_")
+                            
+                            # --- LÓGICA DE ETIQUETA DE GRUPO ---
+                            etiqueta_grupo = ""
+                            # Verificamos si la columna 'group_name' existe y tiene datos
+                            if 'group_name' in i and pd.notna(i['group_name']) and i['group_name']:
+                                etiqueta_grupo = f" &nbsp; | &nbsp; **{i.get('group_emoji', '👥')} {i['group_name']}**"
+                            
+                            # Línea principal con Categoría, Grupo (si hay) y Cantidad
+                            st.markdown(f"**{i['cat_display']}**{etiqueta_grupo} &nbsp;|&nbsp; :{color_q}[**{signo}{i['quantity']:.2f}€**]")
+                            
+                            # Línea secundaria con fecha y notas
+                            fecha_str = i['date'].strftime('%d/%m/%Y') if hasattr(i['date'], 'strftime') else i['date']
+                            st.caption(f"📅 {fecha_str} &nbsp;|&nbsp; 📝 _{i['notes'] or 'Sin concepto'}_")
+                
                         with col_btn:
-                            cb1, cb2 = st.columns(2)
-                            with cb1:
-                                if st.button(":material/edit:", key=f"e_hist_{i['id']}", use_container_width=True): 
+                            # Aquí van tus botones de editar y borrar (asegúrate de que usen iconos material)
+                            c_ed, c_de = st.columns(2)
+                            with c_ed:
+                                if st.button(":material/edit:", key=f"hi_ed_{i['id']}", use_container_width=True):
                                     editar_movimiento_dialog(i, current_cats)
-                            with cb2:
-                                if st.button(":material/delete:", key=f"d_hist_{i['id']}", type="primary", use_container_width=True): 
+                            with c_de:
+                                if st.button(":material/delete:", key=f"hi_de_{i['id']}", type="primary", use_container_width=True):
                                     confirmar_borrar_movimiento(i['id'])
 
     # --- C. PREVISIÓN (NUEVA SUPER-PANTALLA) ---
