@@ -284,3 +284,76 @@ def delete_group_expense(expense_id, movement_id):
     except Exception as e:
         st.error(f"🛑 Error DB (Borrando Gasto): {e}")
         return False
+
+def get_expense_participants(movement_id):
+    """Devuelve la lista de IDs de los usuarios que participan en un gasto concreto"""
+    client = get_supabase_client()
+    try:
+        res = client.table('group_expenses').select('id, group_expense_splits(user_id)').eq('movement_id', movement_id).execute()
+        if res.data and res.data[0].get('group_expense_splits'):
+            return [s['user_id'] for s in res.data[0]['group_expense_splits']]
+        return []
+    except:
+        return []
+
+def update_shared_expense(mov_id, mov_data, new_group_id, participant_ids):
+    """Actualiza un gasto a todos los niveles (personal y grupo) manejando los cambios de forma inteligente"""
+    client = get_supabase_client()
+    try:
+        # 1. Actualizar el movimiento personal SIEMPRE
+        client.table('user_imputs').update({
+            "quantity": mov_data['quantity'],
+            "type": mov_data['type'],
+            "category_id": mov_data['category_id'],
+            "date": mov_data['date'],
+            "notes": mov_data['notes'],
+            "group_id": new_group_id # Guardamos si ahora tiene grupo o no
+        }).eq('id', mov_id).execute()
+
+        # 2. Ver si este movimiento ya era un gasto de grupo antes
+        res_exp = client.table('group_expenses').select('id, group_id').eq('movement_id', mov_id).execute()
+        old_exp = res_exp.data[0] if res_exp.data else None
+
+        # ESCENARIO A: Lo hemos desvinculado del grupo (Ahora es un gasto personal normal)
+        if new_group_id is None:
+            if old_exp:
+                client.table('group_expenses').delete().eq('id', old_exp['id']).execute()
+        
+        # ESCENARIO B: Sigue teniendo grupo (El mismo o uno nuevo)
+        else:
+            cuota = mov_data['quantity'] / len(participant_ids) if participant_ids else 0
+            splits = [{"user_id": pid, "amount_owed": cuota, "is_settled": False} for pid in participant_ids]
+
+            if old_exp and old_exp['group_id'] == new_group_id:
+                # B1: Es el MISMO grupo. Actualizamos el precio y los participantes
+                exp_id = old_exp['id']
+                client.table('group_expenses').update({
+                    "description": mov_data['notes'], "total_amount": mov_data['quantity']
+                }).eq('id', exp_id).execute()
+                
+                # Borramos los repartos viejos y metemos los nuevos (por si quitaste a alguien)
+                client.table('group_expense_splits').delete().eq('expense_id', exp_id).execute()
+                for s in splits: s['expense_id'] = exp_id
+                if splits: client.table('group_expense_splits').insert(splits).execute()
+                
+            else:
+                # B2: Es un GRUPO DISTINTO o ANTES ERA PERSONAL. Borramos lo viejo y creamos nuevo.
+                if old_exp:
+                    client.table('group_expenses').delete().eq('id', old_exp['id']).execute()
+                
+                new_exp = client.table('group_expenses').insert({
+                    "group_id": new_group_id, "movement_id": mov_id, 
+                    "paid_by": mov_data['user_id'], "description": mov_data['notes'], 
+                    "total_amount": mov_data['quantity']
+                }).execute()
+                
+                if new_exp.data:
+                    n_exp_id = new_exp.data[0]['id']
+                    for s in splits: s['expense_id'] = n_exp_id
+                    if splits: client.table('group_expense_splits').insert(splits).execute()
+                    
+        return True, "Actualizado correctamente"
+    except Exception as e:
+        import streamlit as st
+        st.error(f"🛑 Error DB: {e}")
+        return False, str(e)
