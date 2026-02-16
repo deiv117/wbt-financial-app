@@ -593,3 +593,23 @@ def settle_external_debt_admin(group_id, external_member_name, creditor_id):
         return True, f"Deuda de {external_member_name} saldada."
     except Exception as e:
         return False, str(e)
+
+def settle_debt_to_external(group_id, debtor_id, external_name):
+    """El admin confirma que un usuario real ya ha pagado al invitado externo"""
+    client = get_supabase_client()
+    try:
+        # Buscamos los gastos donde el externo pagó (ext_) y el usuario real debe
+        # Marcamos como settled los repartos correspondientes
+        res = client.table("group_expense_splits") \
+            .select("id, group_expenses!inner(group_id, paid_by)") \
+            .eq("group_expenses.group_id", group_id) \
+            .eq("user_id", debtor_id) \
+            .eq("is_settled", False).execute()
+        
+        if res.data:
+            ids_to_settle = [r['id'] for r in res.data]
+            client.table("group_expense_splits").update({"is_settled": True}).in_("id", ids_to_settle).execute()
+            
+        return True, f"Deuda con {external_name} saldada."
+    except Exception as e:
+        return False, str(e)
