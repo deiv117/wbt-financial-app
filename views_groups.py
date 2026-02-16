@@ -8,7 +8,8 @@ from database_groups import (
     get_my_invitations, send_invitation, respond_invitation,
     get_group_members, get_group_info, get_group_expenses, remove_group_member, 
     update_group_setting, update_group_details,
-    request_leave_group, resolve_leave_request
+    request_leave_group, resolve_leave_request,
+    check_pending_confirmations, get_settlement_requests, request_settlement
 )
 
 BOOTSTRAP_ICONS_LINK = '<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.5/font/bootstrap-icons.css">'
@@ -65,14 +66,13 @@ def invitar_usuario_dialog(group_id, group_name):
 
 
 # --- VISTA INTERIOR DEL GRUPO ---
-@st.dialog("💸 Confirmar Pago Recibido")
+@st.dialog("✅ Confirmar Recepción de Pago")
 def saldar_deuda_dialog(group_id, creditor_id, debtor_id, debtor_name, amount):
-    st.warning(f"¿Confirmas que **{debtor_name}** te ha pagado **{amount:.2f}€** fuera de la aplicación?")
+    st.warning(f"¿Confirmas que has recibido **{amount:.2f}€** de **{debtor_name}**?")
     st.info("💡 Al confirmar, se le pondrá un 🔒 candado a los tickets compartidos y tu gasto personal se reducirá automáticamente para cuadrar tus cuentas.")
     
-    if st.button("Sí, he recibido el dinero", type="primary", use_container_width=True):
+    if st.button("Sí, confirmar cobro", type="primary", use_container_width=True):
         from database_groups import settle_debt_between_users
-        import time
         ok, msg = settle_debt_between_users(group_id, creditor_id, debtor_id)
         if ok:
             st.toast(f"✅ {msg}")
@@ -101,16 +101,18 @@ def render_single_group(group_id, group_name, user_id):
         st.caption("👑 Eres el administrador de este grupo")
     st.divider()
 
-    # 1. Obtenemos los miembros ANTES de dibujar el menú para saber si hay notificaciones
+    # Chequeos de notificaciones
     miembros = get_group_members(group_id)
     pendientes = [m for m in miembros if m.get('leave_status') == 'pending']
+    notificaciones_cobro = check_pending_confirmations(user_id)
     
-    # 2. Lógica de la bolita roja
+    # Lógica de las bolitas rojas
     label_ajustes = "Ajustes 🔴" if (es_admin and pendientes) else "Ajustes"
+    label_resumen = "Resumen 🔴" if group_id in notificaciones_cobro else "Resumen"
 
     selected_tab = option_menu(
         menu_title=None,
-        options=["Resumen", "Gastos", "Miembros", label_ajustes],
+        options=[label_resumen, "Gastos", "Miembros", label_ajustes],
         icons=["graph-up", "receipt", "people", "gear"],
         orientation="horizontal",
         default_index=0,
@@ -122,28 +124,24 @@ def render_single_group(group_id, group_name, user_id):
         }
     )
 
-    if selected_tab == "Resumen":
+    if selected_tab == label_resumen:
         render_subheader("analytics", "Resumen y Liquidación")
         from database_groups import get_pending_balances, calculate_settlements, get_group_expenses
         
         balances = get_pending_balances(group_id)
         gastos_totales = get_group_expenses(group_id)
+        peticiones_activas = get_settlement_requests(group_id)
         
-        # --- EXTRACCIÓN DE NOMBRES A PRUEBA DE BALAS ---
         nombres = {}
         for m in miembros:
             prof = m.get('profiles')
-            # Manejamos tanto si Supabase devuelve una lista como un diccionario
-            if isinstance(prof, list) and len(prof) > 0:
-                prof = prof[0]
-            elif not prof:
-                prof = {}
+            if isinstance(prof, list) and len(prof) > 0: prof = prof[0]
+            elif not prof: prof = {}
             nombres[m['user_id']] = prof.get('name', 'Usuario')
         
         if not gastos_totales:
             st.info("Añade gastos para ver las estadísticas del grupo.")
         else:
-            # --- 1. GRÁFICOS Y MÉTRICAS ---
             total_gastado = sum(g['total_amount'] for g in gastos_totales)
             gastado_por_persona = {}
             for g in gastos_totales:
@@ -160,12 +158,11 @@ def render_single_group(group_id, group_name, user_id):
             
             st.divider()
             
-            # --- 2. LIQUIDACIÓN DE DEUDAS ---
             st.write("### 💸 Liquidación Pendiente")
             pagos = calculate_settlements(balances)
             
             if not pagos:
-                st.success("✨ ¡Todo el mundo está al día! No hay deudas pendientes en este grupo.")
+                st.success("✨ ¡Todo el mundo está al día! No hay deudas pendientes.")
             else:
                 for p in pagos:
                     de_id = p['from']
@@ -173,7 +170,8 @@ def render_single_group(group_id, group_name, user_id):
                     de_nombre = nombres.get(de_id, "Alguien")
                     a_nombre = nombres.get(a_id, "Alguien")
                     
-                    # --- LÓGICA DE TEXTOS INTELIGENTES ---
+                    pago_solicitado = (de_id, a_id) in peticiones_activas
+                    
                     if de_id == user_id:
                         texto_deuda = f"👉 **Tú** debes pagar **{p['amount']:.2f}€** a **{a_nombre}**"
                     elif a_id == user_id:
@@ -182,18 +180,27 @@ def render_single_group(group_id, group_name, user_id):
                         texto_deuda = f"👉 **{de_nombre}** debe pagar **{p['amount']:.2f}€** a **{a_nombre}**"
                     
                     with st.container(border=True):
-                        c1, c2 = st.columns([3, 1], vertical_alignment="center")
+                        c1, c2 = st.columns([2.5, 1.5], vertical_alignment="center")
                         c1.markdown(texto_deuda)
                         
-                        # Solo el acreedor (el que recibe el dinero) puede darle al botón de cobrar
                         with c2:
-                            if user_id == a_id:
-                                if st.button("Cobrar ✅", key=f"cobrar_{de_id}_{a_id}", type="primary", use_container_width=True):
-                                    saldar_deuda_dialog(group_id, a_id, de_id, de_nombre, p['amount'])
-                            elif user_id == de_id:
-                                st.caption("Debes pagar")
+                            if de_id == user_id: # ERES EL DEUDOR
+                                if pago_solicitado:
+                                    st.caption("⏳ Esperando que confirmen tu pago")
+                                else:
+                                    if st.button("💸 Ya lo he pagado", key=f"pay_{de_id}_{a_id}", use_container_width=True):
+                                        if request_settlement(group_id, de_id, a_id):
+                                            st.rerun()
+                                            
+                            elif a_id == user_id: # ERES EL ACREEDOR
+                                if pago_solicitado:
+                                    if st.button("✅ Confirmar cobro", key=f"conf_{de_id}_{a_id}", type="primary", use_container_width=True):
+                                        saldar_deuda_dialog(group_id, a_id, de_id, de_nombre, p['amount'])
+                                else:
+                                    st.caption("Esperando pago...")
                             else:
-                                st.caption("Pendiente")
+                                if pago_solicitado: st.caption("⏳ Procesando pago")
+                                else: st.caption("Pendiente")
 
     elif selected_tab == "Gastos":
         render_subheader("receipt", "Historial de Gastos")
@@ -201,7 +208,7 @@ def render_single_group(group_id, group_name, user_id):
         from components import editar_movimiento_dialog
         
         gastos = get_group_expenses(group_id)
-        locked_movs = get_locked_movements() # Lista negra de tickets con candado
+        locked_movs = get_locked_movements()
         
         if not gastos:
             st.info("Aún no hay gastos registrados en este grupo.")
@@ -233,12 +240,10 @@ def render_single_group(group_id, group_name, user_id):
                                     "id": g['movement_id'], "user_id": g['paid_by'], "quantity": g['total_amount'], "type": "Gasto",
                                     "category_id": g.get('category_id'), "date": g['date'], "notes": g['description'], "group_id": g['group_id']
                                 }
-                                # MAGIA DEL CANDADO
                                 if st.button(":material/edit:", key=f"ed_g_{g['id']}", disabled=is_locked, help="No se puede editar si hay pagos saldados"):
                                     editar_movimiento_dialog(mov_compatible, cats_para_editar)
                             with btn_del:
                                 if st.button(":material/delete:", key=f"dl_g_{g['id']}", type="primary"):
-                                    from database_groups import delete_group_expense
                                     if delete_group_expense(g['id'], g.get('movement_id')): 
                                         st.rerun()
 
@@ -252,10 +257,8 @@ def render_single_group(group_id, group_name, user_id):
         
         if miembros:
             cols = st.columns(3)
-            
             for index, m in enumerate(miembros):
                 col = cols[index % 3] 
-                
                 prof = m.get('profiles')
                 if isinstance(prof, list) and len(prof) > 0: prof = prof[0]
                 if not prof: prof = {}
@@ -275,29 +278,18 @@ def render_single_group(group_id, group_name, user_id):
                     with st.container(border=True, height=180):
                         c1, c2 = st.columns([1.2, 2], vertical_alignment="center")
                         with c1:
-                            if avatar:
-                                st.image(avatar, width=90)
+                            if avatar: st.image(avatar, width=90)
                             else:
-                                st.markdown(f"""
-                                    <div style="width: 90px; height: 90px; background-color: {color}; 
-                                                border-radius: 50%; display: flex; align-items: center; 
-                                                justify-content: center; color: white; font-weight: bold; font-size: 36px;">
-                                        {full_name[0].upper() if full_name else '?'}
-                                    </div>
-                                """, unsafe_allow_html=True)
+                                st.markdown(f'<div style="width:90px;height:90px;background-color:{color};border-radius:50%;display:flex;align-items:center;justify-content:center;color:white;font-weight:bold;font-size:36px;">{full_name[0].upper() if full_name else "?"}</div>', unsafe_allow_html=True)
                         with c2:
-                            estado_extra = " ⏳ *(Saliendo)*" if m.get('leave_status') == 'pending' else ""
+                            estado_extra = " ⏳" if m.get('leave_status') == 'pending' else ""
                             st.markdown(f"### {full_name}{estado_extra}")
                             st.caption(f"{rol_badge} {'**(Tú)**' if is_current_user else ''}")
                         
                         if es_admin and not is_current_user:
                             st.write("") 
                             if st.button(":material/person_remove: Expulsar", key=f"kick_{m['user_id']}", use_container_width=True):
-                                if remove_group_member(group_id, m['user_id']):
-                                    st.toast("Usuario eliminado")
-                                    st.rerun()
-        else:
-            st.warning("No se ha podido cargar la lista de miembros.")
+                                if remove_group_member(group_id, m['user_id']): st.rerun()
 
     elif selected_tab == label_ajustes:
         render_subheader("gear", "Configuración del Grupo")
@@ -312,7 +304,7 @@ def render_single_group(group_id, group_name, user_id):
                     
                     st.divider()
                     st.write("**Permisos de los miembros**")
-                    nuevo_allow = st.toggle("Permitir a los miembros abandonar el grupo por su cuenta", value=allow_leaving)
+                    nuevo_allow = st.toggle("Permitir salir voluntariamente", value=allow_leaving)
                     
                     if st.form_submit_button("Guardar Cambios", use_container_width=True):
                         if new_name.strip():
@@ -320,16 +312,11 @@ def render_single_group(group_id, group_name, user_id):
                             update_group_setting(group_id, "allow_leaving", bool(nuevo_allow))
                             if ok:
                                 st.session_state.current_group_name = new_name
-                                st.success("Ajustes guardados")
-                                time.sleep(0.5)
                                 st.rerun()
-                            else:
-                                st.error(msg)
-                        else:
-                            st.error("El nombre no puede estar vacío")
+                            else: st.error(msg)
+                        else: st.error("El nombre es obligatorio")
 
                 st.divider()
-
                 st.write("**Zona Peligrosa**")
                 if st.button(":material/delete: Eliminar Grupo Definitivamente", type="primary"):
                     confirmar_borrar_grupo(group_id)
@@ -340,25 +327,21 @@ def render_single_group(group_id, group_name, user_id):
                     for p in pendientes:
                         p_prof = p.get('profiles', {})
                         if isinstance(p_prof, list) and len(p_prof) > 0: p_prof = p_prof[0]
-                        
-                        p_name_raw = p_prof.get('name', 'Un usuario')
-                        p_last_raw = p_prof.get('lastname', '')
-                        p_full_name = " ".join(f"{p_name_raw} {p_last_raw}".split()) 
+                        p_full_name = " ".join(f"{p_prof.get('name', '')} {p_prof.get('lastname', '')}".split()) 
                         
                         with st.container(border=True):
                             st.write(f"**{p_full_name}** ha solicitado salir.")
                             c_yes, c_no = st.columns(2)
-                            if c_yes.button("Aprobar salida", key=f"app_{p['user_id']}", type="primary", use_container_width=True):
+                            if c_yes.button("Aprobar", key=f"app_{p['user_id']}", type="primary", use_container_width=True):
                                 resolve_leave_request(group_id, p['user_id'], True)
                                 st.rerun()
                             if c_no.button("Rechazar", key=f"rej_{p['user_id']}", use_container_width=True):
                                 resolve_leave_request(group_id, p['user_id'], False)
                                 st.rerun()
-
             else:
                 st.write("**Opciones de Miembro**")
                 if allow_leaving:
-                    st.info("Puedes abandonar este grupo en cualquier momento. El histórico de tus gastos se mantendrá.")
+                    st.info("Puedes abandonar este grupo en cualquier momento.")
                     if st.button(":material/logout: Abandonar Grupo", type="primary"):
                         if remove_group_member(group_id, user_id):
                             cerrar_grupo_callback() 
@@ -368,11 +351,10 @@ def render_single_group(group_id, group_name, user_id):
                     if mi_estado == 'pending':
                         st.info("⏳ Has solicitado abandonar el grupo. Esperando aprobación.")
                     else:
-                        st.warning("🔒 El administrador ha bloqueado la opción de abandonar voluntariamente.")
-                        if st.button("Solicitar abandonar el grupo", type="primary"):
+                        st.warning("🔒 El administrador ha bloqueado la opción de abandonar.")
+                        if st.button("Solicitar salir", type="primary"):
                             request_leave_group(group_id, user_id)
                             st.rerun()
-
 
 # --- FUNCIÓN PRINCIPAL ENRUTADORA ---
 def render_groups(user_id, user_email):
@@ -385,6 +367,9 @@ def render_groups(user_id, user_email):
 
     render_header("people", "Grupos Compartidos")
     st.caption("Gestiona gastos compartidos con amigos, pareja o compañeros de piso.")
+    
+    # Comprobar notificaciones globales para el usuario
+    notif_groups = check_pending_confirmations(user_id)
     
     main_tab = option_menu(
         menu_title=None,
@@ -411,9 +396,7 @@ def render_groups(user_id, user_email):
                 if st.form_submit_button("Crear Grupo", use_container_width=True):
                     if g_name.strip():
                         ok, msg = create_group(g_name, g_emoji, g_color, user_id)
-                        if ok: 
-                            st.success("Grupo creado!")
-                            st.rerun()
+                        if ok: st.rerun()
                         else: st.error(msg)
                     else:
                         st.error("El nombre es obligatorio.")
@@ -430,13 +413,19 @@ def render_groups(user_id, user_email):
                 col = cols[index % 3]
                 with col:
                     with st.container(border=True):
-                        st.markdown(f"### {group.get('emoji', '👥')} {group['name']}")
+                        # Notificación en el título si hay pagos pendientes
+                        nombre_display = f"{group.get('emoji', '👥')} {group['name']}"
+                        if group['id'] in notif_groups:
+                            nombre_display += " 🔴"
+                            
+                        st.markdown(f"### {nombre_display}")
                         es_admin = group['created_by'] == user_id
-                        rol_badge = "👑 Admin" if es_admin else "👤 Miembro"
-                        st.caption(f"Rol: {rol_badge}")
+                        st.caption(f"Rol: {'👑 Admin' if es_admin else '👤 Miembro'}")
+                        
+                        btn_txt = ":material/notification_important: Tienes cobros pendientes" if group['id'] in notif_groups else ":material/arrow_forward: Abrir Grupo"
                         
                         st.button(
-                            ":material/arrow_forward: Abrir Grupo", 
+                            btn_txt, 
                             key=f"open_{group['id']}", 
                             use_container_width=True, 
                             type="primary",
@@ -464,8 +453,7 @@ def render_groups(user_id, user_email):
                 g_info = inv.get('groups', {})
                 with st.container(border=True):
                     st.markdown(f"**{g_info.get('emoji', '👥')} {g_info.get('name', 'Grupo')}**")
-                    st.write(f"Te han invitado a este grupo.")
-                    
+                    st.write("Te han invitado a este grupo.")
                     ca, cr = st.columns(2)
                     if ca.button(":material/check: Aceptar", key=f"acc_{inv['id']}", use_container_width=True):
                         if respond_invitation(inv['id'], inv['group_id'], user_id, True):
@@ -473,5 +461,4 @@ def render_groups(user_id, user_email):
                             st.rerun()
                     if cr.button(":material/close: Rechazar", key=f"rej_{inv['id']}", use_container_width=True):
                         if respond_invitation(inv['id'], inv['group_id'], user_id, False):
-                            st.info("Invitación rechazada.")
                             st.rerun()
