@@ -107,24 +107,27 @@ def editar_movimiento_dialog(mov_data, current_cats):
     from datetime import datetime
     from database_groups import get_user_groups, get_group_members, update_shared_expense, get_expense_participants
     
-    mov_id = mov_data.get('id')
-    user_id = mov_data.get('user_id')
+    # 1. Aseguramos que los IDs sean strings válidos para usarlos en las keys
+    mov_id = str(mov_data.get('id', 'desconocido'))
+    user_id = str(mov_data.get('user_id', 'desconocido'))
     current_group = mov_data.get('group_id')
+    
+    # PREFIJO BLINDADO PARA ESTA VENTANA Y ESTE GASTO
+    px = f"ed_mov_{mov_id}_"
     
     current_participants = get_expense_participants(mov_id) if current_group else []
     
-    # 🔑 Añadimos keys únicas a TODOS los inputs usando el mov_id
-    n_qty = st.number_input("Cantidad (€)", value=float(mov_data.get('quantity', 0.0)), min_value=0.0, step=0.01, key=f"qty_{mov_id}")
+    n_qty = st.number_input("Cantidad (€)", value=float(mov_data.get('quantity', 0.0)), min_value=0.0, step=0.01, key=f"{px}qty")
     
     t_index = 0 if mov_data.get('type') == 'Gasto' else 1
-    n_type = st.selectbox("Tipo", ["Gasto", "Ingreso"], index=t_index, key=f"type_{mov_id}")
+    n_type = st.selectbox("Tipo", ["Gasto", "Ingreso"], index=t_index, key=f"{px}type")
     
     try:
         f_date = datetime.strptime(str(mov_data.get('date', datetime.now()))[:10], "%Y-%m-%d").date()
     except:
         f_date = datetime.now().date()
         
-    n_date = st.date_input("Fecha", f_date, key=f"date_{mov_id}")
+    n_date = st.date_input("Fecha", f_date, key=f"{px}date")
     
     f_cs = [c for c in current_cats if c.get('type') == n_type]
     nombres_cats = [f"{c.get('emoji', '📁')} {c['name']}" for c in f_cs]
@@ -136,11 +139,11 @@ def editar_movimiento_dialog(mov_data, current_cats):
             break
             
     if nombres_cats and c_idx < len(nombres_cats):
-        sel_cat = st.selectbox("Categoría", nombres_cats, index=c_idx, key=f"cat_{mov_id}")
+        sel_cat = st.selectbox("Categoría", nombres_cats, index=c_idx, key=f"{px}cat")
     else:
-        sel_cat = st.selectbox("Categoría", nombres_cats, key=f"cat_{mov_id}") if nombres_cats else None
+        sel_cat = st.selectbox("Categoría", nombres_cats, key=f"{px}cat") if nombres_cats else None
         
-    n_notes = st.text_input("Concepto", value=str(mov_data.get('notes', '')), key=f"notes_{mov_id}")
+    n_notes = st.text_input("Concepto", value=str(mov_data.get('notes', '')), key=f"{px}notes")
 
     # --- EDICIÓN DE GASTO COMPARTIDO ---
     new_shared_group_id = None
@@ -162,7 +165,7 @@ def editar_movimiento_dialog(mov_data, current_cats):
                         def_index = i + 1
                         break
             
-            sel_grupo = st.selectbox("¿Vincular a un grupo?", nombres_grupos, index=def_index, key=f"grp_{mov_id}")
+            sel_grupo = st.selectbox("¿Vincular a un grupo?", nombres_grupos, index=def_index, key=f"{px}grp")
             
             if sel_grupo != "No compartir":
                 new_shared_group_id = opciones_grupos[sel_grupo]
@@ -180,13 +183,35 @@ def editar_movimiento_dialog(mov_data, current_cats):
                         is_checked = m['user_id'] in current_participants
                         
                     with cols_miembros[idx % 3]:
-                        # 🔑 Añadimos el mov_id a la key del checkbox también
-                        if st.checkbox(f"{m_nombre}", value=is_checked, key=f"edit_p_{m['user_id']}_{mov_id}"):
+                        if st.checkbox(f"{m_nombre}", value=is_checked, key=f"{px}chk_{m['user_id']}"):
                             new_participantes_ids.append(m['user_id'])
                 
                 if new_participantes_ids:
                     cuota = n_qty / len(new_participantes_ids)
                     st.info(f"Reparto: **{cuota:.2f}€** por persona")
+    
+    # --- GUARDAR Y ACTUALIZAR ---
+    if st.button("Guardar Cambios", type="primary", use_container_width=True, key=f"{px}btn_save"):
+        if sel_cat:
+            cat_obj = next(c for c in f_cs if f"{c.get('emoji', '📁')} {c['name']}" == sel_cat)
+            
+            new_mov_data = {
+                "user_id": user_id,
+                "quantity": n_qty,
+                "type": n_type,
+                "category_id": cat_obj['id'],
+                "date": str(n_date),
+                "notes": n_notes
+            }
+            
+            ok, msg = update_shared_expense(mov_id, new_mov_data, new_shared_group_id, new_participantes_ids)
+            
+            if ok:
+                st.toast("✅ Gasto actualizado correctamente")
+                time.sleep(1)
+                st.rerun()
+            else:
+                st.error(f"Error: {msg}")
     
     # --- GUARDAR Y ACTUALIZAR ---
     # 🔑 Y por supuesto, le damos una key única al botón principal
