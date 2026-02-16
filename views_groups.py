@@ -5,7 +5,7 @@ from streamlit_option_menu import option_menu
 from database_groups import (
     create_group, get_user_groups, delete_group, 
     get_my_invitations, send_invitation, respond_invitation,
-    get_group_members, get_group_info, remove_group_member, 
+    get_group_members, get_group_info, get_group_expenses, remove_group_member, 
     update_group_setting, update_group_details,
     request_leave_group, resolve_leave_request
 )
@@ -109,7 +109,32 @@ def render_single_group(group_id, group_name, user_id):
         st.write("Aquí pondremos la calculadora de deudas (Quién le debe a quién).")
 
     elif selected_tab == "Gastos":
-        st.write("Aquí pondremos la lista de tickets y un botón para añadir un gasto.")
+        render_subheader("receipt", "Historial de Gastos")
+        
+        gastos = get_group_expenses(group_id) # Necesitas importar esta función
+        
+        if not gastos:
+            st.info("Aún no hay gastos registrados en este grupo. ¡Añade uno desde tu Dashboard!")
+        else:
+            for g in gastos:
+                with st.container(border=True):
+                    col1, col2, col3 = st.columns([2, 1, 1])
+                    
+                    with col1:
+                        st.markdown(f"**{g['description']}**")
+                        # Sacamos el nombre del pagador desde el join de profiles
+                        pagador = g.get('profiles', {}).get('name', 'Alguien')
+                        st.caption(f"Pagado por: {pagador} | 📅 {g['date']}")
+                    
+                    with col2:
+                        st.markdown(f"### {g['total_amount']:.2f}€")
+                        st.caption("Total del ticket")
+                        
+                    with col3:
+                        # Buscamos cuánto te corresponde a TI en este gasto
+                        mi_parte = next((s['amount_owed'] for s in g.get('group_expense_splits', []) if s['user_id'] == user_id), 0)
+                        st.markdown(f"**Tu parte: {mi_parte:.2f}€**")
+                        st.caption("A repartir")
 
     elif selected_tab == "Miembros":
         col_tit, col_btn = st.columns([3, 1])
