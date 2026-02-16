@@ -107,28 +107,28 @@ def editar_movimiento_dialog(mov_data, current_cats):
     from datetime import datetime
     from database_groups import get_user_groups, get_group_members, update_shared_expense, get_expense_participants
     
-    # 1. Identificadores únicos
+    # 1. Identificadores únicos y limpios
     m_id = str(mov_data.get('id', 'unknown'))
     u_id = str(mov_data.get('user_id', 'unknown'))
     c_grp = mov_data.get('group_id')
     
-    # Prefijo único para evitar colisiones
-    prefix = f"dialog_ed_{m_id}_"
+    # Definimos px (el prefijo) para que Streamlit no se queje de IDs duplicados
+    px = f"edit_{m_id}_"
     
     c_parts = get_expense_participants(m_id) if c_grp else []
     
     # --- FORMULARIO ---
-    n_qty = st.number_input("Cantidad (€)", value=float(mov_data.get('quantity', 0.0)), min_value=0.0, step=0.01, key=f"{prefix}qty")
+    n_qty = st.number_input("Cantidad (€)", value=float(mov_data.get('quantity', 0.0)), min_value=0.0, step=0.01, key=f"{px}qty")
     
     t_idx = 0 if mov_data.get('type') == 'Gasto' else 1
-    n_type = st.selectbox("Tipo", ["Gasto", "Ingreso"], index=t_idx, key=f"{prefix}type")
+    n_type = st.selectbox("Tipo", ["Gasto", "Ingreso"], index=t_idx, key=f"{px}type")
     
     try:
         f_dt = datetime.strptime(str(mov_data.get('date', datetime.now()))[:10], "%Y-%m-%d").date()
     except:
         f_dt = datetime.now().date()
         
-    n_date = st.date_input("Fecha", f_dt, key=f"{prefix}date")
+    n_date = st.date_input("Fecha", f_dt, key=f"{px}date")
     
     f_cs = [c for c in current_cats if c.get('type') == n_type]
     n_cats = [f"{c.get('emoji', '📁')} {c['name']}" for c in f_cs]
@@ -139,8 +139,8 @@ def editar_movimiento_dialog(mov_data, current_cats):
             c_idx = i
             break
             
-    s_cat = st.selectbox("Categoría", n_cats, index=c_idx, key=f"{prefix}cat") if n_cats else None
-    n_notes = st.text_input("Concepto", value=str(mov_data.get('notes', '')), key=f"{prefix}notes")
+    s_cat = st.selectbox("Categoría", n_cats, index=c_idx, key=f"{px}cat") if n_cats else None
+    n_notes = st.text_input("Concepto", value=str(mov_data.get('notes', '')), key=f"{px}notes")
 
     # --- LÓGICA DE GRUPO ---
     new_g_id = None
@@ -148,7 +148,7 @@ def editar_movimiento_dialog(mov_data, current_cats):
     
     if n_type == "Gasto":
         st.divider()
-        st.write("### 👥 Gasto Compartido")
+        st.markdown("##### 👥 Gasto Compartido")
         mis_grupos = get_user_groups(u_id)
         
         if mis_grupos:
@@ -162,7 +162,7 @@ def editar_movimiento_dialog(mov_data, current_cats):
                         d_idx = i + 1
                         break
             
-            s_grp = st.selectbox("¿Vincular a un grupo?", names_g, index=d_idx, key=f"{prefix}selgrp")
+            s_grp = st.selectbox("¿Vincular a un grupo?", names_g, index=d_idx, key=f"{px}selgrp")
             
             if s_grp != "No compartir":
                 new_g_id = opts_g[s_grp]
@@ -180,11 +180,35 @@ def editar_movimiento_dialog(mov_data, current_cats):
                         checked = m['user_id'] in c_parts
                         
                     with cols[idx % 3]:
-                        if st.checkbox(m_n, value=checked, key=f"{prefix}ch_{m['user_id']}"):
+                        if st.checkbox(m_n, value=checked, key=f"{px}chk_{m['user_id']}"):
                             new_p_ids.append(m['user_id'])
                 
                 if new_p_ids:
-                    st.info(f"Cuota: **{(n_qty/len(new_p_ids)):.2f}€** / pers.")
+                    st.info(f"Cuota: **{(n_qty/len(new_p_ids)):.2f}€** por persona")
+    
+    # --- BOTÓN GUARDAR (Con la variable px corregida) ---
+    if st.button("Guardar Cambios", type="primary", use_container_width=True, key=f"{px}btn_save"):
+        if s_cat:
+            cat_obj = next(c for c in f_cs if f"{c.get('emoji', '📁')} {c['name']}" == s_cat)
+            
+            payload = {
+                "user_id": u_id,
+                "quantity": n_qty,
+                "type": n_type,
+                "category_id": cat_obj['id'],
+                "date": str(n_date),
+                "notes": n_notes
+            }
+            
+            # Llamada a la super-función de base de datos
+            ok, msg = update_shared_expense(m_id, payload, new_g_id, new_p_ids)
+            
+            if ok:
+                st.toast("✅ Movimiento actualizado")
+                time.sleep(1)
+                st.rerun()
+            else:
+                st.error(f"Error al actualizar: {msg}")
     
     # --- BOTÓN FINAL ---
     if st.button("Guardar Cambios", type="primary", use_container_width=True, key=f"{prefix}super_save"):
