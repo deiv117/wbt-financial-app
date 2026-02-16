@@ -367,6 +367,7 @@ def render_dashboard(df_all, current_cats, user_id):
         f_f = h2.date_input("Hasta", datetime.now(), key="hf")
         
         if not df_all.empty:
+            # Filtramos por fecha
             df_h = df_all[(df_all['date'].dt.date >= f_i) & (df_all['date'].dt.date <= f_f)].sort_values('date', ascending=False)
             
             if df_h.empty:
@@ -375,17 +376,19 @@ def render_dashboard(df_all, current_cats, user_id):
                 st.divider()
                 total_items = len(df_h)
                 col_pag1, col_pag2, col_pag3 = st.columns([1, 1, 2])
-                rows_per_page = col_pag1.selectbox("Registros:", [10, 25, 50, 100], index=2)
+                rows_per_page = col_pag1.selectbox("Registros:", [10, 25, 50, 100], index=0) # index=0 para 10 por defecto
                 total_pages = math.ceil(total_items / rows_per_page)
                 current_page = col_pag2.number_input(f"Pág (de {total_pages})", 1, total_pages, 1)
                 
                 start_idx = (current_page - 1) * rows_per_page
                 end_idx = min(start_idx + rows_per_page, total_items)
-                col_pag3.caption(f"<br>Viendo **{start_idx + 1}-{end_idx}** de **{total_items}**", unsafe_allow_html=True)
+                col_pag3.markdown(f"<br>Viendo **{start_idx + 1}-{end_idx}** de **{total_items}**", unsafe_allow_html=True)
                 
                 st.markdown("---")
-                df_page = df_h.iloc[start_idx:end_idx]
+                # DEFINIMOS df_sel para que el bucle funcione
+                df_sel = df_h.iloc[start_idx:end_idx]
                 
+                # RECORREMOS df_sel (la página actual)
                 for _, i in df_sel.iterrows():
                     with st.container(border=True):
                         col_info, col_btn = st.columns([4, 1])
@@ -395,19 +398,16 @@ def render_dashboard(df_all, current_cats, user_id):
                             
                             # --- LÓGICA DE ETIQUETA DE GRUPO ---
                             etiqueta_grupo = ""
-                            # Verificamos si la columna 'group_name' existe y tiene datos
                             if 'group_name' in i and pd.notna(i['group_name']) and i['group_name']:
+                                # Usamos el emoji del grupo y el nombre
                                 etiqueta_grupo = f" &nbsp; | &nbsp; **{i.get('group_emoji', '👥')} {i['group_name']}**"
                             
-                            # Línea principal con Categoría, Grupo (si hay) y Cantidad
                             st.markdown(f"**{i['cat_display']}**{etiqueta_grupo} &nbsp;|&nbsp; :{color_q}[**{signo}{i['quantity']:.2f}€**]")
                             
-                            # Línea secundaria con fecha y notas
                             fecha_str = i['date'].strftime('%d/%m/%Y') if hasattr(i['date'], 'strftime') else i['date']
                             st.caption(f"📅 {fecha_str} &nbsp;|&nbsp; 📝 _{i['notes'] or 'Sin concepto'}_")
-                
+
                         with col_btn:
-                            # Aquí van tus botones de editar y borrar (asegúrate de que usen iconos material)
                             c_ed, c_de = st.columns(2)
                             with c_ed:
                                 if st.button(":material/edit:", key=f"hi_ed_{i['id']}", use_container_width=True):
