@@ -101,7 +101,7 @@ def main():
         # --- BARRA LATERAL ---
         from database_groups import get_invitations_count
                 
-         # Obtenemos el email (usando la lógica segura que pusimos ayer)
+        # Obtenemos el email (usando la lógica segura que pusimos ayer)
         session_user = st.session_state.supabase_client.auth.get_user()
         try:
             user_email = session_user.user.email
@@ -113,7 +113,7 @@ def main():
                 
         # Personalizamos la etiqueta del menú
         label_grupos = f"Grupos {'🔴' if n_invites > 0 else ''}"
-      
+       
         with st.sidebar:
             avatar_url = user_profile.get('avatar_url')
             p_color = user_profile.get('profile_color', '#636EFA')
@@ -199,10 +199,18 @@ def main():
                         if ok: st.success("✅ " + msg)
                         else: st.error(msg)
 
+            # --- NUEVO FORMULARIO DE REGISTRO CON CAMPOS OBLIGATORIOS ---
             with tab_register:
                 with st.form("register_form"):
-                    reg_name, reg_email = st.text_input("Nombre"), st.text_input("Email")
-                    p1, p2 = st.text_input("Contraseña", type="password"), st.text_input("Confirmar", type="password")
+                    c_reg1, c_reg2 = st.columns(2)
+                    reg_name = c_reg1.text_input("Nombre*")
+                    reg_last = c_reg2.text_input("Apellido*")
+                    
+                    reg_email = st.text_input("Email*")
+                    
+                    c_pass1, c_pass2 = st.columns(2)
+                    p1 = c_pass1.text_input("Contraseña*", type="password")
+                    p2 = c_pass2.text_input("Confirmar Contraseña*", type="password")
                     
                     st.divider()
                     st.markdown("**🛡️ Verificación de Seguridad**")
@@ -212,15 +220,21 @@ def main():
                     captcha_user_answer = st.number_input(f"¿Cuánto es {n1} + {n2}? (Anti-bots)", min_value=0, max_value=100, step=1)
                     
                     if st.form_submit_button("Crear Cuenta", use_container_width=True):
-                        if p1 != p2: 
-                            st.error("Las contraseñas no coinciden")
+                        # LÓGICA DE CAMPOS OBLIGATORIOS
+                        if not reg_name.strip() or not reg_last.strip() or not reg_email.strip() or not p1.strip() or not p2.strip():
+                            st.error("⚠️ Todos los campos marcados con (*) son obligatorios.")
+                        elif p1 != p2: 
+                            st.error("⚠️ Las contraseñas no coinciden.")
+                        elif len(p1) < 6:
+                            st.error("⚠️ La contraseña debe tener al menos 6 caracteres.")
                         elif captcha_user_answer != correct_answer:
                             st.error("❌ Verificación de seguridad fallida. La suma es incorrecta.")
                             reset_captcha()
                             time.sleep(1)
                             st.rerun()
                         else:
-                            ok, msg = register_user(reg_email, p1, reg_name, "")
+                            # Pasamos el apellido (reg_last) a tu función de registro
+                            ok, msg = register_user(reg_email, p1, reg_name, reg_last)
                             if ok: 
                                 st.success("✅ **¡Cuenta creada!** Por favor, revisa tu correo electrónico y haz clic en el enlace para confirmar tu cuenta.")
                                 reset_captcha()
