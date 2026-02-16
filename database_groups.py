@@ -515,3 +515,35 @@ def check_pending_confirmations(user_id):
         return set(r['group_expenses']['group_id'] for r in res.data)
     except:
         return set()
+
+def get_total_user_debt(user_id):
+    """Calcula el balance neto del usuario en todos los grupos. Positivo = le deben, Negativo = debe."""
+    client = get_supabase_client()
+    total_owed_to_me = 0.0
+    total_i_owe = 0.0
+    try:
+        # 1. Buscar todo el dinero que me deben (Yo pagué, otros deben y no está saldado)
+        res_creditor = client.table("group_expense_splits") \
+            .select("amount_owed, user_id, group_expenses!inner(paid_by)") \
+            .eq("group_expenses.paid_by", user_id) \
+            .eq("is_settled", False).execute()
+
+        for r in res_creditor.data:
+            if r['user_id'] != user_id: # No sumar mi propia parte de mis tickets
+                total_owed_to_me += float(r['amount_owed'])
+
+        # 2. Buscar todo el dinero que yo debo (Otros pagaron, yo debo y no está saldado)
+        res_debtor = client.table("group_expense_splits") \
+            .select("amount_owed, group_expenses!inner(paid_by)") \
+            .eq("user_id", user_id) \
+            .eq("is_settled", False).execute()
+
+        for r in res_debtor.data:
+            if r['group_expenses']['paid_by'] != user_id:
+                total_i_owe += float(r['amount_owed'])
+
+        # Retornamos el Neto: Si es positivo, soy acreedor. Si es negativo, soy deudor.
+        return total_owed_to_me - total_i_owe
+    except Exception as e:
+        print(f"Error calculando deuda total: {e}")
+        return 0.0
