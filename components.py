@@ -3,7 +3,6 @@ import pandas as pd
 import time
 from datetime import datetime
 from database import update_input
-# ¡Añadimos las herramientas de grupo que necesitamos!
 from database_groups import get_user_groups, get_group_members, update_shared_expense, get_expense_participants
 from database import save_category, update_category, update_input
 
@@ -102,12 +101,6 @@ def editar_categoria_dialog(cat_data):
 
 @st.dialog("Editar Movimiento")
 def editar_movimiento_dialog(mov_data, current_cats):
-    import streamlit as st
-    import time
-    from datetime import datetime
-    # Importamos lo necesario de grupos
-    from database_groups import get_user_groups, get_group_members, update_shared_expense, get_expense_participants
-    
     # 1. Identificadores únicos
     m_id = str(mov_data.get('id', 'unknown'))
     u_id = str(mov_data.get('user_id', 'unknown'))
@@ -189,7 +182,7 @@ def editar_movimiento_dialog(mov_data, current_cats):
                 if new_p_ids:
                     st.info(f"Cuota: **{(n_qty/len(new_p_ids)):.2f}€** / pers.")
 
-    # --- BOTÓN DE GUARDADO ---
+    # --- BOTÓN DE GUARDADO (¡SOLO UNO Y ÚNICO!) ---
     if st.button("Guardar Cambios", type="primary", use_container_width=True, key=f"{px}btn_save"):
         if s_cat:
             cat_obj = next(c for c in f_cs if f"{c.get('emoji', '📁')} {c['name']}" == s_cat)
@@ -207,171 +200,6 @@ def editar_movimiento_dialog(mov_data, current_cats):
             
             if ok:
                 st.toast("✅ Gasto actualizado")
-                time.sleep(1)
-                st.rerun()
-            else:
-                st.error(f"Error: {msg}")
-    
-    # --- BOTÓN GUARDAR (Con la variable px corregida) ---
-    if st.button("Guardar Cambios", type="primary", use_container_width=True, key=f"{px}btn_save"):
-        if s_cat:
-            cat_obj = next(c for c in f_cs if f"{c.get('emoji', '📁')} {c['name']}" == s_cat)
-            
-            payload = {
-                "user_id": u_id,
-                "quantity": n_qty,
-                "type": n_type,
-                "category_id": cat_obj['id'],
-                "date": str(n_date),
-                "notes": n_notes
-            }
-            
-            # Llamada a la super-función de base de datos
-            ok, msg = update_shared_expense(m_id, payload, new_g_id, new_p_ids)
-            
-            if ok:
-                st.toast("✅ Movimiento actualizado")
-                time.sleep(1)
-                st.rerun()
-            else:
-                st.error(f"Error al actualizar: {msg}")
-    
-    # --- BOTÓN FINAL ---
-    if st.button("Guardar Cambios", type="primary", use_container_width=True, key=f"{prefix}super_save"):
-        if s_cat:
-            cat_obj = next(c for c in f_cs if f"{c.get('emoji', '📁')} {c['name']}" == s_cat)
-            
-            payload = {
-                "user_id": u_id,
-                "quantity": n_qty,
-                "type": n_type,
-                "category_id": cat_obj['id'],
-                "date": str(n_date),
-                "notes": n_notes
-            }
-            
-            ok, msg = update_shared_expense(m_id, payload, new_g_id, new_p_ids)
-            
-            if ok:
-                st.toast("✅ Actualizado")
-                time.sleep(1)
-                st.rerun()
-            else:
-                st.error(msg)
-    
-    # --- GUARDAR Y ACTUALIZAR ---
-    if st.button("Guardar Cambios", type="primary", use_container_width=True, key=f"{px}btn_save"):
-        if sel_cat:
-            cat_obj = next(c for c in f_cs if f"{c.get('emoji', '📁')} {c['name']}" == sel_cat)
-            
-            new_mov_data = {
-                "user_id": user_id,
-                "quantity": n_qty,
-                "type": n_type,
-                "category_id": cat_obj['id'],
-                "date": str(n_date),
-                "notes": n_notes
-            }
-            
-            ok, msg = update_shared_expense(mov_id, new_mov_data, new_shared_group_id, new_participantes_ids)
-            
-            if ok:
-                st.toast("✅ Gasto actualizado correctamente")
-                time.sleep(1)
-                st.rerun()
-            else:
-                st.error(f"Error: {msg}")
-    
-    # --- GUARDAR Y ACTUALIZAR ---
-    # 🔑 Y por supuesto, le damos una key única al botón principal
-    if st.button("Guardar Cambios", type="primary", use_container_width=True, key=f"btn_save_{mov_id}"):
-        if sel_cat:
-            cat_obj = next(c for c in f_cs if f"{c.get('emoji', '📁')} {c['name']}" == sel_cat)
-            
-            new_mov_data = {
-                "user_id": user_id,
-                "quantity": n_qty,
-                "type": n_type,
-                "category_id": cat_obj['id'],
-                "date": str(n_date),
-                "notes": n_notes
-            }
-            
-            ok, msg = update_shared_expense(mov_id, new_mov_data, new_shared_group_id, new_participantes_ids)
-            
-            if ok:
-                st.toast("✅ Gasto actualizado correctamente")
-                time.sleep(1)
-                st.rerun()
-            else:
-                st.error(f"Error: {msg}")
-    
-    # --- GUARDAR Y ACTUALIZAR ---
-    # 🔑 Y por supuesto, le damos una key única al botón principal
-    if st.button("Guardar Cambios", type="primary", use_container_width=True, key=f"btn_save_{mov_id}"):
-        if sel_cat:
-            cat_obj = next(c for c in f_cs if f"{c.get('emoji', '📁')} {c['name']}" == sel_cat)
-            
-            new_mov_data = {
-                "user_id": user_id,
-                "quantity": n_qty,
-                "type": n_type,
-                "category_id": cat_obj['id'],
-                "date": str(n_date),
-                "notes": n_notes
-            }
-            
-            ok, msg = update_shared_expense(mov_id, new_mov_data, new_shared_group_id, new_participantes_ids)
-            
-            if ok:
-                st.toast("✅ Gasto actualizado correctamente")
-                time.sleep(1)
-                st.rerun()
-            else:
-                st.error(f"Error: {msg}")
-    
-    # --- GUARDAR Y ACTUALIZAR ---
-    if st.button("Guardar Cambios", type="primary", use_container_width=True):
-        if sel_cat:
-            cat_obj = next(c for c in f_cs if f"{c.get('emoji', '📁')} {c['name']}" == sel_cat)
-            
-            new_mov_data = {
-                "user_id": user_id,
-                "quantity": n_qty,
-                "type": n_type,
-                "category_id": cat_obj['id'],
-                "date": str(n_date),
-                "notes": n_notes
-            }
-            
-            ok, msg = update_shared_expense(mov_id, new_mov_data, new_shared_group_id, new_participantes_ids)
-            
-            if ok:
-                st.toast("✅ Gasto actualizado correctamente")
-                time.sleep(1)
-                st.rerun()
-            else:
-                st.error(f"Error: {msg}")
-            
-    # --- GUARDAR Y ACTUALIZAR ---
-    if st.button("Guardar Cambios", type="primary", use_container_width=True):
-        if sel_cat:
-            cat_obj = next(c for c in f_cs if f"{c.get('emoji', '📁')} {c['name']}" == sel_cat)
-            
-            new_mov_data = {
-                "user_id": mov_data['user_id'],
-                "quantity": n_qty,
-                "type": n_type,
-                "category_id": cat_obj['id'],
-                "date": str(n_date),
-                "notes": n_notes
-            }
-            
-            # Usamos nuestra super-función que hace todo a la vez
-            ok, msg = update_shared_expense(mov_data['id'], new_mov_data, new_shared_group_id, new_participantes_ids)
-            
-            if ok:
-                st.toast("✅ Gasto actualizado correctamente")
                 time.sleep(1)
                 st.rerun()
             else:
