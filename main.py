@@ -23,23 +23,40 @@ st.set_page_config(
 init_db()
 st.markdown(get_custom_css(), unsafe_allow_html=True)
 
-# CSS Extra para ocultar el padding superior excesivo y menús por defecto
+# CSS Final para limpiar la interfaz sin romper el menú lateral
 st.markdown("""
     <style>
-        /* 1. Ajuste padding general para que no haya tanto espacio en blanco arriba */
+        /* 1. Ajuste de padding para ganar espacio arriba */
         .block-container {
             padding-top: 2rem !important; 
         } 
-        
-        /* 2. Ocultar SOLO los botones de la derecha (Deploy, GitHub, 3 puntos) */
-        header [data-testid="stHeaderActionElements"],
-        #MainMenu {
+
+        /* 2. OCULTAR BOTONES DERECHA (Share, Star, Edit, etc.) */
+        /* Buscamos el contenedor de acciones del header y lo ocultamos */
+        [data-testid="stHeaderActionElements"] {
             display: none !important;
         }
         
-        /* 3. Ocultar FOOTER (Made with Streamlit) */
+        /* Ocultar el menú de 3 puntos (opcional, si quieres quitarlo también) */
+        #MainMenu {
+            display: none !important;
+        }
+
+        /* 3. OCULTAR FOOTER */
         footer {
             display: none !important;
+        }
+
+        /* 🛟 4. EL SALVACIONES: Forzar que el botón de sidebar siempre sea clicable */
+        /* Esto asegura que el área donde aparece el '>' no sea tapada por nada */
+        [data-testid="stHeader"] {
+            background-color: rgba(0,0,0,0) !important;
+            pointer-events: none !important;
+        }
+        
+        /* Pero los botones del sidebar sí deben recibir clics */
+        [data-testid="stHeader"] > * {
+            pointer-events: auto !important;
         }
     </style>
 """, unsafe_allow_html=True)
