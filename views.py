@@ -1,3 +1,4 @@
+# views.py
 import streamlit as st
 import pandas as pd
 import math
@@ -21,8 +22,8 @@ from components import editar_movimiento_dialog, editar_categoria_dialog, crear_
 BOOTSTRAP_ICONS_LINK = '<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.5/font/bootstrap-icons.css">'
 
 def get_dynamic_css():
-    # Sacamos el color de la sesión (por defecto azul si no hay)
-    p_color = st.session_state.user.get('profile_color', '#636EFA') if 'user' in st.session_state and st.session_state.user else '#636EFA'
+    # Sacamos el color de forma segura, incluso si es None en la base de datos
+    p_color = (st.session_state.user.get('profile_color') or '#636EFA') if 'user' in st.session_state and st.session_state.user else '#636EFA'
     return f"""
     <style>
     @import url("https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.5/font/bootstrap-icons.css");
@@ -73,13 +74,14 @@ def confirmar_borrar_categoria(id_cat):
 
 # --- 1. RESUMEN GLOBAL ---
 def render_main_dashboard(df_all, user_profile):
-  
+    p_color = (user_profile.get('profile_color') or '#636EFA') if user_profile else '#636EFA'
+    
     render_header("house", "Resumen Global")
     st.caption(f"Hola de nuevo, {user_profile.get('name', 'Usuario')}. Aquí tienes el pulso de tu economía.")
 
     # --- CÁLCULO DE KPIs ---
     saldo_inicial = user_profile.get('initial_balance', 0) or 0
-    user_id = user_profile.get('id') # Extraemos el ID para buscar las deudas
+    user_id = user_profile.get('id') 
     
     if not df_all.empty:
         total_ingresos = df_all[df_all['type'] == 'Ingreso']['quantity'].sum()
@@ -102,21 +104,20 @@ def render_main_dashboard(df_all, user_profile):
     if deuda_neta > 0:
         deuda_str = f"+{deuda_neta:,.2f}€"
         deuda_delta = "Te deben"
-        delta_color = "normal" # Se pondrá verde
+        delta_color = "normal" 
     elif deuda_neta < 0:
-        deuda_str = f"{deuda_neta:,.2f}€" # Ya lleva el signo menos implícito
+        deuda_str = f"{deuda_neta:,.2f}€" 
         deuda_delta = "Debes"
-        delta_color = "inverse" # Se pondrá rojo
+        delta_color = "inverse" 
     else:
         deuda_str = "0.00€"
         deuda_delta = "Al día"
-        delta_color = "off" # Gris neutral
+        delta_color = "off" 
 
-    # --- TARJETAS CON ALTURA AUTOMÁTICA (Igualadas por contenido) ---
+    # --- TARJETAS CON ALTURA AUTOMÁTICA ---
     k1, k2, k3 = st.columns(3)
     with k1:
         with st.container(border=True):
-            # Usamos un guion "-" en el delta para que la tarjeta crezca igual que las demás
             st.metric(label="💰 Patrimonio Neto", value=f"{saldo_total:,.2f}€", delta="-", delta_color="off", help="Saldo Inicial + Ingresos - Gastos")
     with k2:
         with st.container(border=True):
@@ -140,7 +141,8 @@ def render_main_dashboard(df_all, user_profile):
             df_daily = pd.concat([row_inicio, df_daily]).sort_values('date')
 
             fig = go.Figure()
-            fig.add_trace(go.Scatter(x=df_daily['date'], y=df_daily['saldo_acumulado'], fill='tozeroy', mode='lines', line=dict(color='#636EFA', width=3), name='Saldo'))
+            # APLICAMOS EL COLOR DEL USUARIO DE FORMA SEGURA
+            fig.add_trace(go.Scatter(x=df_daily['date'], y=df_daily['saldo_acumulado'], fill='tozeroy', mode='lines', line=dict(color=p_color, width=3), name='Saldo'))
             fig.update_layout(margin=dict(l=0, r=0, t=10, b=0), yaxis_title="Euros (€)", hovermode="x unified", height=350)
             st.plotly_chart(fig, use_container_width=True)
         else:
@@ -150,6 +152,8 @@ def render_main_dashboard(df_all, user_profile):
 
 # --- 2. GESTIÓN DE MOVIMIENTOS ---
 def render_dashboard(df_all, current_cats, user_id):
+    p_color = (st.session_state.user.get('profile_color') or '#636EFA') if 'user' in st.session_state and st.session_state.user else '#636EFA'
+    
     st.markdown("""
         <style>
         [data-testid="column"] { flex: 1 1 auto !important; }
@@ -174,16 +178,15 @@ def render_dashboard(df_all, current_cats, user_id):
         default_index=0,
         styles={
             "container": {"padding": "0!important", "background-color": "transparent"},
-            "icon": {"color": "orange", "font-size": "16px"}, 
+            "icon": {"color": "orange", "font-size": "18px"}, 
             "nav-link": {"font-size": "14px", "text-align": "center", "margin": "0px", "--hover-color": "#eee"},
-            "nav-link-selected": {st.session_state.user.get('profile_color', '#636EFA')},
+            # AQUÍ ESTABA EL BUG: Ahora es un diccionario en lugar de un Set {}
+            "nav-link-selected": {"background-color": p_color}, 
         }
     )
 
     cat_g = [c for c in current_cats if c.get('type') == 'Gasto']
     ml = ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"]
-
-    # Obtenemos los movimientos bloqueados (candado)
     locked_movs = get_locked_movements()
 
     # --- A. NUEVA ENTRADA ---
@@ -201,7 +204,6 @@ def render_dashboard(df_all, current_cats, user_id):
             
             f_cs = [c for c in current_cats if c.get('type') == t_type]
             sel = st.selectbox("Categoría", ["Selecciona..."] + [f"{c.get('emoji', '📁')} {c['name']}" for c in f_cs], key=f"cat_{st.session_state.reset_key}")
-            
             concepto = st.text_input("Concepto", key=f"conc_{st.session_state.reset_key}")
 
             shared_group_id = None
@@ -563,7 +565,8 @@ def render_dashboard(df_all, current_cats, user_id):
             fig = go.Figure()
             fig.add_trace(go.Bar(x=ml, y=rm['Ingreso'], name='Ingreso', marker_color='#00CC96'))
             fig.add_trace(go.Bar(x=ml, y=rm['Gasto'], name='Gasto', marker_color='#EF553B'))
-            fig.add_trace(go.Scatter(x=ml, y=rm['Ahorro'], name='Ahorro', mode='lines+markers', line=dict(color=st.session_state.user.get('profile_color', '#636EFA'), width=3)))
+            # APLICAMOS EL COLOR DEL USUARIO DE FORMA SEGURA
+            fig.add_trace(go.Scatter(x=ml, y=rm['Ahorro'], name='Ahorro', mode='lines+markers', line=dict(color=p_color, width=3)))
             fig.update_layout(barmode='group', margin=dict(l=20, r=20, t=20, b=20), legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1))
             st.plotly_chart(fig, use_container_width=True)
 
@@ -631,7 +634,8 @@ def render_profile(user_id, p_data):
             raw_name = p_data.get('name')
             name_safe = raw_name if raw_name and raw_name.strip() else 'Usuario'
             initial = name_safe[0].upper()
-            p_color = p_data.get('profile_color', '#636EFA')
+            # OBTENCIÓN SEGURA DEL COLOR
+            p_color = p_data.get('profile_color') or '#636EFA'
 
             if avatar_url: st.image(avatar_url, width=150)
             else:
