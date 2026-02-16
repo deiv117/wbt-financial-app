@@ -255,6 +255,7 @@ def add_shared_expense(group_id, movement_data, member_ids):
 
 def get_group_expenses(group_id):
     """Obtiene el historial de gastos del grupo uniendo perfiles y repartos"""
+    import streamlit as st
     client = get_supabase_client()
     try:
         res = client.table("group_expenses") \
@@ -264,5 +265,6 @@ def get_group_expenses(group_id):
             .execute()
         return res.data or []
     except Exception as e:
-        print(f"Error obteniendo gastos del grupo: {e}")
+        # ¡AHORA SÍ VEREMOS EL ERROR SI FALLA!
+        st.error(f"🛑 Error DB (Cargando Historial de Gastos): {e}")
         return []
