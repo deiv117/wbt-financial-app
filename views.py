@@ -73,8 +73,7 @@ def confirmar_borrar_categoria(id_cat):
 
 # --- 1. RESUMEN GLOBAL ---
 def render_main_dashboard(df_all, user_profile):
-    st.markdown(CUSTOM_CSS, unsafe_allow_html=True)
-
+  
     render_header("house", "Resumen Global")
     st.caption(f"Hola de nuevo, {user_profile.get('name', 'Usuario')}. Aquí tienes el pulso de tu economía.")
 
@@ -151,7 +150,6 @@ def render_main_dashboard(df_all, user_profile):
 
 # --- 2. GESTIÓN DE MOVIMIENTOS ---
 def render_dashboard(df_all, current_cats, user_id):
-    st.markdown(CUSTOM_CSS, unsafe_allow_html=True)
     st.markdown("""
         <style>
         [data-testid="column"] { flex: 1 1 auto !important; }
@@ -593,7 +591,6 @@ def render_dashboard(df_all, current_cats, user_id):
 
 # --- 3. CATEGORÍAS ---
 def render_categories(current_cats):
-    st.markdown(CUSTOM_CSS, unsafe_allow_html=True)
     render_header("list-task", "Gestión de Categorías")
     
     if st.button("➕ Nueva Categoría"): 
@@ -623,7 +620,6 @@ def render_categories(current_cats):
 
 # --- 4. PERFIL ---
 def render_profile(user_id, p_data):
-    st.markdown(CUSTOM_CSS, unsafe_allow_html=True)
     render_header("person-gear", "Mi Perfil")
     
     with st.container(border=True):
@@ -716,7 +712,6 @@ def render_profile(user_id, p_data):
 
 # --- 5. IMPORTAR ---
 def render_import(current_cats, user_id):
-    st.markdown(CUSTOM_CSS, unsafe_allow_html=True)
     render_header("cloud-upload", "Importar Movimientos")
     
     with st.expander("📖 Guía de Columnas Sugeridas", expanded=True):
