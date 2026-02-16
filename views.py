@@ -226,14 +226,24 @@ def render_dashboard(df_all, current_cats, user_id):
                         
                         st.write("Selecciona quién participa en este gasto:")
                         cols_miembros = st.columns(3)
+                        
                         for idx, m in enumerate(miembros):
-                            prof = m.get('profiles') or {}
-                            if isinstance(prof, list): prof = prof[0] if prof else {}
-                            m_nombre = prof.get('name', 'Usuario')
+                            is_ext = m.get('is_external', False)
+                            m_id = f"ext_{m['id']}" if is_ext else m.get('user_id')
+                            if not m_id: continue
+                            
+                            # Obtener nombre seguro con fantasmita
+                            if is_ext:
+                                m_nombre = f"👻 {m.get('external_name', 'Invitado')}"
+                            else:
+                                prof = m.get('profiles') or {}
+                                if isinstance(prof, list): prof = prof[0] if prof else {}
+                                m_nombre = prof.get('name', 'Usuario')
                             
                             with cols_miembros[idx % 3]:
-                                if st.checkbox(f"{m_nombre}", value=True, key=f"p_{m['user_id']}"):
-                                    participantes_ids.append(m['user_id'])
+                                # Usar el m_id correcto en el value y en la key
+                                if st.checkbox(m_nombre, value=True, key=f"p_gl_{m_id}"):
+                                    participantes_ids.append(m_id)
                         
                         if participantes_ids:
                             cuota = qty / len(participantes_ids)
