@@ -304,7 +304,7 @@ def render_single_group(group_id, group_name, user_id):
         
         # --- AQUÍ ESTÁ LA LÓGICA ACTUALIZADA PARA AÑADIR GASTOS ---
         with st.expander("➕ Añadir Gasto", expanded=False):
-             with st.form("add_expense_form"):
+             with st.form("add_expense_form", clear_on_submit=True):
                  desc = st.text_input("Descripción", placeholder="Ej: Cena en el italiano")
                  amount = st.number_input("Cantidad (€)", min_value=0.01, step=0.01)
                  
