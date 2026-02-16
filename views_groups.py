@@ -319,7 +319,7 @@ def render_single_group(group_id, group_name, user_id):
                 rol_badge = "👑 Admin" if is_member_admin else "👤 Miembro"
                 
                 with col:
-                    with st.container(border=True, height=180):
+                    with st.container(border=True):
                         c1, c2 = st.columns([1.2, 2], vertical_alignment="center")
                         with c1:
                             if avatar: st.image(avatar, width=90)
