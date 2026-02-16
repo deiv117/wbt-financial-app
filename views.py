@@ -84,10 +84,13 @@ def confirmar_borrar_categoria(id_cat):
 # --- 1. RESUMEN GLOBAL ---
 def render_main_dashboard(df_all, user_profile):
     st.markdown(CUSTOM_CSS, unsafe_allow_html=True)
+
     render_header("house", "Resumen Global")
     st.caption(f"Hola de nuevo, {user_profile.get('name', 'Usuario')}. Aquí tienes el pulso de tu economía.")
 
+    # --- CÁLCULO DE KPIs ---
     saldo_inicial = user_profile.get('initial_balance', 0) or 0
+    user_id = user_profile.get('id') # Extraemos el ID para buscar las deudas
     
     if not df_all.empty:
         total_ingresos = df_all[df_all['type'] == 'Ingreso']['quantity'].sum()
@@ -103,16 +106,34 @@ def render_main_dashboard(df_all, user_profile):
         saldo_total = saldo_inicial
         ahorro_mes = 0
 
+    # --- LÓGICA DE LA DEUDA GLOBAL ---
+    from database_groups import get_total_user_debt
+    deuda_neta = get_total_user_debt(user_id)
+    
+    if deuda_neta > 0:
+        deuda_str = f"+{deuda_neta:,.2f}€"
+        deuda_delta = "Te deben"
+        delta_color = "normal" # Se pondrá verde
+    elif deuda_neta < 0:
+        deuda_str = f"{deuda_neta:,.2f}€" # Ya lleva el signo menos implícito
+        deuda_delta = "Debes"
+        delta_color = "inverse" # Se pondrá rojo
+    else:
+        deuda_str = "0.00€"
+        deuda_delta = "Al día"
+        delta_color = "off" # Gris neutral
+
+    # --- TARJETAS CON ALTURA FIJA (height=130) ---
     k1, k2, k3 = st.columns(3)
     with k1:
-        with st.container(border=True):
+        with st.container(border=True, height=130):
             st.metric(label="💰 Patrimonio Neto", value=f"{saldo_total:,.2f}€", delta=" ", delta_color="off", help="Saldo Inicial + Ingresos - Gastos")
     with k2:
-        with st.container(border=True):
+        with st.container(border=True, height=130):
             st.metric(label=f"📅 Ahorro {datetime.now().strftime('%B')}", value=f"{ahorro_mes:,.2f}€", delta=f"{ahorro_mes:,.2f}€")
     with k3:
-        with st.container(border=True):
-            st.metric(label="👥 Grupos (Deuda)", value="0.00€", delta="Próximamente", delta_color="off")
+        with st.container(border=True, height=130):
+            st.metric(label="👥 Grupos (Balance)", value=deuda_str, delta=deuda_delta, delta_color=delta_color)
 
     st.divider()
 
