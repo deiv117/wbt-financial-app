@@ -359,11 +359,11 @@ def render_single_group(group_id, group_name, user_id):
         with col_tit:
             render_subheader("people", "Miembros")
         with col_btn1:
-            if st.button(":material/person_add: Invitar", use_container_width=True):
+            if st.button(":material/person_add: Invitar usuario", use_container_width=True):
                 invitar_usuario_dialog(group_id, nombre)
         with col_btn2:
             if es_admin:
-                if st.button(":material/person_add_alt_1: Invitado", help="Añadir alguien sin cuenta", use_container_width=True):
+                if st.button(":material/person_add: + Usuario externo", help="Añadir alguien sin cuenta", use_container_width=True):
                     add_guest_dialog(group_id)
         
         if miembros:
