@@ -267,3 +267,20 @@ def get_group_expenses(group_id):
     except Exception as e:
         st.error(f"🛑 Error DB (Cargando Historial de Gastos): {e}")
         return []
+
+def delete_group_expense(expense_id, movement_id):
+    """Elimina un gasto del grupo y su movimiento personal asociado"""
+    client = get_supabase_client()
+    import streamlit as st
+    try:
+        # 1. Borramos el gasto personal de la tabla user_imputs (si existe)
+        if movement_id:
+            client.table('user_imputs').delete().eq('id', movement_id).execute()
+            
+        # 2. Borramos el registro del ticket del grupo
+        client.table('group_expenses').delete().eq('id', expense_id).execute()
+        
+        return True
+    except Exception as e:
+        st.error(f"🛑 Error DB (Borrando Gasto): {e}")
+        return False
