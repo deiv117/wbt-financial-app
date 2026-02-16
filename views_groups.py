@@ -129,7 +129,16 @@ def render_single_group(group_id, group_name, user_id):
         balances = get_pending_balances(group_id)
         gastos_totales = get_group_expenses(group_id)
         
-        nombres = {m['user_id']: (m.get('profiles') or [{}])[0].get('name', 'Usuario') for m in miembros if isinstance(m.get('profiles'), list)}
+        # --- EXTRACCIÓN DE NOMBRES A PRUEBA DE BALAS ---
+        nombres = {}
+        for m in miembros:
+            prof = m.get('profiles')
+            # Manejamos tanto si Supabase devuelve una lista como un diccionario
+            if isinstance(prof, list) and len(prof) > 0:
+                prof = prof[0]
+            elif not prof:
+                prof = {}
+            nombres[m['user_id']] = prof.get('name', 'Usuario')
         
         if not gastos_totales:
             st.info("Añade gastos para ver las estadísticas del grupo.")
@@ -139,7 +148,8 @@ def render_single_group(group_id, group_name, user_id):
             gastado_por_persona = {}
             for g in gastos_totales:
                 pid = g['paid_by']
-                gastado_por_persona[nombres.get(pid, 'Desconocido')] = gastado_por_persona.get(nombres.get(pid, 'Desconocido'), 0) + g['total_amount']
+                nom = nombres.get(pid, 'Desconocido')
+                gastado_por_persona[nom] = gastado_por_persona.get(nom, 0) + g['total_amount']
 
             c_met, c_graf = st.columns([1, 2], vertical_alignment="center")
             c_met.metric("Gasto Total del Grupo", f"{total_gastado:,.2f}€")
@@ -158,20 +168,32 @@ def render_single_group(group_id, group_name, user_id):
                 st.success("✨ ¡Todo el mundo está al día! No hay deudas pendientes en este grupo.")
             else:
                 for p in pagos:
-                    de_nombre = nombres.get(p['from'], "Alguien")
-                    a_nombre = nombres.get(p['to'], "Alguien")
+                    de_id = p['from']
+                    a_id = p['to']
+                    de_nombre = nombres.get(de_id, "Alguien")
+                    a_nombre = nombres.get(a_id, "Alguien")
+                    
+                    # --- LÓGICA DE TEXTOS INTELIGENTES ---
+                    if de_id == user_id:
+                        texto_deuda = f"👉 **Tú** debes pagar **{p['amount']:.2f}€** a **{a_nombre}**"
+                    elif a_id == user_id:
+                        texto_deuda = f"👉 **{de_nombre}** te debe **{p['amount']:.2f}€**"
+                    else:
+                        texto_deuda = f"👉 **{de_nombre}** debe pagar **{p['amount']:.2f}€** a **{a_nombre}**"
                     
                     with st.container(border=True):
                         c1, c2 = st.columns([3, 1], vertical_alignment="center")
-                        c1.markdown(f"👉 **{de_nombre}** debe pagar **{p['amount']:.2f}€** a **{a_nombre}**")
+                        c1.markdown(texto_deuda)
                         
                         # Solo el acreedor (el que recibe el dinero) puede darle al botón de cobrar
                         with c2:
-                            if user_id == p['to']:
-                                if st.button("Cobrar ✅", key=f"cobrar_{p['from']}_{p['to']}", type="primary", use_container_width=True):
-                                    saldar_deuda_dialog(group_id, p['to'], p['from'], de_nombre, p['amount'])
-                            elif user_id == p['from']:
-                                st.caption("Esperando confirmación...")
+                            if user_id == a_id:
+                                if st.button("Cobrar ✅", key=f"cobrar_{de_id}_{a_id}", type="primary", use_container_width=True):
+                                    saldar_deuda_dialog(group_id, a_id, de_id, de_nombre, p['amount'])
+                            elif user_id == de_id:
+                                st.caption("Debes pagar")
+                            else:
+                                st.caption("Pendiente")
 
     elif selected_tab == "Gastos":
         render_subheader("receipt", "Historial de Gastos")
