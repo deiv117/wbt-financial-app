@@ -23,41 +23,23 @@ st.set_page_config(
 init_db()
 st.markdown(get_custom_css(), unsafe_allow_html=True)
 
-# CSS Extra para ocultar el padding superior excesivo de Streamlit y ocultar menús por defecto
+# CSS Extra para ocultar el padding superior excesivo y menús por defecto
 st.markdown("""
     <style>
-        /* 1. Ajuste padding general */
+        /* 1. Ajuste padding general para que no haya tanto espacio en blanco arriba */
         .block-container {
             padding-top: 2rem !important; 
         } 
         
-        /* 2. Ocultar la parte DERECHA del header (Deploy, Github, 3 puntos) */
-        [data-testid="stToolbar"], 
-        [data-testid="stHeaderActionElements"], 
-        .stDeployButton, 
+        /* 2. Ocultar SOLO los botones de la derecha (Deploy, GitHub, 3 puntos) */
+        header [data-testid="stHeaderActionElements"],
         #MainMenu {
             display: none !important;
-            visibility: hidden !important;
         }
         
-        /* 3. Ocultar FOOTER */
+        /* 3. Ocultar FOOTER (Made with Streamlit) */
         footer {
             display: none !important;
-        }
-
-        /* 🛟 4. ESCUDO PROTECTOR SUPREMO: Botón del menú lateral SIEMPRE visible */
-        [data-testid="collapsedControl"],
-        [data-testid="stSidebarCollapsedControl"] {
-            display: flex !important;
-            visibility: visible !important;
-            opacity: 1 !important;
-            z-index: 999999 !important;
-        }
-        
-        /* Asegurar que el header en sí no bloquee el botón */
-        [data-testid="stHeader"] {
-            background-color: transparent !important;
-            z-index: 999998 !important;
         }
     </style>
 """, unsafe_allow_html=True)
