@@ -75,7 +75,6 @@ def invitar_usuario_dialog(group_id, group_name):
         else:
             st.warning("Introduce un email válido.")
 
-# --- NUEVO DIÁLOGO PARA USUARIOS EXTERNOS ---
 @st.dialog("Añadir Miembro Invitado")
 def add_guest_dialog(group_id):
     st.write("Añade a un amigo que no use la app. Podrás incluirlo en los gastos y gestionar sus pagos manualmente.")
@@ -93,7 +92,6 @@ def add_guest_dialog(group_id):
 
 # --- VISTA INTERIOR DEL GRUPO ---
 
-# DIÁLOGO 1: PARA EL QUE RECIBE EL DINERO (ACREEDOR)
 @st.dialog("✅ Confirmar Recepción de Pago")
 def saldar_deuda_dialog(group_id, creditor_id, debtor_id, debtor_name, amount):
     st.warning(f"¿Confirmas que has recibido **{amount:.2f}€** de **{debtor_name}**?")
@@ -109,7 +107,6 @@ def saldar_deuda_dialog(group_id, creditor_id, debtor_id, debtor_name, amount):
         else:
             st.error(msg)
 
-# DIÁLOGO 2: PARA EL QUE PAGA EL DINERO (DEUDOR)
 @st.dialog("💸 Registrar Pago de Deuda")
 def avisar_pago_dialog(group_id, debtor_id, creditor_id, creditor_name, amount):
     st.write(f"Vas a avisar a **{creditor_name}** de que le has pagado **{amount:.2f}€**.")
@@ -193,21 +190,28 @@ def render_single_group(group_id, group_name, user_id):
         }
     )
 
-    # --- LÓGICA DE NOMBRES ACTUALIZADA PARA EXTERNOS ---
+    # --- LÓGICA DE NOMBRES SEGURA (Arregla el bug de "Alguien") ---
     nombres = {}
-    es_externo_dict = {} # Diccionario para saber rápido si un ID es externo
-    
+    es_externo_dict = {}
     for m in miembros:
-        m_id = f"ext_{m['id']}" if m.get('is_external') else m['user_id']
-        es_externo_dict[m_id] = m.get('is_external', False)
+        is_ext = m.get('is_external', False)
+        m_id = f"ext_{m['id']}" if is_ext else m.get('user_id')
         
-        if m.get('is_external'):
+        if not m_id: continue # Protección extra
+        
+        es_externo_dict[m_id] = is_ext
+        
+        if is_ext:
             nombres[m_id] = m.get('external_name', 'Invitado')
         else:
             prof = m.get('profiles')
-            if isinstance(prof, list) and len(prof) > 0: prof = prof[0]
-            elif not prof: prof = {}
-            nombres[m_id] = prof.get('name', 'Usuario')
+            if isinstance(prof, list):
+                prof = prof[0] if len(prof) > 0 else {}
+            elif not isinstance(prof, dict):
+                prof = {}
+                
+            n_val = prof.get('name', '').strip() if prof.get('name') else ''
+            nombres[m_id] = n_val if n_val else 'Usuario'
 
     if selected_tab == label_resumen:
         render_subheader("analytics", "Resumen y Liquidación")
@@ -223,7 +227,8 @@ def render_single_group(group_id, group_name, user_id):
             total_gastado = sum(g['total_amount'] for g in gastos_totales)
             gastado_por_persona = {}
             for g in gastos_totales:
-                nom = nombres.get(g['paid_by'], 'Desconocido')
+                pid = g['paid_by']
+                nom = nombres.get(pid, 'Miembro Antiguo')
                 gastado_por_persona[nom] = gastado_por_persona.get(nom, 0) + g['total_amount']
 
             c_met, c_graf = st.columns([1, 2], vertical_alignment="center")
@@ -244,13 +249,14 @@ def render_single_group(group_id, group_name, user_id):
                 for p in pagos:
                     de_id = p['from']
                     a_id = p['to']
-                    de_nombre = nombres.get(de_id, "Alguien")
-                    a_nombre = nombres.get(a_id, "Alguien")
+                    de_nombre = nombres.get(de_id, "Miembro Antiguo")
+                    a_nombre = nombres.get(a_id, "Miembro Antiguo")
                     
                     pago_solicitado = (de_id, a_id) in peticiones_activas
                     es_deudor_externo = es_externo_dict.get(de_id, False)
                     es_acreedor_externo = es_externo_dict.get(a_id, False)
                     
+                    # 1. Definir el texto de la deuda
                     if de_id == user_id:
                         texto_deuda = f"👉 **Tú** debes pagar **{p['amount']:.2f}€** a **{a_nombre}**"
                     elif a_id == user_id:
@@ -268,7 +274,7 @@ def render_single_group(group_id, group_name, user_id):
                             # 1. CASO: DEUDOR ES EXTERNO (Admin salda cuando recibe el dinero)
                             if es_deudor_externo:
                                 if es_admin:
-                                    if st.button("Saldar manual ✅", key=f"ext_s_ {de_id}_{a_id}", use_container_width=True):
+                                    if st.button("Saldar manual ✅", key=f"ext_s_{de_id}_{a_id}", use_container_width=True):
                                         ok, msg = settle_external_debt_admin(group_id, de_nombre, a_id)
                                         if ok:
                                             st.toast(f"✅ Pago de {de_nombre} confirmado")
@@ -277,19 +283,29 @@ def render_single_group(group_id, group_name, user_id):
                                 else:
                                     st.caption("Esperando al Admin")
 
-                            # 2. CASO: ACREEDOR ES EXTERNO (Tu caso actual)
+                            # 2. CASO: ACREEDOR ES EXTERNO (Alguien paga a un invitado)
                             elif es_acreedor_externo:
-                                if de_id == user_id: # Si tú eres el deudor
+                                if de_id == user_id: # Si tú eres el deudor (Y PUEDES SER ADMIN A LA VEZ)
                                     if pago_solicitado:
-                                        st.caption("⏳ Esperando que Admin valide")
+                                        if es_admin:
+                                            # Arreglo Bug 1: Si eres admin y tú eres quien paga, no esperas a nadie.
+                                            if st.button("Confirmar Pago ✅", key=f"adm_conf_self_{de_id}_{a_id}", type="primary", use_container_width=True):
+                                                from database_groups import settle_debt_to_external
+                                                ok, msg = settle_debt_to_external(group_id, de_id, a_nombre)
+                                                if ok:
+                                                    st.toast(f"✅ Pago verificado")
+                                                    time.sleep(1)
+                                                    st.rerun()
+                                        else:
+                                            st.caption("⏳ Esperando que Admin valide")
                                     else:
                                         if st.button("💸 Ya lo he pagado", key=f"pay_ext_{a_id}", use_container_width=True):
                                             avisar_pago_dialog(group_id, de_id, a_id, a_nombre, p['amount'])
                                 
-                                elif es_admin: # Si eres el Admin viendo la deuda de otro hacia un externo
+                                elif es_admin: # Si eres el Admin viendo la deuda de OTRO hacia un externo
                                     if pago_solicitado:
-                                        # SOLO SE ACTIVA EL BOTÓN SI EL DEUDOR YA AVISÓ
-                                        if st.button("Confirmar Pago ✅", key=f"adm_conf_{de_id}", type="primary", use_container_width=True):
+                                        if st.button("Confirmar Pago ✅", key=f"adm_conf_{de_id}_{a_id}", type="primary", use_container_width=True):
+                                            from database_groups import settle_debt_to_external
                                             ok, msg = settle_debt_to_external(group_id, de_id, a_nombre)
                                             if ok:
                                                 st.toast(f"✅ Pago verificado")
@@ -322,31 +338,27 @@ def render_single_group(group_id, group_name, user_id):
         from database_groups import get_group_expenses, delete_group_expense, get_locked_movements
         from components import editar_movimiento_dialog
         
-        # --- AQUÍ ESTÁ LA LÓGICA ACTUALIZADA PARA AÑADIR GASTOS ---
         with st.expander("➕ Añadir Gasto", expanded=False):
              with st.form("add_expense_form", clear_on_submit=True):
                  desc = st.text_input("Descripción", placeholder="Ej: Cena en el italiano")
                  amount = st.number_input("Cantidad (€)", min_value=0.01, step=0.01)
                  
-                 # 1. PREPARAR LISTA DE PAGADORES (Solo si es Admin)
+                 # PREPARAR LISTA DE PAGADORES
                  opciones_pagador = {}
                  for m in miembros:
-                     m_id = f"ext_{m['id']}" if m.get('is_external') else m['user_id']
-                     nombre_m = f"👻 {nombres[m_id]}" if m.get('is_external') else nombres[m_id]
+                     is_ext = m.get('is_external', False)
+                     m_id = f"ext_{m['id']}" if is_ext else m.get('user_id')
+                     if not m_id: continue
+                     
+                     nombre_m = f"👻 {nombres[m_id]}" if is_ext else nombres[m_id]
                      if m_id == user_id: nombre_m += " (Tú)"
                      opciones_pagador[nombre_m] = m_id
 
-                 # 2. SELECTOR DE PAGADOR
                  if es_admin:
-                     pagador_seleccionado = st.selectbox(
-                         "¿Quién ha pagado?", 
-                         options=list(opciones_pagador.keys()),
-                         help="Como admin, puedes registrar pagos de invitados o de otros miembros."
-                     )
+                     pagador_seleccionado = st.selectbox("¿Quién ha pagado?", options=list(opciones_pagador.keys()))
                      final_paid_by = opciones_pagador[pagador_seleccionado]
                  else:
-                     # Si no es admin, paga él mismo por defecto
-                     st.write(f"Pagador: **Tú**")
+                     st.write("Pagador: **Tú**")
                      final_paid_by = user_id
 
                  st.divider()
@@ -354,10 +366,13 @@ def render_single_group(group_id, group_name, user_id):
                  cols_miembros = st.columns(3)
                  participantes = []
                  for idx, m in enumerate(miembros):
-                     m_id = f"ext_{m['id']}" if m.get('is_external') else m['user_id']
+                     is_ext = m.get('is_external', False)
+                     m_id = f"ext_{m['id']}" if is_ext else m.get('user_id')
+                     if not m_id: continue
+                     
                      m_nom = nombres[m_id]
                      with cols_miembros[idx % 3]:
-                         if st.checkbox(f"👻 {m_nom}" if m.get('is_external') else m_nom, value=True, key=f"add_p_{m_id}"):
+                         if st.checkbox(f"👻 {m_nom}" if is_ext else m_nom, value=True, key=f"add_p_{m_id}"):
                              participantes.append(m_id)
                              
                  if st.form_submit_button("Guardar Gasto"):
@@ -367,7 +382,7 @@ def render_single_group(group_id, group_name, user_id):
                          st.error("Selecciona al menos un participante.")
                      else:
                          mov_data = {
-                             "user_id": user_id if not final_paid_by.startswith("ext_") else user_id, 
+                             "user_id": user_id if not str(final_paid_by).startswith("ext_") else user_id, 
                              "quantity": amount,
                              "type": "Gasto",
                              "date": time.strftime("%Y-%m-%d"),
@@ -441,11 +456,13 @@ def render_single_group(group_id, group_name, user_id):
                 col = cols[index % 3] 
                 
                 is_external = m.get('is_external', False)
-                m_id = f"ext_{m['id']}" if is_external else m['user_id']
-                full_name = nombres[m_id]
+                m_id = f"ext_{m['id']}" if is_external else m.get('user_id')
+                if not m_id: continue
+                
+                full_name = nombres.get(m_id, 'Usuario')
                 
                 if is_external:
-                    color = '#888888' # Gris para externos
+                    color = '#888888'
                     avatar = None
                     rol_badge = "👻 Invitado"
                     is_current_user = False
