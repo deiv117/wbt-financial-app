@@ -14,11 +14,21 @@ from database_groups import (
 
 BOOTSTRAP_ICONS_LINK = '<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.5/font/bootstrap-icons.css">'
 
+def get_dynamic_css():
+    p_color = st.session_state.user.get('profile_color', '#636EFA') if 'user' in st.session_state and st.session_state.user else '#636EFA'
+    return f"""
+    <style>
+    @import url("https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.5/font/bootstrap-icons.css");
+    h1 .bi, h3 .bi, h5 .bi {{ vertical-align: -3px; margin-right: 10px; color: {p_color}; }}
+    </style>
+    """
+
 def render_header(icon_name, text):
-    st.markdown(f'{BOOTSTRAP_ICONS_LINK}<h1><i class="bi bi-{icon_name}"></i> {text}</h1>', unsafe_allow_html=True)
+    st.markdown(get_dynamic_css(), unsafe_allow_html=True)
+    st.markdown(f'<h1><i class="bi bi-{icon_name}"></i> {text}</h1>', unsafe_allow_html=True)
 
 def render_subheader(icon_name, text):
-    st.markdown(f'{BOOTSTRAP_ICONS_LINK}<h3><i class="bi bi-{icon_name}"></i> {text}</h3>', unsafe_allow_html=True)
+    st.markdown(f'<h3><i class="bi bi-{icon_name}"></i> {text}</h3>', unsafe_allow_html=True)
 
 # --- CALLBACKS DE NAVEGACIÓN ---
 def abrir_grupo_callback(g_id, g_name):
@@ -164,7 +174,7 @@ def render_single_group(group_id, group_name, user_id):
             "container": {"padding": "0!important", "background-color": "transparent"},
             "icon": {"color": "orange", "font-size": "18px"}, 
             "nav-link": {"font-size": "16px", "text-align": "center", "margin": "0px", "--hover-color": "#eee"},
-            "nav-link-selected": {"background-color": "#636EFA"},
+            "nav-link-selected": {"background-color": st.session_state.user.get('profile_color', '#636EFA')},
         }
     )
 
@@ -444,7 +454,7 @@ def render_groups(user_id, user_email):
             "container": {"padding": "0!important", "background-color": "transparent"},
             "icon": {"color": "orange", "font-size": "18px"}, 
             "nav-link": {"font-size": "16px", "text-align": "center", "margin": "0px", "--hover-color": "#eee"},
-            "nav-link-selected": {"background-color": "#636EFA"},
+            "nav-link-selected": {"background-color": st.session_state.user.get('profile_color', '#636EFA')},
         }
     )
 
