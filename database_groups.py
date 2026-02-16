@@ -401,40 +401,64 @@ def calculate_settlements(balances):
     return settlements
 
 def settle_debt_between_users(group_id, creditor_id, debtor_id):
-    """Marca la deuda como pagada y resta el importe del gasto personal del acreedor"""
+    """Liquida las deudas cruzadas entre dos usuarios y ajusta el gasto personal por el importe NETO"""
     client = get_supabase_client()
     try:
-        # 1. Buscar las partes que debe el deudor al acreedor en este grupo
-        res = client.table("group_expense_splits") \
+        # 1. Calcular deuda de B hacia A (Lo grande)
+        res_B_to_A = client.table("group_expense_splits") \
             .select("expense_id, amount_owed, group_expenses!inner(group_id, paid_by, movement_id)") \
             .eq("user_id", debtor_id) \
             .eq("group_expenses.group_id", group_id) \
             .eq("group_expenses.paid_by", creditor_id) \
-            .eq("is_settled", False) \
-            .execute()
+            .eq("is_settled", False).execute()
         
-        if not res.data: return False, "No hay deudas pendientes."
+        gross_B_to_A = sum(float(r['amount_owed']) for r in res_B_to_A.data)
 
-        for row in res.data:
-            exp_id = row['expense_id']
-            mov_id = row['group_expenses']['movement_id']
-            amount = float(row['amount_owed'])
+        # 2. Calcular deuda de A hacia B (La deuda cruzada a compensar)
+        res_A_to_B = client.table("group_expense_splits") \
+            .select("expense_id, amount_owed, group_expenses!inner(group_id, paid_by, movement_id)") \
+            .eq("user_id", creditor_id) \
+            .eq("group_expenses.group_id", group_id) \
+            .eq("group_expenses.paid_by", debtor_id) \
+            .eq("is_settled", False).execute()
+        
+        gross_A_to_B = sum(float(r['amount_owed']) for r in res_A_to_B.data)
+
+        # 3. El dinero real (NETO) que se está transfiriendo
+        net_amount = gross_B_to_A - gross_A_to_B
+
+        # 4. Candado Cruzado 🔒: Marcar TODAS las deudas en ambas direcciones como saldadas
+        for r in res_B_to_A.data:
+            client.table("group_expense_splits").update({"is_settled": True, "settlement_requested": False}) \
+                .eq("expense_id", r['expense_id']).eq("user_id", debtor_id).execute()
             
-            # 2. Poner el Candado (is_settled = True)
-            client.table("group_expense_splits").update({"is_settled": True}).eq("expense_id", exp_id).eq("user_id", debtor_id).execute()
+        for r in res_A_to_B.data:
+            client.table("group_expense_splits").update({"is_settled": True, "settlement_requested": False}) \
+                .eq("expense_id", r['expense_id']).eq("user_id", creditor_id).execute()
+
+        # 5. Reducir el gasto personal de quien cobra por el valor NETO recibido
+        if net_amount > 0:
+            mov_ids = [r['group_expenses']['movement_id'] for r in res_B_to_A.data if r['group_expenses'].get('movement_id')]
+            amount_to_reduce = net_amount
             
-            # 3. Restar el dinero del gasto personal (user_imputs)
-            if mov_id:
+            for mov_id in mov_ids:
+                if amount_to_reduce <= 0.01: break
+                
                 mov_res = client.table("user_imputs").select("quantity").eq("id", mov_id).execute()
                 if mov_res.data:
                     curr_qty = float(mov_res.data[0]['quantity'])
-                    new_qty = max(0, curr_qty - amount) # Evitamos que baje de cero
-                    client.table("user_imputs").update({"quantity": new_qty}).eq("id", mov_id).execute()
+                    if curr_qty > amount_to_reduce:
+                        new_qty = curr_qty - amount_to_reduce
+                        client.table("user_imputs").update({"quantity": new_qty}).eq("id", mov_id).execute()
+                        amount_to_reduce = 0
+                    else:
+                        client.table("user_imputs").update({"quantity": 0}).eq("id", mov_id).execute()
+                        amount_to_reduce -= curr_qty
 
-        return True, "Deuda saldada. Contabilidad personal ajustada."
+        return True, "Deudas cruzadas liquidadas y contabilidad ajustada."
     except Exception as e:
         return False, str(e)
-
+        
 def get_locked_movements():
     """Devuelve un listado rápido de IDs de movimientos que tienen candado"""
     client = get_supabase_client()
@@ -445,10 +469,11 @@ def get_locked_movements():
         return set()
 
 def request_settlement(group_id, debtor_id, creditor_id):
-    """El deudor pulsa el botón para avisar de que ha pagado"""
+    """El net-deudor avisa de que ha pagado la deuda neta"""
     client = get_supabase_client()
     try:
-        # Buscamos los splits donde el deudor le debe al acreedor
+        # Solo marcamos los splits donde el deudor debe al acreedor
+        # para que la alerta roja le llegue solo a quien recibe el dinero
         res = client.table("group_expense_splits") \
             .select("expense_id, group_expenses!inner(group_id, paid_by)") \
             .eq("user_id", debtor_id) \
@@ -463,7 +488,7 @@ def request_settlement(group_id, debtor_id, creditor_id):
     except Exception as e:
         print(f"Error requesting settlement: {e}")
         return False
-
+        
 def get_settlement_requests(group_id):
     """Devuelve las parejas (deudor, acreedor) que están pendientes de confirmación"""
     client = get_supabase_client()
