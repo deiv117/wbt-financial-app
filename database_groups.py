@@ -187,11 +187,19 @@ def update_group_details(group_id, name, emoji, color):
         return False, str(e)
 
 def add_shared_expense(group_id, movement_data, member_ids):
-    """Inserta el movimiento personal y vincula el gasto de grupo con chivato de errores."""
+    """Inserta el movimiento personal en user_imputs y vincula el gasto de grupo"""
     import streamlit as st
     try:
-        # 1. Guardar primero tu movimiento personal
-        res_mov = supabase.table("movements").insert(movement_data).execute()
+        # 1. Guardar primero tu movimiento personal en TU TABLA REAL
+        res_mov = supabase.table("user_imputs").insert({
+            "user_id": movement_data['user_id'],
+            "quantity": movement_data['quantity'],
+            "type": movement_data['type'],
+            "category_id": movement_data['category_id'],
+            "date": movement_data['date'],
+            "notes": movement_data['notes'],
+            "group_id": group_id # ¡Aprovechamos la columna que ya tenías creada!
+        }).execute()
         
         if not res_mov.data:
             return False, "La base de datos no devolvió el ID del movimiento"
@@ -203,7 +211,6 @@ def add_shared_expense(group_id, movement_data, member_ids):
             "group_id": group_id,
             "movement_id": mov_id,
             "paid_by": movement_data['user_id'],
-            # Usamos .get() por seguridad según los nombres de tu tabla personal
             "description": movement_data.get('notes', 'Gasto compartido'), 
             "total_amount": movement_data.get('quantity', 0)
         }
@@ -229,7 +236,6 @@ def add_shared_expense(group_id, movement_data, member_ids):
         return True, "Gasto compartido registrado"
         
     except Exception as e:
-        # Si algo explota en Supabase, te lo pinta en rojo
         st.error(f"🛑 Error Técnico DB: {e}") 
         return False, str(e)
 
