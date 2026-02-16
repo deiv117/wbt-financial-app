@@ -252,50 +252,58 @@ def render_single_group(group_id, group_name, user_id):
                     
                     pago_solicitado = (de_id, a_id) in peticiones_activas
                     es_deudor_externo = es_externo_dict.get(de_id, False)
+                    es_acreedor_externo = es_externo_dict.get(a_id, False)
                     
+                    # Definimos el texto de la deuda de forma amigable
                     if de_id == user_id:
                         texto_deuda = f"👉 **Tú** debes pagar **{p['amount']:.2f}€** a **{a_nombre}**"
                     elif a_id == user_id:
                         texto_deuda = f"👉 **{de_nombre}** te debe **{p['amount']:.2f}€**"
                     else:
-                        texto_deuda = f"👉 **{de_nombre}** debe pagar **{p['amount']:.2f}€** a **{a_nombre}**"
+                        # Si es entre otros miembros (incluidos externos)
+                        de_tag = "👻 " if es_deudor_externo else ""
+                        a_tag = "👻 " if es_acreedor_externo else ""
+                        texto_deuda = f"👉 {de_tag}**{de_nombre}** debe pagar **{p['amount']:.2f}€** a {a_tag}**{a_nombre}**"
                     
                     with st.container(border=True):
                         c1, c2 = st.columns([2.5, 1.5], vertical_alignment="center")
                         c1.markdown(texto_deuda)
                         
                         with c2:
-                            # --- LÓGICA PARA DEUDORES EXTERNOS ---
+                            # ESCENARIO A: El deudor es un Invitado Externo
                             if es_deudor_externo:
                                 if es_admin:
-                                    if st.button("Saldar (Soy Admin) ✅", key=f"ext_{de_id}_{a_id}", use_container_width=True):
+                                    if st.button("Saldar manual ✅", key=f"ext_saldar_{de_id}_{a_id}", help="Como admin, confirmas que el invitado ya ha pagado", use_container_width=True):
+                                        # Llamamos a la función que limpia la deuda en la DB
                                         ok, msg = settle_external_debt_admin(group_id, de_nombre, a_id)
                                         if ok:
-                                            st.toast(f"✅ {msg}")
+                                            st.toast(f"✅ Pago de {de_nombre} confirmado")
                                             time.sleep(1)
                                             st.rerun()
                                         else: st.error(msg)
                                 else:
-                                    st.caption("Solo el Admin puede confirmar")
-                            
-                            # --- LÓGICA NORMAL ---
-                            else:
-                                if de_id == user_id: # ERES EL DEUDOR
-                                    if pago_solicitado:
-                                        st.caption("⏳ Esperando confirmación")
-                                    else:
-                                        if st.button("💸 Ya lo he pagado", key=f"pay_{de_id}_{a_id}", use_container_width=True):
-                                            avisar_pago_dialog(group_id, de_id, a_id, a_nombre, p['amount'])
-                                                
-                                elif a_id == user_id: # ERES EL ACREEDOR
-                                    if pago_solicitado:
-                                        if st.button("✅ Confirmar cobro", key=f"conf_{de_id}_{a_id}", type="primary", use_container_width=True):
-                                            saldar_deuda_dialog(group_id, a_id, de_id, de_nombre, p['amount'])
-                                    else:
-                                        st.caption("Esperando pago...")
+                                    st.caption("⏳ Esperando al Admin")
+
+                            # ESCENARIO B: El deudor es el usuario actual (Tú)
+                            elif de_id == user_id:
+                                if pago_solicitado:
+                                    st.caption("⏳ Confirmación pendiente")
                                 else:
-                                    if pago_solicitado: st.caption("⏳ Procesando pago")
-                                    else: st.caption("Pendiente")
+                                    if st.button("💸 Ya he pagado", key=f"pay_{de_id}_{a_id}", use_container_width=True):
+                                        avisar_pago_dialog(group_id, de_id, a_id, a_nombre, p['amount'])
+                                            
+                            # ESCENARIO C: Tú eres el que recibe el dinero (Acreedor)
+                            elif a_id == user_id:
+                                if pago_solicitado:
+                                    if st.button("✅ Confirmar cobro", key=f"conf_{de_id}_{a_id}", type="primary", use_container_width=True):
+                                        saldar_deuda_dialog(group_id, a_id, de_id, de_nombre, p['amount'])
+                                else:
+                                    st.caption("Esperando pago...")
+
+                            # ESCENARIO D: Deuda entre terceros reales
+                            else:
+                                if pago_solicitado: st.caption("⏳ Procesando...")
+                                else: st.caption("Pendiente")
 
     elif selected_tab == "Gastos":
         render_subheader("receipt", "Historial de Gastos")
