@@ -203,30 +203,38 @@ def update_group_details(group_id, name, emoji, color):
         return False, str(e)
 
 def add_shared_expense(group_id, movement_data, member_ids):
-    """Inserta el movimiento personal en user_imputs y vincula el gasto de grupo"""
+    """Inserta el gasto y vincula el reparto, manejando pagadores reales o externos"""
     client = get_supabase_client()
+    
+    # 0. Determinamos quién es el pagador real
+    # Si viene 'paid_by_custom' lo usamos, si no, el user_id por defecto
+    real_paid_by = movement_data.get('paid_by_custom', movement_data['user_id'])
+    es_externo = str(real_paid_by).startswith("ext_")
+
     try:
-        # 1. Guardar primero tu movimiento personal en TU TABLA REAL
-        res_mov = client.table("user_imputs").insert({
-            "user_id": movement_data['user_id'],
-            "quantity": movement_data['quantity'],
-            "type": movement_data['type'],
-            "category_id": movement_data['category_id'],
-            "date": movement_data['date'],
-            "notes": movement_data['notes'],
-            "group_id": group_id # ¡Aprovechamos la columna que ya tenías creada!
-        }).execute()
+        mov_id = None
         
-        if not res_mov.data:
-            return False, "La base de datos no devolvió el ID del movimiento"
+        # 1. Registrar en 'user_imputs' SOLO si el pagador NO es externo
+        # (Los invitados no tienen cuenta personal ni patrimonio neto que trackear)
+        if not es_externo:
+            res_mov = client.table("user_imputs").insert({
+                "user_id": real_paid_by,
+                "quantity": movement_data['quantity'],
+                "type": movement_data['type'],
+                "category_id": movement_data.get('category_id'),
+                "date": movement_data['date'],
+                "notes": movement_data['notes'],
+                "group_id": group_id
+            }).execute()
             
-        mov_id = res_mov.data[0]['id']
-        
-        # 2. Registrar el ticket en el Grupo
+            if res_mov.data:
+                mov_id = res_mov.data[0]['id']
+
+        # 2. Registrar el ticket en el Grupo (group_expenses)
         expense_data = {
             "group_id": group_id,
-            "movement_id": mov_id,
-            "paid_by": movement_data['user_id'],
+            "movement_id": mov_id, # Puede ser None si el pagador es externo
+            "paid_by": real_paid_by, # Aquí guardamos el ID (UUID o 'ext_...')
             "description": movement_data.get('notes', 'Gasto compartido'), 
             "total_amount": movement_data.get('quantity', 0)
         }
@@ -237,19 +245,19 @@ def add_shared_expense(group_id, movement_data, member_ids):
             
         exp_id = res_exp.data[0]['id']
         
-        # 3. Crear los repartos (A quién le toca pagar qué)
+        # 3. Crear los repartos (splits)
         cuota = movement_data.get('quantity', 0) / len(member_ids)
         splits = []
         for mid in member_ids:
             splits.append({
                 "expense_id": exp_id,
-                "user_id": mid,
+                "user_id": mid, # Aquí el user_id puede ser UUID o 'ext_...'
                 "amount_owed": cuota,
                 "is_settled": False
             })
             
         client.table("group_expense_splits").insert(splits).execute()
-        return True, "Gasto compartido registrado"
+        return True, "Gasto compartido registrado correctamente"
         
     except Exception as e:
         st.error(f"🛑 Error Técnico DB: {e}") 
