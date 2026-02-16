@@ -19,11 +19,30 @@ st.set_page_config(page_title="Mi Finanzas", page_icon="💰", layout="wide")
 init_db()
 st.markdown(get_custom_css(), unsafe_allow_html=True)
 
-# CSS Extra para ocultar el padding superior excesivo de Streamlit y ajustar el menú
+# CSS Extra para ocultar el padding superior excesivo de Streamlit y ocultar menús por defecto
 st.markdown("""
     <style>
+        /* Ajuste padding general */
         .st-emotion-cache-16txtl3 {padding-top: 1rem;} /* Ajuste padding sidebar */
         .block-container {padding-top: 2rem;} /* Ajuste padding main */
+        
+        /* 1. OCULTAR MENÚ SUPERIOR DERECHO (Fork, Github, 3 puntos) */
+        [data-testid="stToolbar"] {
+            visibility: hidden !important;
+            display: none !important;
+        }
+        #MainMenu {
+            visibility: hidden !important;
+        }
+        .stDeployButton {
+            display: none !important;
+        }
+        
+        /* 2. OCULTAR FOOTER (Made with Streamlit) */
+        footer {
+            visibility: hidden !important;
+            display: none !important;
+        }
     </style>
 """, unsafe_allow_html=True)
 
