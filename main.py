@@ -15,7 +15,11 @@ from views import render_dashboard, render_categories, render_profile, render_im
 from views_groups import render_groups
 
 # 1. Configuración de página
-st.set_page_config(page_title="Mi Finanzas", page_icon="💰", layout="wide")
+st.set_page_config(
+    page_title="Mi App de Finanzas", 
+    page_icon="💰", 
+    initial_sidebar_state="expanded"  # <-- ESTO FUERZA A QUE SE ABRA AL RECARGAR
+)
 init_db()
 st.markdown(get_custom_css(), unsafe_allow_html=True)
 
