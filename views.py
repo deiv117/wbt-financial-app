@@ -153,6 +153,8 @@ def render_main_dashboard(df_all, user_profile):
 # --- 2. GESTIÓN DE MOVIMIENTOS ---
 def render_dashboard(df_all, current_cats, user_id):
     p_color = (st.session_state.user.get('profile_color') or '#636EFA') if 'user' in st.session_state and st.session_state.user else '#636EFA'
+    # NUEVA LÍNEA PARA EL COLOR DEL ICONO
+    i_color = (st.session_state.user.get('icon_color') or '#FFA500') if 'user' in st.session_state and st.session_state.user else '#FFA500'
     
     st.markdown("""
         <style>
@@ -178,9 +180,9 @@ def render_dashboard(df_all, current_cats, user_id):
         default_index=0,
         styles={
             "container": {"padding": "0!important", "background-color": "transparent"},
-            "icon": {"color": "orange", "font-size": "18px"}, 
+            # APLICAMOS EL COLOR DEL ICONO AQUÍ
+            "icon": {"color": i_color, "font-size": "18px"}, 
             "nav-link": {"font-size": "14px", "text-align": "center", "margin": "0px", "--hover-color": "#eee"},
-            # AQUÍ ESTABA EL BUG: Ahora es un diccionario en lugar de un Set {}
             "nav-link-selected": {"background-color": p_color}, 
         }
     )
@@ -634,8 +636,10 @@ def render_profile(user_id, p_data):
             raw_name = p_data.get('name')
             name_safe = raw_name if raw_name and raw_name.strip() else 'Usuario'
             initial = name_safe[0].upper()
-            # OBTENCIÓN SEGURA DEL COLOR
+            
+            # OBTENCIÓN SEGURA DE AMBOS COLORES
             p_color = p_data.get('profile_color') or '#636EFA'
+            i_color = p_data.get('icon_color') or '#FFA500' # Naranja por defecto
 
             if avatar_url: st.image(avatar_url, width=150)
             else:
@@ -646,7 +650,12 @@ def render_profile(user_id, p_data):
             with st.form("perfil_form"):
                 n_name = st.text_input("Nombre", value=p_data.get('name') or "")
                 n_last = st.text_input("Apellido", value=p_data.get('lastname') or "")
-                n_color = st.color_picker("Color de Perfil", value=p_color)
+                
+                # Ponemos los selectores de color en dos columnas para que quede bonito
+                c_col1, c_col2 = st.columns(2)
+                n_color = c_col1.color_picker("Color Principal", value=p_color)
+                n_icon_color = c_col2.color_picker("Color de Iconos", value=i_color)
+                
                 n_social = st.toggle("Modo Social", value=p_data.get('social_active', False))
                 
                 if st.form_submit_button(":material/save: Guardar Datos"):
@@ -654,7 +663,10 @@ def render_profile(user_id, p_data):
                     if uploaded_file:
                         new_url = upload_avatar(uploaded_file, user_id)
                         if new_url: final_avatar = new_url
-                    new_data = {**p_data, "name": n_name, "lastname": n_last, "profile_color": n_color, "social_active": n_social, "avatar_url": final_avatar}
+                    
+                    # Añadimos icon_color a los datos a guardar
+                    new_data = {**p_data, "name": n_name, "lastname": n_last, "profile_color": n_color, "icon_color": n_icon_color, "social_active": n_social, "avatar_url": final_avatar}
+                    
                     if upsert_profile(new_data):
                         st.session_state.user.update(new_data)
                         st.rerun()
