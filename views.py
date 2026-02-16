@@ -232,21 +232,22 @@ def render_dashboard(df_all, current_cats, user_id):
     if selected == "Nueva":
         render_subheader("plus-circle", "Añadir Transacción")
         
-        # --- CONTROL DE ESTADO DEL FORMULARIO ---
-        if 'f_qty' not in st.session_state: st.session_state.f_qty = 0.0
-        if 'f_concept' not in st.session_state: st.session_state.f_concept = ""
+        # --- EL TRUCO PARA LIMPIAR EL FORMULARIO SIN ERRORES ---
+        if 'reset_key' not in st.session_state: 
+            st.session_state.reset_key = 0
 
         with st.container(border=True):
             c1, c2, c3 = st.columns(3)
-            # Usamos las keys de session_state
-            qty = c1.number_input("Cantidad (€)", min_value=0.0, step=0.01, key='f_qty')
+            # Solo reseteamos cantidad, categoría y concepto. 
+            # Tipo y Fecha se mantienen igual por comodidad.
+            qty = c1.number_input("Cantidad (€)", min_value=0.0, step=0.01, key=f"qty_{st.session_state.reset_key}")
             t_type = c2.selectbox("Tipo", ["Gasto", "Ingreso"])
             f_mov = c3.date_input("Fecha", datetime.now())
             
             f_cs = [c for c in current_cats if c.get('type') == t_type]
-            sel = st.selectbox("Categoría", ["Selecciona..."] + [f"{c.get('emoji', '📁')} {c['name']}" for c in f_cs])
-            # Usamos la key para el concepto
-            concepto = st.text_input("Concepto", key='f_concept')
+            sel = st.selectbox("Categoría", ["Selecciona..."] + [f"{c.get('emoji', '📁')} {c['name']}" for c in f_cs], key=f"cat_{st.session_state.reset_key}")
+            
+            concepto = st.text_input("Concepto", key=f"conc_{st.session_state.reset_key}")
 
             # --- SECCIÓN GASTO COMPARTIDO ---
             shared_group_id = None
@@ -259,8 +260,8 @@ def render_dashboard(df_all, current_cats, user_id):
                 
                 if mis_grupos:
                     opciones_grupos = {g['name']: g['id'] for g in mis_grupos}
-                    # NO limpiamos esto para que recuerde el grupo si añades varios seguidos
-                    sel_grupo = st.selectbox("¿Vincular a un grupo?", ["No compartir"] + list(opciones_grupos.keys()))
+                    # Fíjate que le ponemos una key fija para que NO se resetee al guardar
+                    sel_grupo = st.selectbox("¿Vincular a un grupo?", ["No compartir"] + list(opciones_grupos.keys()), key="grupo_persistente")
                     
                     if sel_grupo != "No compartir":
                         shared_group_id = opciones_grupos[sel_grupo]
@@ -274,6 +275,7 @@ def render_dashboard(df_all, current_cats, user_id):
                             m_nombre = prof.get('name', 'Usuario')
                             
                             with cols_miembros[idx % 3]:
+                                # Tampoco reseteamos los checks para no tener que volver a clicar a la misma gente
                                 if st.checkbox(f"{m_nombre}", value=True, key=f"p_{m['user_id']}"):
                                     participantes_ids.append(m['user_id'])
                         
@@ -312,15 +314,14 @@ def render_dashboard(df_all, current_cats, user_id):
                         except Exception as e:
                             st.error(f"❌ Error DB: {e}")
                     
-                    # SI HAY ÉXITO, LIMPIAMOS LOS INPUTS Y RECARGAMOS
+                    # SI HAY ÉXITO, INCREMENTAMOS EL RESET_KEY Y RECARGAMOS
                     if exito:
-                        st.session_state.f_qty = 0.0
-                        st.session_state.f_concept = ""
-                        time.sleep(1)
+                        st.session_state.reset_key += 1
+                        time.sleep(0.5)
                         st.rerun()
                 else:
                     st.warning("⚠️ Debes seleccionar una categoría.")
-
+                  
         # --- RECUPERACIÓN DE LOS ÚLTIMOS 10 MOVIMIENTOS ---
         st.divider()
         st.subheader("Últimos movimientos")
