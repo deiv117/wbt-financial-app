@@ -336,10 +336,11 @@ def render_dashboard(df_all, current_cats, user_id):
                         color_q = "red" if i['type'] == 'Gasto' else "green"
                         signo = "-" if i['type'] == 'Gasto' else "+"
                         
-                        # ETIQUETA DEL GRUPO (Si existe)
+                        # ETIQUETA DEL GRUPO LIMPIA (Solo el emoji del grupo y su nombre)
                         etiqueta_grupo = ""
                         if pd.notna(i.get('group_name')) and i.get('group_name'):
-                            etiqueta_grupo = f" &nbsp; | &nbsp; 👥 **{i['group_emoji']} {i['group_name']}**"
+                            # Quitamos el emoji genérico 👥 de aquí:
+                            etiqueta_grupo = f" &nbsp; | &nbsp; **{i['group_emoji']} {i['group_name']}**"
                             
                         st.markdown(f"**{i['cat_display']}**{etiqueta_grupo} &nbsp;|&nbsp; :{color_q}[**{signo}{i['quantity']:.2f}€**]")
                         
