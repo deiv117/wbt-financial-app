@@ -178,7 +178,7 @@ def render_dashboard(df_all, current_cats, user_id):
             "container": {"padding": "0!important", "background-color": "transparent"},
             "icon": {"color": "orange", "font-size": "16px"}, 
             "nav-link": {"font-size": "14px", "text-align": "center", "margin": "0px", "--hover-color": "#eee"},
-            "nav-link-selected": {"background-color": "#636EFA"},
+            "nav-link-selected": {st.session_state.user.get('profile_color', '#636EFA')},
         }
     )
 
@@ -565,7 +565,7 @@ def render_dashboard(df_all, current_cats, user_id):
             fig = go.Figure()
             fig.add_trace(go.Bar(x=ml, y=rm['Ingreso'], name='Ingreso', marker_color='#00CC96'))
             fig.add_trace(go.Bar(x=ml, y=rm['Gasto'], name='Gasto', marker_color='#EF553B'))
-            fig.add_trace(go.Scatter(x=ml, y=rm['Ahorro'], name='Ahorro', mode='lines+markers', line=dict(color='#636EFA', width=3)))
+            fig.add_trace(go.Scatter(x=ml, y=rm['Ahorro'], name='Ahorro', mode='lines+markers', line=dict(color=st.session_state.user.get('profile_color', '#636EFA'), width=3)))
             fig.update_layout(barmode='group', margin=dict(l=20, r=20, t=20, b=20), legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1))
             st.plotly_chart(fig, use_container_width=True)
 
