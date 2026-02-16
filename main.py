@@ -160,7 +160,7 @@ def main():
                     "container": {"padding": "0!important", "background-color": "transparent"},
                     "icon": {"color": "orange", "font-size": "18px"}, 
                     "nav-link": {"font-size": "16px", "text-align": "left", "margin": "0px", "--hover-color": "#eee"},
-                    "nav-link-selected": {"background-color": "#636EFA"},
+                    "nav-link-selected": {"background-color": p_color},
                 }
             )
             
