@@ -66,6 +66,8 @@ def invitar_usuario_dialog(group_id, group_name):
 
 
 # --- VISTA INTERIOR DEL GRUPO ---
+
+# DIÁLOGO 1: PARA EL QUE RECIBE EL DINERO (ACREEDOR)
 @st.dialog("✅ Confirmar Recepción de Pago")
 def saldar_deuda_dialog(group_id, creditor_id, debtor_id, debtor_name, amount):
     st.warning(f"¿Confirmas que has recibido **{amount:.2f}€** de **{debtor_name}**?")
@@ -80,6 +82,48 @@ def saldar_deuda_dialog(group_id, creditor_id, debtor_id, debtor_name, amount):
             st.rerun()
         else:
             st.error(msg)
+
+# NUEVO DIÁLOGO 2: PARA EL QUE PAGA EL DINERO (DEUDOR)
+@st.dialog("💸 Registrar Pago de Deuda")
+def avisar_pago_dialog(group_id, debtor_id, creditor_id, creditor_name, amount):
+    st.write(f"Vas a avisar a **{creditor_name}** de que le has pagado **{amount:.2f}€**.")
+    st.info("Para cuadrar tus cuentas personales, ¿en qué categoría quieres registrar esta salida de dinero? (Ej: Bizum, Gastos Varios...)")
+    
+    from database import get_categories, save_input
+    from datetime import datetime
+    
+    cats = get_categories(debtor_id)
+    gasto_cats = [c for c in cats if c.get('type') == 'Gasto']
+    nombres_cats = [f"{c.get('emoji', '📁')} {c['name']}" for c in gasto_cats]
+    
+    if not nombres_cats:
+        st.warning("No tienes categorías de gasto. Crea una primero en tu panel principal.")
+        return
+        
+    sel_cat = st.selectbox("Categoría", nombres_cats)
+    concepto = st.text_input("Concepto", value=f"Pago deuda grupo a {creditor_name}")
+    
+    if st.button("Confirmar Pago y Avisar", type="primary", use_container_width=True):
+        cat_obj = next((c for c in gasto_cats if f"{c.get('emoji', '📁')} {c['name']}" == sel_cat), None)
+        
+        if cat_obj:
+            # 1. Registramos tu salida de dinero en tu cuenta personal
+            save_input({
+                "user_id": debtor_id, 
+                "quantity": amount, 
+                "type": "Gasto", 
+                "category_id": cat_obj['id'], 
+                "date": str(datetime.now().date()), 
+                "notes": concepto
+            })
+            
+            # 2. Le mandamos el aviso al acreedor
+            if request_settlement(group_id, debtor_id, creditor_id):
+                st.toast("✅ Gasto registrado y aviso enviado.")
+                time.sleep(1)
+                st.rerun()
+            else:
+                st.error("Error al enviar el aviso al grupo.")
 
 def render_single_group(group_id, group_name, user_id):
     st.button(":material/arrow_back: Volver a mis grupos", on_click=cerrar_grupo_callback)
@@ -188,9 +232,9 @@ def render_single_group(group_id, group_name, user_id):
                                 if pago_solicitado:
                                     st.caption("⏳ Esperando que confirmen tu pago")
                                 else:
+                                    # BOTÓN QUE ABRE EL NUEVO DIÁLOGO
                                     if st.button("💸 Ya lo he pagado", key=f"pay_{de_id}_{a_id}", use_container_width=True):
-                                        if request_settlement(group_id, de_id, a_id):
-                                            st.rerun()
+                                        avisar_pago_dialog(group_id, de_id, a_id, a_nombre, p['amount'])
                                             
                             elif a_id == user_id: # ERES EL ACREEDOR
                                 if pago_solicitado:
