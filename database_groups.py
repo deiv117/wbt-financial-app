@@ -357,3 +357,89 @@ def update_shared_expense(mov_id, mov_data, new_group_id, participant_ids):
         import streamlit as st
         st.error(f"🛑 Error DB: {e}")
         return False, str(e)
+
+def get_pending_balances(group_id):
+    """Calcula los balances ignorando las deudas que ya han sido pagadas (is_settled = True)"""
+    client = get_supabase_client()
+    try:
+        res = client.table("group_expense_splits") \
+            .select("amount_owed, user_id, is_settled, group_expenses!inner(group_id, paid_by)") \
+            .eq("group_expenses.group_id", group_id) \
+            .eq("is_settled", False) \
+            .execute()
+        
+        balances = {}
+        for row in res.data:
+            debtor = row['user_id']
+            creditor = row['group_expenses']['paid_by']
+            amount = float(row['amount_owed'])
+            
+            if debtor == creditor: continue # Ignoramos lo que nos debemos a nosotros mismos
+            
+            balances[creditor] = balances.get(creditor, 0.0) + amount
+            balances[debtor] = balances.get(debtor, 0.0) - amount
+            
+        return balances
+    except Exception as e:
+        print(f"Error calculando balances pendientes: {e}")
+        return {}
+
+def calculate_settlements(balances):
+    """Genera las transacciones para dejar a cero a los miembros"""
+    deudores = [{'id': u, 'amount': abs(a)} for u, a in balances.items() if a < -0.01]
+    acreedores = [{'id': u, 'amount': a} for u, a in balances.items() if a > 0.01]
+    settlements = []
+    
+    i, j = 0, 0
+    while i < len(deudores) and j < len(acreedores):
+        pago = min(deudores[i]['amount'], acreedores[j]['amount'])
+        settlements.append({'from': deudores[i]['id'], 'to': acreedores[j]['id'], 'amount': round(pago, 2)})
+        deudores[i]['amount'] -= pago
+        acreedores[j]['amount'] -= pago
+        if deudores[i]['amount'] < 0.01: i += 1
+        if acreedores[j]['amount'] < 0.01: j += 1
+    return settlements
+
+def settle_debt_between_users(group_id, creditor_id, debtor_id):
+    """Marca la deuda como pagada y resta el importe del gasto personal del acreedor"""
+    client = get_supabase_client()
+    try:
+        # 1. Buscar las partes que debe el deudor al acreedor en este grupo
+        res = client.table("group_expense_splits") \
+            .select("expense_id, amount_owed, group_expenses!inner(group_id, paid_by, movement_id)") \
+            .eq("user_id", debtor_id) \
+            .eq("group_expenses.group_id", group_id) \
+            .eq("group_expenses.paid_by", creditor_id) \
+            .eq("is_settled", False) \
+            .execute()
+        
+        if not res.data: return False, "No hay deudas pendientes."
+
+        for row in res.data:
+            exp_id = row['expense_id']
+            mov_id = row['group_expenses']['movement_id']
+            amount = float(row['amount_owed'])
+            
+            # 2. Poner el Candado (is_settled = True)
+            client.table("group_expense_splits").update({"is_settled": True}).eq("expense_id", exp_id).eq("user_id", debtor_id).execute()
+            
+            # 3. Restar el dinero del gasto personal (user_imputs)
+            if mov_id:
+                mov_res = client.table("user_imputs").select("quantity").eq("id", mov_id).execute()
+                if mov_res.data:
+                    curr_qty = float(mov_res.data[0]['quantity'])
+                    new_qty = max(0, curr_qty - amount) # Evitamos que baje de cero
+                    client.table("user_imputs").update({"quantity": new_qty}).eq("id", mov_id).execute()
+
+        return True, "Deuda saldada. Contabilidad personal ajustada."
+    except Exception as e:
+        return False, str(e)
+
+def get_locked_movements():
+    """Devuelve un listado rápido de IDs de movimientos que tienen candado"""
+    client = get_supabase_client()
+    try:
+        res = client.table("group_expenses").select("movement_id, group_expense_splits!inner(is_settled)").eq("group_expense_splits.is_settled", True).execute()
+        return {r['movement_id'] for r in res.data if r.get('movement_id')}
+    except:
+        return set()
