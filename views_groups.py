@@ -308,14 +308,43 @@ def render_single_group(group_id, group_name, user_id):
                  desc = st.text_input("Descripción", placeholder="Ej: Cena en el italiano")
                  amount = st.number_input("Cantidad (€)", min_value=0.01, step=0.01)
                  
-                 st.write("¿Quién participa?")
+                 # 1. PREPARAR LISTA DE PAGADORES (Solo si es Admin)
+                 opciones_pagador = {}
+                 for m in miembros:
+                     if m.get('is_external'):
+                         nombre_m = f"👻 {m.get('external_name', 'Invitado')}"
+                         id_m = f"ext_{m['id']}"
+                     else:
+                         prof = m.get('profiles') or {}
+                         if isinstance(prof, list): prof = prof[0] if prof else {}
+                         # Ponemos un (Tú) para que el admin se encuentre rápido
+                         es_yo = m['user_id'] == user_id
+                         nombre_m = f"{prof.get('name', 'Usuario')} {'(Tú)' if es_yo else ''}"
+                         id_m = m['user_id']
+                     
+                     opciones_pagador[nombre_m] = id_m
+
+                 # 2. SELECTOR DE PAGADOR
+                 if es_admin:
+                     pagador_seleccionado = st.selectbox(
+                         "¿Quién ha pagado?", 
+                         options=list(opciones_pagador.keys()),
+                         help="Como admin, puedes registrar pagos de invitados o de otros miembros."
+                     )
+                     final_paid_by = opciones_pagador[pagador_seleccionado]
+                 else:
+                     # Si no es admin, paga él mismo por defecto
+                     st.write(f"Pagador: **Tú**")
+                     final_paid_by = user_id
+
+                 st.divider()
+                 st.write("¿Quién participa en el gasto? (Reparto)")
                  cols_miembros = st.columns(3)
                  participantes = []
                  for idx, m in enumerate(miembros):
-                     # Diferenciamos si es externo o normal para sacar su nombre e ID
                      if m.get('is_external'):
                          m_nombre = f"👻 {m.get('external_name', 'Invitado')}"
-                         m_id = f"ext_{m['id']}" # Usamos su ID de tabla con prefijo
+                         m_id = f"ext_{m['id']}"
                      else:
                          prof = m.get('profiles') or {}
                          if isinstance(prof, list): prof = prof[0] if prof else {}
@@ -323,6 +352,7 @@ def render_single_group(group_id, group_name, user_id):
                          m_id = m['user_id']
                      
                      with cols_miembros[idx % 3]:
+                         # Por defecto marcamos a todos
                          if st.checkbox(m_nombre, value=True, key=f"add_p_{m_id}"):
                              participantes.append(m_id)
                              
@@ -332,20 +362,24 @@ def render_single_group(group_id, group_name, user_id):
                      elif not participantes:
                          st.error("Selecciona al menos un participante.")
                      else:
-                         # La función add_shared_expense debe estar preparada en database_groups.py
-                         # para manejar los prefijos 'ext_'
                          from database_groups import add_shared_expense
                          
+                         # Construimos el movimiento
+                         # NOTA: user_id en mov_data suele ser el que "crea" el dato o el que tiene el balance.
+                         # Para que el sistema de grupos funcione, lo que importa es quién seleccionamos en final_paid_by.
                          mov_data = {
-                             "user_id": user_id,
+                             "user_id": user_id if not final_paid_by.startswith("ext_") else user_id, 
                              "quantity": amount,
                              "type": "Gasto",
                              "date": time.strftime("%Y-%m-%d"),
-                             "notes": desc
+                             "notes": desc,
+                             "paid_by_custom": final_paid_by # Pasamos el pagador elegido
                          }
+                         
+                         # Llamamos a la función de guardado
                          ok, msg = add_shared_expense(group_id, mov_data, participantes)
                          if ok:
-                             st.success("✅ Gasto añadido")
+                             st.success("✅ Gasto registrado correctamente")
                              st.rerun()
                          else:
                              st.error(msg)
