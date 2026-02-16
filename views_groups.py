@@ -142,26 +142,32 @@ def render_single_group(group_id, group_name, user_id):
                     with col_btns:
                         # Solo el Admin o el que pagó pueden editar/borrar
                         if es_admin or g['paid_by'] == user_id:
+                            # Usamos columnas pequeñas para los iconos de material
                             btn_edit, btn_del = st.columns(2)
                             
                             with btn_edit:
-                                # Preparamos los datos tal cual los espera el diálogo
-                                # (mapeando 'total_amount' a 'quantity' y 'description' a 'notes')
+                                # Preparamos los datos compatibles (igual que antes)
+                                from database import get_categories
+                                cats_para_editar = get_categories(user_id)
+                                
                                 mov_compatible = {
                                     "id": g['movement_id'],
                                     "user_id": g['paid_by'],
                                     "quantity": g['total_amount'],
                                     "type": "Gasto",
-                                    "category_id": g.get('category_id'), # Si lo guardamos en la tabla
+                                    "category_id": g.get('category_id'),
                                     "date": g['date'],
                                     "notes": g['description'],
                                     "group_id": g['group_id']
                                 }
-                                if st.button("✏️", key=f"ed_g_{g['id']}", help="Editar"):
-                                    editar_movimiento_dialog(mov_compatible, current_cats)
+                                
+                                # BOTÓN CON ICONO MATERIAL DESIGN
+                                if st.button(":material/edit:", key=f"ed_g_{g['id']}", help="Editar gasto"):
+                                    editar_movimiento_dialog(mov_compatible, cats_para_editar)
                             
                             with btn_del:
-                                if st.button("🗑️", key=f"dl_g_{g['id']}", type="primary", help="Borrar"):
+                                # BOTÓN CON ICONO MATERIAL DESIGN (y tipo primary para que sea rojo)
+                                if st.button(":material/delete:", key=f"dl_g_{g['id']}", type="primary", help="Borrar gasto"):
                                     if delete_group_expense(g['id'], g.get('movement_id')):
                                         st.toast("✅ Gasto eliminado")
                                         time.sleep(1)
