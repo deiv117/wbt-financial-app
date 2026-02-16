@@ -322,9 +322,26 @@ def render_single_group(group_id, group_name, user_id):
                     with st.container(border=True):
                         c1, c2 = st.columns([1.2, 2], vertical_alignment="center")
                         with c1:
-                            if avatar: st.image(avatar, width=90)
+                            # 1. Sacamos la inicial de forma segura
+                            inicial = full_name[0].upper() if full_name else "?"
+                            
+                            # 2. Usamos HTML para AMBOS casos, así garantizamos que los márgenes y formas sean idénticos
+                            if avatar:
+                                st.markdown(f'''
+                                    <div style="padding: 10px 0;">
+                                        <img src="{avatar}" style="width: 90px; height: 90px; object-fit: cover; border-radius: 16px; box-shadow: 0 4px 6px rgba(0,0,0,0.1);">
+                                    </div>
+                                ''', unsafe_allow_html=True)
                             else:
-                                st.markdown(f'<div style="width:90px;height:90px;background-color:{color};border-radius:50%;display:flex;align-items:center;justify-content:center;color:white;font-weight:bold;font-size:36px;">{full_name[0].upper() if full_name else "?"}</div>', unsafe_allow_html=True)
+                                st.markdown(f'''
+                                    <div style="padding: 10px 0;">
+                                        <div style="width: 90px; height: 90px; background-color: {color}; border-radius: 16px; 
+                                                    display: flex; align-items: center; justify-content: center; 
+                                                    color: white; font-weight: bold; font-size: 36px; box-shadow: 0 4px 6px rgba(0,0,0,0.1);">
+                                            {inicial}
+                                        </div>
+                                    </div>
+                                ''', unsafe_allow_html=True)
                         with c2:
                             estado_extra = " ⏳" if m.get('leave_status') == 'pending' else ""
                             st.markdown(f"### {full_name}{estado_extra}")
