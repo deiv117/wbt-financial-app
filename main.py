@@ -136,6 +136,7 @@ def main():
         with st.sidebar:
             avatar_url = user_profile.get('avatar_url')
             p_color = user_profile.get('profile_color', '#636EFA')
+            i_color = user_profile.get('icon_color', '#FFA500') # <-- SACAMOS EL COLOR DEL ICONO
             name = user_profile.get('name', 'Usuario')
             
             if avatar_url:
@@ -153,12 +154,12 @@ def main():
 
             selected = option_menu(
                 menu_title=None,
-                options=["Resumen", "Movimientos", "Categorías", label_grupos, "Importar", "Perfil"], # <-- Usamos la variable
+                options=["Resumen", "Movimientos", "Categorías", label_grupos, "Importar", "Perfil"],
                 icons=["house", "wallet2", "list-task", "people", "cloud-upload", "person-gear"],
                 default_index=0,
                 styles={
                     "container": {"padding": "0!important", "background-color": "transparent"},
-                    "icon": {"color": "orange", "font-size": "18px"}, 
+                    "icon": {"color": i_color, "font-size": "18px"}, # <-- LO APLICAMOS AQUÍ
                     "nav-link": {"font-size": "16px", "text-align": "left", "margin": "0px", "--hover-color": "#eee"},
                     "nav-link-selected": {"background-color": p_color},
                 }
