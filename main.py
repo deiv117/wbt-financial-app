@@ -17,46 +17,47 @@ from views_groups import render_groups
 # 1. Configuración de página
 st.set_page_config(
     page_title="Mi App de Finanzas", 
-    page_icon="💰", 
-    initial_sidebar_state="expanded"  # <-- ESTO FUERZA A QUE SE ABRA AL RECARGAR
+    page_icon="💰"
 )
 init_db()
 st.markdown(get_custom_css(), unsafe_allow_html=True)
 
-# CSS Final para limpiar la interfaz sin romper el menú lateral
+# CSS para eliminar definitivamente los iconos de la derecha y el footer
 st.markdown("""
     <style>
-        /* 1. Ajuste de padding para ganar espacio arriba */
+        /* 1. Ajuste de padding general */
         .block-container {
             padding-top: 2rem !important; 
         } 
 
-        /* 2. OCULTAR BOTONES DERECHA (Share, Star, Edit, etc.) */
-        /* Buscamos el contenedor de acciones del header y lo ocultamos */
-        [data-testid="stHeaderActionElements"] {
+        /* 2. OCULTAR TODA LA BARRA DE HERRAMIENTAS DE LA DERECHA */
+        /* Intentamos con todos los selectores posibles conocidos */
+        [data-testid="stHeaderActionElements"], 
+        .st-emotion-cache-12fmjuu, 
+        .st-emotion-cache-15ec669, 
+        .st-emotion-cache-v068m5,
+        [data-testid="stToolbar"] {
             display: none !important;
+            visibility: hidden !important;
         }
         
-        /* Ocultar el menú de 3 puntos (opcional, si quieres quitarlo también) */
-        #MainMenu {
+        /* 3. OCULTAR EL MENÚ DE LOS 3 PUNTOS */
+        #MainMenu, [data-testid="stIconMaterialMenu"] {
             display: none !important;
+            visibility: hidden !important;
         }
 
-        /* 3. OCULTAR FOOTER */
+        /* 4. OCULTAR FOOTER */
         footer {
             display: none !important;
         }
 
-        /* 🛟 4. EL SALVACIONES: Forzar que el botón de sidebar siempre sea clicable */
-        /* Esto asegura que el área donde aparece el '>' no sea tapada por nada */
-        [data-testid="stHeader"] {
-            background-color: rgba(0,0,0,0) !important;
-            pointer-events: none !important;
-        }
-        
-        /* Pero los botones del sidebar sí deben recibir clics */
-        [data-testid="stHeader"] > * {
-            pointer-events: auto !important;
+        /* 🛟 5. PROTECCIÓN DEL BOTÓN LATERAL (IMPORTANTE) */
+        /* Si después de esto no ves la flecha para abrir el sidebar, 
+           comenta la línea de abajo o usa la tecla ']' */
+        [data-testid="collapsedControl"] {
+            visibility: visible !important;
+            display: flex !important;
         }
     </style>
 """, unsafe_allow_html=True)
