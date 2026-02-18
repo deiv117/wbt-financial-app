@@ -22,7 +22,6 @@ from components import editar_movimiento_dialog, editar_categoria_dialog, crear_
 BOOTSTRAP_ICONS_LINK = '<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.5/font/bootstrap-icons.css">'
 
 def get_dynamic_css():
-    # Sacamos el color de forma segura, incluso si es None en la base de datos
     p_color = (st.session_state.user.get('profile_color') or '#636EFA') if 'user' in st.session_state and st.session_state.user else '#636EFA'
     return f"""
     <style>
@@ -232,7 +231,6 @@ def render_dashboard(df_all, current_cats, user_id):
                             m_id = f"ext_{m['id']}" if is_ext else m.get('user_id')
                             if not m_id: continue
                             
-                            # Obtener nombre seguro con fantasmita
                             if is_ext:
                                 m_nombre = f"👻 {m.get('external_name', 'Invitado')}"
                             else:
@@ -241,7 +239,6 @@ def render_dashboard(df_all, current_cats, user_id):
                                 m_nombre = prof.get('name', 'Usuario')
                             
                             with cols_miembros[idx % 3]:
-                                # Usar el m_id correcto en el value y en la key
                                 if st.checkbox(m_nombre, value=True, key=f"p_gl_{m_id}"):
                                     participantes_ids.append(m_id)
                         
@@ -647,7 +644,6 @@ def render_profile(user_id, p_data):
             name_safe = raw_name if raw_name and raw_name.strip() else 'Usuario'
             initial = name_safe[0].upper()
             
-            # OBTENCIÓN SEGURA DE AMBOS COLORES CON VALIDACIÓN FORMATO
             p_color = p_data.get('profile_color')
             if not isinstance(p_color, str) or not p_color.startswith('#') or len(p_color) != 7:
                 p_color = '#636EFA'
@@ -666,21 +662,18 @@ def render_profile(user_id, p_data):
                 n_name = st.text_input("Nombre", value=p_data.get('name') or "")
                 n_last = st.text_input("Apellido", value=p_data.get('lastname') or "")
                 
-                # Ponemos los selectores de color en dos columnas para que quede bonito
                 c_col1, c_col2 = st.columns(2)
                 n_color = c_col1.color_picker("Color Principal", value=p_color)
                 n_icon_color = c_col2.color_picker("Color de Iconos", value=i_color)
                 
                 n_social = st.toggle("Modo Social", value=p_data.get('social_active', False))
                 
-                # AÑADIDO: BOTÓN DE SUBMIT QUE FALTABA
                 if st.form_submit_button(":material/save: Guardar Datos", type="primary"):
                     final_avatar = avatar_url
                     if uploaded_file:
                         new_url = upload_avatar(uploaded_file, user_id)
                         if new_url: final_avatar = new_url
                     
-                    # Añadimos icon_color a los datos a guardar
                     new_data = {**p_data, "name": n_name, "lastname": n_last, "profile_color": n_color, "icon_color": n_icon_color, "social_active": n_social, "avatar_url": final_avatar}
                     
                     if upsert_profile(new_data):
@@ -742,57 +735,146 @@ def render_profile(user_id, p_data):
                     else: st.error(f"Error: {msg}")
                 else: st.error("Las contraseñas no coinciden o son muy cortas.")
 
-# --- 5. IMPORTAR ---
+# --- 5. IMPORTAR INTELIGENTE ---
 def render_import(current_cats, user_id):
-    render_header("cloud-upload", "Importar Movimientos")
+    render_header("cloud-upload", "Importación Inteligente")
+    st.caption("Sube el Excel de tu banco. La app adivinará las categorías, y tú solo tendrás que revisar y guardar.")
     
-    with st.expander("📖 Guía de Columnas Sugeridas", expanded=True):
-        st.table({
-            "Columna": ["Tipo", "Cantidad", "Categoría", "Fecha", "Concepto"],
-            "Descripción": ["Gasto o Ingreso", "Ej: 12.50", "Nombre exacto", "AAAA-MM-DD", "Descripción"]
-        })
+    with st.expander("📖 Reglas del archivo", expanded=False):
+        st.write("- **Cantidad:** Si no usas columna 'Tipo', los números negativos se marcarán como Gasto.")
+        st.write("- **Fecha:** Formato recomendado `AAAA-MM-DD`.")
+        st.write("- **Concepto:** Usaremos palabras clave aquí para adivinar la categoría.")
 
-    ej_cat = current_cats[0]['name'] if current_cats else "Varios"
-    df_template = pd.DataFrame([{"Tipo": "Gasto", "Cantidad": 0.00, "Categoría": ej_cat, "Fecha": datetime.now().strftime("%Y-%m-%d"), "Concepto": "Ejemplo"}])
-    st.download_button("📥 Descargar Plantilla CSV", df_template.to_csv(index=False).encode('utf-8'), "plantilla_importacion.csv", "text/csv")
-    
     st.divider()
-    up = st.file_uploader("Subir Archivo (CSV o Excel)", type=["csv", "xlsx"])
+    up = st.file_uploader("Sube tu archivo (CSV o Excel)", type=["csv", "xlsx"])
     
     if up:
         try:
-            df = pd.read_csv(up, sep=None, engine='python') if up.name.endswith('.csv') else pd.read_excel(up)
-            st.write("### Vista previa")
-            st.dataframe(df.head(3), use_container_width=True)
+            # 1. Leer el archivo
+            df_raw = pd.read_csv(up, sep=None, engine='python') if up.name.endswith('.csv') else pd.read_excel(up)
+            cols = df_raw.columns.tolist()
             
-            cols = df.columns.tolist()
-            def find_col(name): return cols.index(name) if name in cols else 0
-            
+            # 2. Mapeo de columnas (Intento de autodetectar)
+            def find_col(keywords): 
+                for c in cols:
+                    if any(k.lower() in c.lower() for k in keywords): return cols.index(c)
+                return 0
+                
             c1, c2 = st.columns(2)
-            sel_tipo = c1.selectbox("Columna Tipo", cols, index=find_col("Tipo"))
-            sel_qty = c1.selectbox("Columna Cantidad", cols, index=find_col("Cantidad"))
-            sel_cat = c1.selectbox("Columna Categoría", cols, index=find_col("Categoría"))
-            sel_date = c2.selectbox("Columna Fecha", cols, index=find_col("Fecha"))
-            sel_note = c2.selectbox("Columna Concepto", cols, index=find_col("Concepto"))
+            sel_qty = c1.selectbox("Columna Cantidad/Importe", cols, index=find_col(['cantidad', 'importe', 'amount', 'valor']))
+            sel_date = c2.selectbox("Columna Fecha", cols, index=find_col(['fecha', 'date']))
             
-            if st.button("🚀 Procesar Importación", use_container_width=True):
-                cat_lookup = {c['name'].upper().strip(): c['id'] for c in current_cats}
-                count = 0
-                for _, r in df.iterrows():
+            c3, c4 = st.columns(2)
+            sel_note = c3.selectbox("Columna Concepto", cols, index=find_col(['concepto', 'descrip', 'detalles']))
+            
+            # NUEVO: Selector de Tipo opcional
+            opciones_tipo = ["-- Autodetectar por signo (-/+) --"] + cols
+            sel_tipo = c4.selectbox("Columna Tipo (Opcional)", opciones_tipo)
+            
+            if st.button("🪄 Analizar y Clasificar", type="primary"):
+                df_to_edit = pd.DataFrame()
+                nombres_categorias = [c['name'] for c in current_cats]
+                nombres_categorias.insert(0, "⚠️ Sin clasificar")
+                
+                # REGLAS INTELIGENTES (El "Oráculo")
+                oraculo = {
+                    "mercadona": "Alimentación", "carrefour": "Alimentación", "lidl": "Alimentación",
+                    "repsol": "Gasolina", "cepsa": "Gasolina", "netflix": "Suscripciones",
+                    "spotify": "Suscripciones", "amazon": "Compras", "zara": "Ropa",
+                    "restaurante": "Ocio", "bizum": "Varios"
+                }
+
+                filas_procesadas = []
+                for _, r in df_raw.iterrows():
                     try:
-                        name_clean = str(r[sel_cat]).upper().strip()
-                        if name_clean in cat_lookup:
-                            raw_qty = str(r[sel_qty]).replace('€','').replace(',','.')
-                            save_input({
-                                "user_id": user_id, 
-                                "quantity": float(raw_qty),
-                                "type": "Ingreso" if "ING" in str(r[sel_tipo]).upper() else "Gasto",
-                                "category_id": cat_lookup[name_clean],
-                                "date": str(pd.to_datetime(r[sel_date]).date()),
-                                "notes": str(r[sel_note]) if pd.notna(r[sel_note]) else ""
-                            })
-                            count += 1
-                    except: continue
-                st.success(f"✅ Se han importado {count} movimientos.")
+                        # Limpiar cantidad
+                        raw_qty = str(r[sel_qty]).replace('€','').replace(',','.').strip()
+                        qty_float = float(raw_qty)
+                        
+                        # LÓGICA HÍBRIDA DE TIPO
+                        if sel_tipo != "-- Autodetectar por signo (-/+) --":
+                            val_tipo = str(r[sel_tipo]).upper()
+                            tipo = "Ingreso" if "ING" in val_tipo else "Gasto"
+                        else:
+                            tipo = "Gasto" if qty_float < 0 else "Ingreso"
+                            
+                        cantidad_final = abs(qty_float) # Guardamos siempre en positivo
+                        concepto_str = str(r[sel_note]) if pd.notna(r[sel_note]) else ""
+                        
+                        # Magia del Oráculo
+                        categoria_asignada = "⚠️ Sin clasificar"
+                        concepto_lower = concepto_str.lower()
+                        for palabra, cat_name in oraculo.items():
+                            if palabra in concepto_lower and cat_name in nombres_categorias:
+                                categoria_asignada = cat_name
+                                break
+                                    
+                        filas_procesadas.append({
+                            "Fecha": pd.to_datetime(r[sel_date]).date(),
+                            "Concepto": concepto_str,
+                            "Tipo": tipo,
+                            "Cantidad": cantidad_final,
+                            "Categoría": categoria_asignada
+                        })
+                    except: continue 
+                
+                st.session_state['df_import'] = pd.DataFrame(filas_procesadas)
+                st.session_state['cat_options'] = nombres_categorias
                 st.rerun()
-        except Exception as e: st.error(f"Error al leer el archivo: {e}")
+                
+        except Exception as e: 
+            st.error(f"Error al leer el archivo: {e}")
+
+    # --- PANTALLA DE REVISIÓN Y EDICIÓN ---
+    if 'df_import' in st.session_state:
+        st.divider()
+        render_small_header("table", "Revisa tus movimientos")
+        st.write("Corrige las categorías que falten directamente en la tabla antes de guardar.")
+        
+        edited_df = st.data_editor(
+            st.session_state['df_import'],
+            column_config={
+                "Categoría": st.column_config.SelectboxColumn(
+                    "Categoría (Haz clic)",
+                    help="Elige la categoría correcta",
+                    width="medium",
+                    options=st.session_state['cat_options'],
+                    required=True,
+                ),
+                "Cantidad": st.column_config.NumberColumn("Cantidad (€)", format="%.2f €")
+            },
+            hide_index=True,
+            use_container_width=True
+        )
+        
+        pendientes = len(edited_df[edited_df['Categoría'] == "⚠️ Sin clasificar"])
+        if pendientes > 0:
+            st.warning(f"Tienes {pendientes} movimientos sin clasificar. Asígnales una categoría.")
+            
+        c_guardar, c_cancelar = st.columns([2, 1])
+        with c_guardar:
+            if st.button("💾 Guardar en Base de Datos", type="primary", disabled=(pendientes > 0), use_container_width=True):
+                cat_lookup = {c['name']: c['id'] for c in current_cats}
+                count = 0
+                for _, r in edited_df.iterrows():
+                    try:
+                        save_input({
+                            "user_id": user_id, 
+                            "quantity": r["Cantidad"],
+                            "type": r["Tipo"],
+                            "category_id": cat_lookup[r["Categoría"]],
+                            "date": str(r["Fecha"]),
+                            "notes": r["Concepto"]
+                        })
+                        count += 1
+                    except Exception as e: continue
+                        
+                st.success(f"✅ ¡Éxito! Se han importado {count} movimientos.")
+                del st.session_state['df_import']
+                time.sleep(2)
+                st.rerun()
+                
+        with c_cancelar:
+            if st.button("Cancelar Importación", use_container_width=True):
+                del st.session_state['df_import']
+                st.rerun()
