@@ -207,7 +207,6 @@ def add_shared_expense(group_id, movement_data, member_ids):
     client = get_supabase_client()
     
     # 0. Determinamos quién es el pagador real
-    # Si viene 'paid_by_custom' lo usamos, si no, el user_id por defecto
     real_paid_by = movement_data.get('paid_by_custom', movement_data['user_id'])
     es_externo = str(real_paid_by).startswith("ext_")
 
@@ -215,7 +214,6 @@ def add_shared_expense(group_id, movement_data, member_ids):
         mov_id = None
         
         # 1. Registrar en 'user_imputs' SOLO si el pagador NO es externo
-        # (Los invitados no tienen cuenta personal ni patrimonio neto que trackear)
         if not es_externo:
             res_mov = client.table("user_imputs").insert({
                 "user_id": real_paid_by,
@@ -227,21 +225,27 @@ def add_shared_expense(group_id, movement_data, member_ids):
                 "group_id": group_id
             }).execute()
             
+            if hasattr(res_mov, 'error') and res_mov.error:
+                return False, f"Error DB personal: {res_mov.error}"
+                
             if res_mov.data:
                 mov_id = res_mov.data[0]['id']
 
         # 2. Registrar el ticket en el Grupo (group_expenses)
         expense_data = {
             "group_id": group_id,
-            "movement_id": mov_id, # Puede ser None si el pagador es externo
-            "paid_by": real_paid_by, # Aquí guardamos el ID (UUID o 'ext_...')
+            "movement_id": mov_id, 
+            "paid_by": real_paid_by,
             "description": movement_data.get('notes', 'Gasto compartido'), 
             "total_amount": movement_data.get('quantity', 0)
         }
         res_exp = client.table("group_expenses").insert(expense_data).execute()
         
+        if hasattr(res_exp, 'error') and res_exp.error:
+            return False, f"Error DB Grupo: {res_exp.error}"
+            
         if not res_exp.data:
-            return False, "Error al crear el ticket de grupo en group_expenses"
+            return False, "Error desconocido al crear el ticket de grupo."
             
         exp_id = res_exp.data[0]['id']
         
@@ -251,17 +255,20 @@ def add_shared_expense(group_id, movement_data, member_ids):
         for mid in member_ids:
             splits.append({
                 "expense_id": exp_id,
-                "user_id": mid, # Aquí el user_id puede ser UUID o 'ext_...'
+                "user_id": mid,
                 "amount_owed": cuota,
                 "is_settled": False
             })
             
-        client.table("group_expense_splits").insert(splits).execute()
+        res_splits = client.table("group_expense_splits").insert(splits).execute()
+        if hasattr(res_splits, 'error') and res_splits.error:
+            return False, f"Error DB Repartos: {res_splits.error}"
+
         return True, "Gasto compartido registrado correctamente"
         
     except Exception as e:
-        st.error(f"🛑 Error Técnico DB: {e}") 
-        return False, str(e)
+        # Aquí capturamos cualquier fallo grave (como que category_id sea inválido)
+        return False, f"🛑 Error Técnico: {str(e)}"
 
 def get_group_expenses(group_id):
     """Obtiene el historial de gastos del grupo y sus repartos (sin cruzar perfiles)"""
