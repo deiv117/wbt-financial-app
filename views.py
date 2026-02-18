@@ -867,27 +867,66 @@ def render_import(current_cats, user_id):
             st.warning(f"Tienes {pendientes} movimientos sin clasificar. Asígnales una categoría.")
             
         c_guardar, c_cancelar = st.columns([2, 1])
+      
         with c_guardar:
             if st.button("💾 Guardar en Base de Datos", type="primary", disabled=(pendientes > 0), use_container_width=True):
+                from database import save_bulk_inputs # Importamos la nueva función súper rápida
+                
                 cat_lookup = {c['name']: c['id'] for c in current_cats}
-                count = 0
-                for _, r in edited_df.iterrows():
-                    try:
-                        save_input({
-                            "user_id": user_id, 
-                            "quantity": r["Cantidad"],
-                            "type": r["Tipo"],
-                            "category_id": cat_lookup[r["Categoría"]],
-                            "date": str(r["Fecha"]),
-                            "notes": r["Concepto"]
-                        })
-                        count += 1
-                    except Exception as e: continue
-                        
-                st.success(f"✅ ¡Éxito! Se han importado {count} movimientos.")
-                del st.session_state['df_import']
-                time.sleep(2)
-                st.rerun()
+                valid_rows = []
+                log_details = []
+                
+                # Barra de estado visual de Streamlit
+                with st.status("Procesando importación masiva...", expanded=True) as status:
+                    st.write("Preparando datos...")
+                    
+                    # 1. Preparamos el paquete
+                    for idx, r in edited_df.iterrows():
+                        try:
+                            # Nos aseguramos de que la fecha esté en formato YYYY-MM-DD
+                            fecha_str = str(r["Fecha"])[:10] 
+                            
+                            valid_rows.append({
+                                "user_id": user_id, 
+                                "quantity": float(r["Cantidad"]),
+                                "type": str(r["Tipo"]),
+                                "category_id": cat_lookup[r["Categoría"]],
+                                "date": fecha_str,
+                                "notes": str(r["Concepto"])
+                            })
+                            log_details.append(f"✅ Fila {idx+1}: {r['Concepto'][:20]}... ({r['Cantidad']}€) - OK")
+                        except Exception as e:
+                            log_details.append(f"❌ Fila {idx+1}: Error al preparar - {str(e)}")
+                    
+                    st.write(f"Enviando {len(valid_rows)} registros a Supabase en bloque...")
+                    
+                    # 2. Enviamos el paquete gigante de golpe
+                    if valid_rows:
+                        try:
+                            total_saved = save_bulk_inputs(valid_rows)
+                            status.update(label=f"¡Importación completada! ({total_saved} registros)", state="complete", expanded=False)
+                            st.success(f"🚀 ¡BRUTAL! Se han guardado {total_saved} movimientos en un instante.")
+                            
+                            # 3. Mostramos el LOG en un desplegable
+                            with st.expander("📋 Ver registro detallado (Log de procesamiento)"):
+                                # Mostramos solo los primeros 100 y los últimos para no saturar la pantalla si son miles
+                                if len(log_details) > 100:
+                                    st.text("\n".join(log_details[:50]))
+                                    st.text(f"\n... [{len(log_details) - 100} filas omitidas para rendimiento] ...\n")
+                                    st.text("\n".join(log_details[-50:]))
+                                else:
+                                    st.text("\n".join(log_details))
+                                    
+                            del st.session_state['df_import'] # Limpiamos la tabla
+                            # Quitamos el rerun automático para que te dé tiempo a leer el Log.
+                            if st.button("🔄 Refrescar y ver en Historial", type="primary"):
+                                st.rerun()
+                                
+                        except Exception as e:
+                            status.update(label="Error crítico en la importación", state="error", expanded=True)
+                            st.error(f"🛑 Supabase rechazó el bloque: {str(e)}")
+                    else:
+                        status.update(label="No hay datos válidos", state="error", expanded=True)
                 
         with c_cancelar:
             if st.button("Cancelar Importación", use_container_width=True):
