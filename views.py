@@ -742,8 +742,7 @@ def render_import(current_cats, user_id):
     
     with st.expander("📖 Reglas del archivo", expanded=False):
         st.write("- **Cantidad:** Si no usas columna 'Tipo', los números negativos se marcarán como Gasto.")
-        st.write("- **Fecha:** Formato recomendado `AAAA-MM-DD`.")
-        st.write("- **Concepto:** Usaremos palabras clave aquí para adivinar la categoría.")
+        st.write("- **Categoría:** Si tu Excel ya trae categoría, la usaremos. Si no, intentaremos adivinarla por el concepto.")
 
     st.divider()
     up = st.file_uploader("Sube tu archivo (CSV o Excel)", type=["csv", "xlsx"])
@@ -767,9 +766,12 @@ def render_import(current_cats, user_id):
             c3, c4 = st.columns(2)
             sel_note = c3.selectbox("Columna Concepto", cols, index=find_col(['concepto', 'descrip', 'detalles']))
             
-            # NUEVO: Selector de Tipo opcional
             opciones_tipo = ["-- Autodetectar por signo (-/+) --"] + cols
             sel_tipo = c4.selectbox("Columna Tipo (Opcional)", opciones_tipo)
+            
+            # RECUPERADO: Selector de Categoría (Opcional)
+            opciones_cat = ["-- Autodetectar por concepto (Oráculo) --"] + cols
+            sel_cat = st.selectbox("Columna Categoría (Opcional)", opciones_cat)
             
             if st.button("🪄 Analizar y Clasificar", type="primary"):
                 df_to_edit = pd.DataFrame()
@@ -777,6 +779,7 @@ def render_import(current_cats, user_id):
                 nombres_categorias.insert(0, "⚠️ Sin clasificar")
                 
                 # REGLAS INTELIGENTES (El "Oráculo")
+                # ⚠️ ATENCIÓN: Cambia "Alimentación" o "Gasolina" por los nombres EXACTOS de tus categorías
                 oraculo = {
                     "mercadona": "Alimentación", "carrefour": "Alimentación", "lidl": "Alimentación",
                     "repsol": "Gasolina", "cepsa": "Gasolina", "netflix": "Suscripciones",
@@ -787,27 +790,39 @@ def render_import(current_cats, user_id):
                 filas_procesadas = []
                 for _, r in df_raw.iterrows():
                     try:
-                        # Limpiar cantidad
+                        # 1. Limpiar cantidad
                         raw_qty = str(r[sel_qty]).replace('€','').replace(',','.').strip()
                         qty_float = float(raw_qty)
                         
-                        # LÓGICA HÍBRIDA DE TIPO
+                        # 2. Lógica Híbrida de Tipo
                         if sel_tipo != "-- Autodetectar por signo (-/+) --":
                             val_tipo = str(r[sel_tipo]).upper()
                             tipo = "Ingreso" if "ING" in val_tipo else "Gasto"
                         else:
                             tipo = "Gasto" if qty_float < 0 else "Ingreso"
                             
-                        cantidad_final = abs(qty_float) # Guardamos siempre en positivo
+                        cantidad_final = abs(qty_float)
                         concepto_str = str(r[sel_note]) if pd.notna(r[sel_note]) else ""
                         
-                        # Magia del Oráculo
+                        # 3. LÓGICA HÍBRIDA DE CATEGORÍA
                         categoria_asignada = "⚠️ Sin clasificar"
-                        concepto_lower = concepto_str.lower()
-                        for palabra, cat_name in oraculo.items():
-                            if palabra in concepto_lower and cat_name in nombres_categorias:
-                                categoria_asignada = cat_name
-                                break
+                        
+                        # A) Si has seleccionado una columna del Excel que trae la categoría
+                        if sel_cat != "-- Autodetectar por concepto (Oráculo) --":
+                            cat_excel = str(r[sel_cat]).strip().lower()
+                            # Buscar coincidencia exacta (ignorando mayúsculas) con tus categorías de la app
+                            for nc in nombres_categorias:
+                                if nc.lower() == cat_excel:
+                                    categoria_asignada = nc
+                                    break
+                                    
+                        # B) Si no hay match con el Excel o elegiste autodetectar, actúa el Oráculo
+                        if categoria_asignada == "⚠️ Sin clasificar":
+                            concepto_lower = concepto_str.lower()
+                            for palabra, cat_name in oraculo.items():
+                                if palabra in concepto_lower and cat_name in nombres_categorias:
+                                    categoria_asignada = cat_name
+                                    break
                                     
                         filas_procesadas.append({
                             "Fecha": pd.to_datetime(r[sel_date]).date(),
