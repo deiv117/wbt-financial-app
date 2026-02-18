@@ -251,18 +251,17 @@ def delete_category(cat_id):
 
 def save_input(data):
     client = get_supabase_client()
-    try:
-        client.table('user_imputs').insert({
-            "user_id": data['user_id'],
-            "quantity": data['quantity'],
-            "type": data['type'],
-            "category_id": data['category_id'],
-            "date": str(data['date']),
-            "notes": data['notes'],
-            "group_id": data.get('group_id', None)
-        }).execute()
-    except Exception as e:
-        st.error(f"Error input: {e}")
+    # Si esto falla, lanzará una excepción directamente a views.py, 
+    # bloqueando el rerun() y mostrándote el error real.
+    client.table('user_imputs').insert({
+        "user_id": data['user_id'],
+        "quantity": data['quantity'],
+        "type": data['type'],
+        "category_id": data['category_id'],
+        "date": str(data['date']),
+        "notes": data['notes'],
+        "group_id": data.get('group_id', None)
+    }).execute()
 
 def update_input(data):
     client = get_supabase_client()
