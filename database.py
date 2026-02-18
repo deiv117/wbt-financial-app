@@ -347,3 +347,23 @@ def recalculate_category_budgets(user_id, new_total_income):
     except Exception as e:
         print(f"Error recalculando presupuestos: {e}") 
         return 0
+
+def save_bulk_inputs(data_list):
+    """Guarda múltiples registros de una sola vez (Bulk Insert)"""
+    client = get_supabase_client()
+    
+    chunk_size = 500 # Subimos de 500 en 500 para ser seguros
+    total_inserted = 0
+    
+    for i in range(0, len(data_list), chunk_size):
+        chunk = data_list[i:i + chunk_size]
+        
+        # El método insert() de Supabase acepta una lista de diccionarios enteros
+        res = client.table('user_imputs').insert(chunk).execute()
+        
+        if hasattr(res, 'error') and res.error:
+            raise Exception(f"Error en bloque: {res.error}")
+            
+        total_inserted += len(chunk)
+        
+    return total_inserted
