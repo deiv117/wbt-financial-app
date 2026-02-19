@@ -91,15 +91,23 @@ def change_password(new_password):
 
 # --- PERFIL Y AVATAR ---
 
-def get_user_profile(user_uuid):
+def get_user_profile(user_id):
+    """Obtiene el perfil del usuario mostrando errores reales si los hay"""
     client = get_supabase_client()
     try:
-        res = client.table('user_imputs').select('*').eq('user_id', user_id).limit(10000).execute()
+        res = client.table('profiles').select('*').eq('id', user_id).execute()
+        
+        # Si la librería devuelve un error en el objeto
+        if hasattr(res, 'error') and res.error:
+            st.error(f"🛑 Error de lectura en Supabase: {res.error}")
+            return None
+            
         if res.data:
             return res.data[0]
         return None
+        
     except Exception as e:
-        print(f"Error recuperando perfil: {e}")
+        st.error(f"🛑 Excepción leyendo el perfil: {e}")
         return None
 
 def upload_avatar(file, user_id):
@@ -127,40 +135,33 @@ def upload_avatar(file, user_id):
         st.error(f"Error subiendo imagen: {e}")
         return None
 
-def upsert_profile(user_data):
-    """Actualiza perfil y guarda historial de forma segura"""
+def upsert_profile(profile_data):
+    """Guarda/Actualiza el perfil mostrando el motivo exacto si falla"""
     client = get_supabase_client()
     try:
-        update_data = {
-            "name": user_data.get('name', ''), 
-            "lastname": user_data.get('lastname', ''),
-            "avatar_url": user_data.get('avatar_url', ''),
-            "profile_color": user_data.get('profile_color', '#636EFA'),
-            "social_active": user_data.get('social_active', False),
-            "initial_balance": user_data.get('initial_balance', 0),
-            "base_salary": user_data.get('base_salary', 0),
-            "other_fixed_income": user_data.get('other_fixed_income', 0),
-            "other_income_frequency": user_data.get('other_income_frequency', 1),
-            "payments_per_year": user_data.get('payments_per_year', 12),
-            "updated_at": datetime.now().isoformat()
-        }
+        res = client.table('profiles').upsert(profile_data).execute()
         
-        client.table('profiles').update(update_data).eq('id', user_data['id']).execute()
-
+        # Si la librería devuelve un error en el objeto
+        if hasattr(res, 'error') and res.error:
+            st.error(f"🛑 Supabase rechazó guardar el perfil: {res.error}")
+            return False
+            
+        # --- NUEVO: GUARDAR TAMBIÉN EL HISTORIAL (Como tenías antes) ---
         today = datetime.now().strftime("%Y-%m-%d")
-        
         history_data = {
-            "user_id": user_data['id'],
-            "base_salary": user_data.get('base_salary', 0),
-            "other_fixed_income": user_data.get('other_fixed_income', 0),
-            "other_income_frequency": user_data.get('other_income_frequency', 1),
+            "user_id": profile_data['id'],
+            "base_salary": profile_data.get('base_salary', 0),
+            "other_fixed_income": profile_data.get('other_fixed_income', 0),
+            "other_income_frequency": profile_data.get('other_income_frequency', 1),
             "valid_from": today
         }
         client.table('income_history').insert(history_data).execute()
-
+            
         return True
+        
     except Exception as e:
-        st.error(f"Error actualizando perfil: {e}")
+        # Explotará y te mostrará el error en rojo en la pantalla
+        st.error(f"🛑 Excepción guardando el perfil: {e}")
         return False
         
 def get_historical_income(user_id, target_date):
