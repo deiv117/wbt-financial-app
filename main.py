@@ -226,12 +226,23 @@ def main():
                                 st.rerun()
                             # 3. Si no existe, LO AUTO-REPARAMOS para no perder datos
                             else:
-                                # Creamos un perfil de emergencia con tu ID existente
+                                # Creamos un perfil COMPLETO para evitar rechazos de Supabase
                                 perfil_salvavidas = {
                                     "id": auth_user.id,
                                     "name": "Usuario",
-                                    "lastname": "Recuperado"
+                                    "lastname": "Recuperado",
+                                    "profile_color": "#636EFA",
+                                    "icon_color": "#FFA500",
+                                    "initial_balance": 0.0,
+                                    "base_salary": 0.0,
+                                    "other_fixed_income": 0.0,
+                                    "other_income_frequency": 1,
+                                    "payments_per_year": 12,
+                                    "social_active": False
                                 }
+                                
+                                # ¡FORZAMOS EL BORRADO DE CACHÉ DE STREAMLIT!
+                                st.cache_data.clear()
                                 
                                 # Lo guardamos en la base de datos
                                 if upsert_profile(perfil_salvavidas):
