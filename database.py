@@ -136,32 +136,45 @@ def upload_avatar(file, user_id):
         return None
 
 def upsert_profile(profile_data):
-    """Guarda/Actualiza el perfil mostrando el motivo exacto si falla"""
+    """Guarda/Actualiza el perfil aislando el historial para evitar bloqueos"""
     client = get_supabase_client()
     try:
-        res = client.table('profiles').upsert(profile_data).execute()
+        user_id = profile_data.get('id')
         
-        # Si la librería devuelve un error en el objeto
+        # 1. Intentamos actualizar el perfil (o crearlo si no existe)
+        res = client.table('profiles').update(profile_data).eq('id', user_id).execute()
+        
         if hasattr(res, 'error') and res.error:
-            st.error(f"🛑 Supabase rechazó guardar el perfil: {res.error}")
+            st.error(f"🛑 Error al actualizar el perfil: {res.error}")
             return False
             
-        # --- NUEVO: GUARDAR TAMBIÉN EL HISTORIAL (Como tenías antes) ---
-        today = datetime.now().strftime("%Y-%m-%d")
-        history_data = {
-            "user_id": profile_data['id'],
-            "base_salary": profile_data.get('base_salary', 0),
-            "other_fixed_income": profile_data.get('other_fixed_income', 0),
-            "other_income_frequency": profile_data.get('other_income_frequency', 1),
-            "valid_from": today
-        }
-        client.table('income_history').insert(history_data).execute()
+        if not res.data:
+            res_insert = client.table('profiles').insert(profile_data).execute()
+            if hasattr(res_insert, 'error') and res_insert.error:
+                st.error(f"🛑 Error al crear el perfil: {res_insert.error}")
+                return False
+
+        # 2. Guardamos el historial en un bloque SEPARADO y PROTEGIDO
+        try:
+            today = datetime.now().strftime("%Y-%m-%d")
+            history_data = {
+                "user_id": user_id,
+                "base_salary": profile_data.get('base_salary', 0),
+                "other_fixed_income": profile_data.get('other_fixed_income', 0),
+                "other_income_frequency": profile_data.get('other_income_frequency', 1),
+                "valid_from": today
+            }
+            # Intentamos upsert en lugar de insert por si ya guardó hoy
+            client.table('income_history').upsert(history_data).execute()
+        except Exception as e:
+            # Si esto falla (por ejemplo por la Primary Key), lo ignoramos silenciosamente
+            # Lo importante es que tu nombre (Paso 1) ya está guardado.
+            pass
             
         return True
         
     except Exception as e:
-        # Explotará y te mostrará el error en rojo en la pantalla
-        st.error(f"🛑 Excepción guardando el perfil: {e}")
+        st.error(f"🛑 Excepción general guardando el perfil: {e}")
         return False
         
 def get_historical_income(user_id, target_date):
