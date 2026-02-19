@@ -3,6 +3,7 @@ import pandas as pd
 import random
 import time
 from streamlit_option_menu import option_menu 
+from streamlit_cookies_controller import CookieController # <-- NUEVO: Importamos el controlador de galletas
 
 # IMPORTANTE: He añadido 'change_password' y 'supabase' a las importaciones
 from database import (init_db, login_user, register_user, recover_password, 
@@ -16,6 +17,10 @@ from views_groups import render_groups
 
 # 1. Configuración de página
 st.set_page_config(page_title="Finanzas", page_icon="💰", layout="wide", initial_sidebar_state="expanded")
+
+# --- NUEVO: INICIALIZAMOS EL CONTROLADOR DE COOKIES ---
+# (Debe ir siempre justo después de st.set_page_config)
+cookie_controller = CookieController()
 
 init_db()
 st.markdown(get_custom_css(), unsafe_allow_html=True)
@@ -71,6 +76,16 @@ def main():
         except Exception as e:
             st.error("❌ El enlace de verificación ha caducado o es inválido. Por favor, solicita uno nuevo.")
             st.query_params.clear()
+
+    # --- NUEVO: AUTO-LOGIN SILENCIOSO VÍA COOKIES ---
+    # Si la app se recarga (el iPhone mata Safari) y perdemos la sesión, leemos la cookie
+    if not st.session_state.user:
+        saved_user_id = cookie_controller.get('mis_finanzas_session')
+        if saved_user_id:
+            user_prof = get_user_profile(saved_user_id)
+            if user_prof:
+                st.session_state.user = user_prof
+                st.rerun() # Recargamos para que entre directo sin ver el login
 
     # --- FLUJO DE USUARIO LOGUEADO ---
     if st.session_state.user:
@@ -128,11 +143,11 @@ def main():
                 
         # Personalizamos la etiqueta del menú
         label_grupos = f"Grupos {'🔴' if n_invites > 0 else ''}"
-       
+        
         with st.sidebar:
             avatar_url = user_profile.get('avatar_url')
             p_color = user_profile.get('profile_color', '#636EFA')
-            i_color = user_profile.get('icon_color', '#FFA500') # <-- SACAMOS EL COLOR DEL ICONO
+            i_color = user_profile.get('icon_color', '#FFA500') 
             name = user_profile.get('name', 'Usuario')
             
             if avatar_url:
@@ -155,7 +170,7 @@ def main():
                 default_index=0,
                 styles={
                     "container": {"padding": "0!important", "background-color": "transparent"},
-                    "icon": {"color": i_color, "font-size": "18px"}, # <-- LO APLICAMOS AQUÍ
+                    "icon": {"color": i_color, "font-size": "18px"}, 
                     "nav-link": {"font-size": "16px", "text-align": "left", "margin": "0px", "--hover-color": "#eee"},
                     "nav-link-selected": {"background-color": p_color},
                 }
@@ -165,13 +180,16 @@ def main():
             if st.button("Cerrar Sesión", use_container_width=True):
                 supabase.auth.sign_out() 
                 st.session_state.user = None
+                # --- NUEVO: BORRAMOS LA COOKIE AL SALIR ---
+                cookie_controller.remove('mis_finanzas_session')
+                time.sleep(0.5) # Pequeña pausa para asegurar el borrado
                 st.rerun()
 
         # --- ENRUTAMIENTO ---
         if selected == "Resumen": render_main_dashboard(df_all, user_profile)
         elif selected == "Movimientos": render_dashboard(df_all, current_cats, user_id)
         elif selected == "Categorías": render_categories(current_cats)
-        elif selected == label_grupos:  # <--- Usamos la variable, tenga bolita o no
+        elif selected == label_grupos:  
             if user_email:
                 render_groups(user_id, user_email)
             else:
@@ -200,6 +218,11 @@ def main():
                             # 2. Si el perfil existe, entramos
                             if user_prof:
                                 st.session_state.user = user_prof
+                                
+                                # --- ¡LA MAGIA DE LA COOKIE! ---
+                                # Guardamos el ID en el navegador por 30 días (2592000 segundos)
+                                cookie_controller.set('mis_finanzas_session', auth_user.id, max_age=2592000)
+                                
                                 st.rerun()
                             # 3. Si no existe, damos el aviso para no volvernos locos
                             else:
