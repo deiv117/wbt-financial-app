@@ -112,9 +112,20 @@ def editar_movimiento_dialog(mov_data, current_cats):
     # 2. Cargar participantes previos si existían
     c_parts = get_expense_participants(m_id) if c_grp else []
     
-    # --- INTERFAZ DEL FORMULARIO ---
-    n_qty = st.number_input("Cantidad (€)", value=float(mov_data.get('quantity', 0.0)), min_value=0.0, step=0.01, key=f"{px}qty")
+    # --- LA MAGIA: Calculadora de devoluciones ---
+    st.caption("Cálculo rápido (Ideal para devoluciones de ropa, compras a medias...)")
+    col_q1, col_q2 = st.columns(2)
     
+    base_qty = float(mov_data.get('quantity', 0.0))
+    qty = col_q1.number_input("Cantidad base (€)", min_value=0.0, step=0.01, value=base_qty, key=f"{px}qty_base")
+    devolucion = col_q2.number_input("📉 Restar devolución (€)", min_value=0.0, step=0.01, value=0.0, help="Pon aquí lo que te han devuelto", key=f"{px}qty_dev")
+    
+    # Cálculo en tiempo real de la cantidad final
+    final_qty = qty - devolucion
+
+    st.divider()
+    
+    # --- INTERFAZ DEL FORMULARIO ---
     t_idx = 0 if mov_data.get('type') == 'Gasto' else 1
     n_type = st.selectbox("Tipo", ["Gasto", "Ingreso"], index=t_idx, key=f"{px}type")
     
@@ -180,16 +191,19 @@ def editar_movimiento_dialog(mov_data, current_cats):
                             new_p_ids.append(m['user_id'])
                 
                 if new_p_ids:
-                    st.info(f"Cuota: **{(n_qty/len(new_p_ids)):.2f}€** / pers.")
+                    # Actualizamos la cuota visual para que muestre el cálculo sobre la CANTIDAD FINAL
+                    st.info(f"Cuota a repartir: **{(final_qty/len(new_p_ids)):.2f}€** / pers.")
 
     # --- BOTÓN DE GUARDADO (¡SOLO UNO Y ÚNICO!) ---
     if st.button("Guardar Cambios", type="primary", use_container_width=True, key=f"{px}btn_save"):
-        if s_cat:
+        if final_qty <= 0 and qty > 0:
+            st.error("⚠️ La cantidad final no puede ser cero o negativa. Revisa la resta.")
+        elif s_cat:
             cat_obj = next(c for c in f_cs if f"{c.get('emoji', '📁')} {c['name']}" == s_cat)
             
             payload = {
                 "user_id": u_id,
-                "quantity": n_qty,
+                "quantity": final_qty,  # <--- GUARDAMOS LA CANTIDAD YA RESTADA
                 "type": n_type,
                 "category_id": cat_obj['id'],
                 "date": str(n_date),
@@ -199,7 +213,10 @@ def editar_movimiento_dialog(mov_data, current_cats):
             ok, msg = update_shared_expense(m_id, payload, new_g_id, new_p_ids)
             
             if ok:
-                st.toast("✅ Gasto actualizado")
+                if devolucion > 0:
+                    st.toast(f"✅ Devolución aplicada. Nuevo total: {final_qty:.2f}€")
+                else:
+                    st.toast("✅ Gasto actualizado")
                 time.sleep(1)
                 st.rerun()
             else:
