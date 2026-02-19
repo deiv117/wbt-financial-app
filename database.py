@@ -94,7 +94,7 @@ def change_password(new_password):
 def get_user_profile(user_uuid):
     client = get_supabase_client()
     try:
-        res = client.table('profiles').select('*').eq('id', user_uuid).execute()
+        res = client.table('user_imputs').select('*').eq('user_id', user_id).limit(10000).execute()
         if res.data:
             return res.data[0]
         return None
