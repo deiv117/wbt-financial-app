@@ -3,12 +3,12 @@ import pandas as pd
 import random
 import time
 from streamlit_option_menu import option_menu 
-from streamlit_cookies_controller import CookieController # <-- NUEVO: Importamos el controlador de galletas
+from streamlit_cookies_controller import CookieController
 
 # IMPORTANTE: He añadido 'change_password' y 'supabase' a las importaciones
 from database import (init_db, login_user, register_user, recover_password, 
                       get_user_profile, get_transactions, get_categories, 
-                      change_password, supabase)
+                      change_password, supabase, upsert_profile)
 from styles import get_custom_css
 
 # Importaciones unificadas
@@ -18,7 +18,7 @@ from views_groups import render_groups
 # 1. Configuración de página
 st.set_page_config(page_title="Finanzas", page_icon="💰", layout="wide", initial_sidebar_state="expanded")
 
-# --- NUEVO: INICIALIZAMOS EL CONTROLADOR DE COOKIES ---
+# --- INICIALIZAMOS EL CONTROLADOR DE COOKIES ---
 # (Debe ir siempre justo después de st.set_page_config)
 cookie_controller = CookieController()
 
@@ -77,7 +77,7 @@ def main():
             st.error("❌ El enlace de verificación ha caducado o es inválido. Por favor, solicita uno nuevo.")
             st.query_params.clear()
 
-    # --- NUEVO: AUTO-LOGIN SILENCIOSO VÍA COOKIES ---
+    # --- AUTO-LOGIN SILENCIOSO VÍA COOKIES ---
     # Si la app se recarga (el iPhone mata Safari) y perdemos la sesión, leemos la cookie
     if not st.session_state.user:
         saved_user_id = cookie_controller.get('mis_finanzas_session')
@@ -131,7 +131,7 @@ def main():
         # --- BARRA LATERAL ---
         from database_groups import get_invitations_count
                 
-        # Obtenemos el email (usando la lógica segura que pusimos ayer)
+        # Obtenemos el email (usando la lógica segura)
         session_user = st.session_state.supabase_client.auth.get_user()
         try:
             user_email = session_user.user.email
@@ -180,7 +180,7 @@ def main():
             if st.button("Cerrar Sesión", use_container_width=True):
                 supabase.auth.sign_out() 
                 st.session_state.user = None
-                # --- NUEVO: BORRAMOS LA COOKIE AL SALIR ---
+                # Borramos la cookie al salir
                 cookie_controller.remove('mis_finanzas_session')
                 time.sleep(0.5) # Pequeña pausa para asegurar el borrado
                 st.rerun()
@@ -224,9 +224,25 @@ def main():
                                 cookie_controller.set('mis_finanzas_session', auth_user.id, max_age=2592000)
                                 
                                 st.rerun()
-                            # 3. Si no existe, damos el aviso para no volvernos locos
+                            # 3. Si no existe, LO AUTO-REPARAMOS para no perder datos
                             else:
-                                st.error("⚠️ Credenciales correctas, pero tu Perfil no se generó bien en la base de datos. Por favor, crea una cuenta nueva.")
+                                # Creamos un perfil de emergencia con tu ID existente
+                                perfil_salvavidas = {
+                                    "id": auth_user.id,
+                                    "name": "Usuario",
+                                    "lastname": "Recuperado"
+                                }
+                                
+                                # Lo guardamos en la base de datos
+                                if upsert_profile(perfil_salvavidas):
+                                    st.session_state.user = perfil_salvavidas
+                                    # Guardamos la cookie de sesión
+                                    cookie_controller.set('mis_finanzas_session', auth_user.id, max_age=2592000)
+                                    st.success("¡Perfil auto-reparado! Entrando...")
+                                    time.sleep(1)
+                                    st.rerun()
+                                else:
+                                    st.error("Error crítico: No se ha podido restaurar el perfil en la base de datos.")
                         else: 
                             st.error("Credenciales incorrectas o cuenta sin confirmar.")
                 
